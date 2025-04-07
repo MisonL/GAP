@@ -13,6 +13,10 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 import sys
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 logging.getLogger("uvicorn").disabled = True
 logging.getLogger("uvicorn.access").disabled = True

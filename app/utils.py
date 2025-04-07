@@ -115,10 +115,12 @@ def handle_gemini_error(error, current_api_key, key_manager) -> str:
                     if error_data['error'].get('code') == "invalid_argument":
                         error_message = "无效的 API 密钥"
                         extra_log_invalid_key = {'key': current_api_key[:8], 'status_code': status_code, 'error_message': error_message}
-                        log_msg = format_log_message('ERROR', f"{current_api_key[:8]} ... {current_api_key[-3:]} → 无效，可能已过期或被删除", extra=extra_log_invalid_key)
+                        log_msg = format_log_message('ERROR', f"{current_api_key[:8]} ... {current_api_key[-3:]} → 无效，可能已过期或被删除。将从列表中移除。", extra=extra_log_invalid_key)
                         logger.error(log_msg)
-                        # key_manager.blacklist_key(current_api_key)
-                        
+                        # key_manager.blacklist_key(current_api_key) # 保持注释掉黑名单逻辑
+                        if current_api_key in key_manager.api_keys:
+                            key_manager.api_keys.remove(current_api_key)
+                            key_manager._reset_key_stack() # 移除后重置栈
                         return error_message
                     error_message = error_data['error'].get(
                         'message', 'Bad Request')
@@ -145,10 +147,12 @@ def handle_gemini_error(error, current_api_key, key_manager) -> str:
         elif status_code == 403:
             error_message = "权限被拒绝"
             extra_log_403 = {'key': current_api_key[:8], 'status_code': status_code, 'error_message': error_message}
-            log_msg = format_log_message('ERROR', f"{current_api_key[:8]} ... {current_api_key[-3:]} → 403 权限被拒绝", extra=extra_log_403)
+            log_msg = format_log_message('ERROR', f"{current_api_key[:8]} ... {current_api_key[-3:]} → 403 权限被拒绝。将从列表中移除。", extra=extra_log_403)
             logger.error(log_msg)
-            # key_manager.blacklist_key(current_api_key)
-            
+            # key_manager.blacklist_key(current_api_key) # 保持注释掉黑名单逻辑
+            if current_api_key in key_manager.api_keys:
+                key_manager.api_keys.remove(current_api_key)
+                key_manager._reset_key_stack() # 移除后重置栈
             return error_message
         elif status_code == 500:
             error_message = "服务器内部错误"

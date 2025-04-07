@@ -6,6 +6,8 @@
 ## ✨ 主要功能：
 
 ### 🔑 API 密钥轮询和管理
+*   支持配置多个 Gemini API 密钥，并进行轮询调用。
+*   自动检测并移除无效或权限不足的 API 密钥，避免重复尝试。
 
 ### 📑 模型列表接口
 
@@ -47,10 +49,29 @@
 6.  URL格式为`https://your-space-url.hf.space`。
 
 ### 💻 本地运行（可选,未测试但是应该能行）：
-
 1.  安装依赖：`pip install -r requirements.txt`
-2.  设置环境变量（如上所述）。
+2.  **配置环境变量：**
+    *   **（推荐）** 在项目根目录创建 `.env` 文件，并填入以下内容（根据需要取消注释并修改）：
+      ```dotenv
+      # 在这里填入你的 Gemini API 密钥。
+      # 如果有多个密钥，请用逗号分隔，例如：GEMINI_API_KEYS="key1,key2,key3"
+      GEMINI_API_KEYS="YOUR_API_KEY_HERE"
+
+      # （可选）设置访问密码。如果留空或注释掉此行，将使用默认密码 "123"。
+      # PASSWORD="your_secure_password"
+
+      # （可选）设置速率限制。如果留空或注释掉，将使用默认值。
+      # MAX_REQUESTS_PER_MINUTE=30
+      # MAX_REQUESTS_PER_DAY_PER_IP=600
+      ```
+    *   **（或者）** 直接在终端设置环境变量（仅对当前会话有效）：
+      ```bash
+      export GEMINI_API_KEYS="key1,key2"
+      export PASSWORD="your_password"
+      # ... 其他环境变量
+      ```
 3.  运行：`uvicorn app.main:app --reload --host 0.0.0.0 --port 7860`
+
 
 ### 🔌 接入其他服务
 
