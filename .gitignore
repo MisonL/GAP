@@ -1,0 +1,6 @@
+# Environment variables
+# .env  <- Keep template .env file in repo, but remind users not to commit secrets!
+
+# Python cache files
+__pycache__/
+*.pyc
