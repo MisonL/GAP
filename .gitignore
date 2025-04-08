@@ -4,3 +4,9 @@
 # Python cache files
 __pycache__/
 *.pyc
+
+# Virtual environment
+venv/
+
+# Specific files to ignore
+优化建议.txt

@@ -152,22 +152,22 @@ class GeminiClient:
                                             yield text
                                         
                                 if candidate.get("finishReason") and candidate.get("finishReason") != "STOP":
-                                    # logger.warning(f"模型的响应因违反内容政策而被标记: {candidate.get('finishReason')}")
+                                    logger.warning(f"模型的响应因违反内容政策而被标记: {candidate.get('finishReason')}，模型: {request.model}")
                                     raise ValueError(f"模型的响应被截断: {candidate.get('finishReason')}")
                                 
                                 if 'safetyRatings' in candidate:
                                     for rating in candidate['safetyRatings']:
                                         if rating['probability'] == 'HIGH':
-                                            # logger.warning(f"模型的响应因高概率被标记为 {rating['category']}")
+                                            logger.warning(f"模型的响应因高概率被标记为 {rating['category']}，模型: {request.model}，概率: {rating['probability']}")
                                             raise ValueError(f"模型的响应被截断: {rating['category']}")
                         except json.JSONDecodeError:
-                            # logger.debug(f"JSON解析错误, 当前缓冲区内容: {buffer}")
+                            logger.debug(f"JSON解析错误, 当前缓冲区内容: {buffer}")
                             continue
                         except Exception as e:
-                            # logger.error(f"流式处理期间发生错误: {e}")
+                            logger.error(f"流式处理期间发生错误: {e}")
                             raise e
                 except Exception as e:
-                    # logger.error(f"流式处理错误: {e}")
+                    logger.error(f"流式处理错误: {e}")
                     raise e
                 finally:
                     logger.info("流式结束 ←")
@@ -201,6 +201,9 @@ class GeminiClient:
         for i, message in enumerate(messages):
             role = message.role
             content = message.content
+
+            # 添加调试日志，查看收到的消息
+            logger.debug(f"Processing message {i}: role={role}, content={content}")
 
             if isinstance(content, str):
                 if is_system_phase and role == 'system':
@@ -246,6 +249,8 @@ class GeminiClient:
                         else:
                             errors.append(
                                 f"Invalid image URL format for item: {item}")
+                    else:
+                        errors.append(f"Unsupported content type: {item.get('type')}")
 
                 if parts:
                     if role in ['user', 'system']:
