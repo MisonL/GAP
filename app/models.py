@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 class Message(BaseModel):
     role: str
-    content: str
+    content: Union[str, List[Dict]]  # 允许content是字符串或字典列表（支持多模态）
 
 class ChatCompletionRequest(BaseModel):
     model: str

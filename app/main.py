@@ -2,7 +2,9 @@ from fastapi import FastAPI, HTTPException, Request, Depends, status
 from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
 from .models import ChatCompletionRequest, ChatCompletionResponse, ErrorResponse, ModelList
 from .gemini import GeminiClient, ResponseWrapper
-from .utils import handle_gemini_error, protect_from_abuse, APIKeyManager, test_api_key, format_log_message
+from .utils import handle_gemini_error, protect_from_abuse, APIKeyManager, test_api_key
+from .log_config import setup_logger, format_log_message, cleanup_old_logs
+from .version import __version__
 import os
 import json
 import asyncio
@@ -22,8 +24,7 @@ logging.getLogger("uvicorn").disabled = True
 logging.getLogger("uvicorn.access").disabled = True
 
 # 配置 logger
-logger = logging.getLogger("my_logger")
-logger.setLevel(logging.DEBUG)
+logger = setup_logger()
 
 def translate_error(message: str) -> str:
     if "quota exceeded" in message.lower():
@@ -49,6 +50,12 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 sys.excepthook = handle_exception
 
 app = FastAPI()
+
+# 设置日志清理任务
+log_cleanup_scheduler = BackgroundScheduler()
+# 每天凌晨3点执行日志清理，删除超过30天的日志文件
+log_cleanup_scheduler.add_job(cleanup_old_logs, 'cron', hour=3, minute=0, args=[30])
+log_cleanup_scheduler.start()
 
 PASSWORD = os.environ.get("PASSWORD", "123")
 MAX_REQUESTS_PER_MINUTE = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", "30"))
@@ -135,7 +142,7 @@ async def check_keys():
 
 @app.on_event("startup")
 async def startup_event():
-    log_msg = format_log_message('INFO', "Starting Gemini API proxy...")
+    log_msg = format_log_message('INFO', f"Starting Gemini API proxy v{__version__}...")
     logger.info(log_msg)
     available_keys = await check_keys()
     if available_keys:
@@ -151,7 +158,7 @@ async def startup_event():
             all_models = await GeminiClient.list_available_models(key_manager.api_keys[0])
             GeminiClient.AVAILABLE_MODELS = [model.replace(
                 "models/", "") for model in all_models]
-            log_msg = format_log_message('INFO', "Available models loaded.")
+            log_msg = format_log_message('INFO', f"Available models: {GeminiClient.AVAILABLE_MODELS}")
             logger.info(log_msg)
 
 @app.get("/v1/models", response_model=ModelList)
@@ -177,6 +184,16 @@ async def process_request(chat_request: ChatCompletionRequest, http_request: Req
     global current_api_key
     protect_from_abuse(
         http_request, MAX_REQUESTS_PER_MINUTE, MAX_REQUESTS_PER_DAY_PER_IP)
+    
+    # 检查 messages 是否为空
+    if not chat_request.messages:
+        error_msg = "Messages cannot be empty"
+        extra_log = {'request_type': request_type, 'model': chat_request.model, 'status_code': 400, 'error_message': error_msg}
+        log_msg = format_log_message('ERROR', error_msg, extra=extra_log)
+        logger.error(log_msg)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+            
     if chat_request.model not in GeminiClient.AVAILABLE_MODELS:
         error_msg = "无效的模型"
         extra_log = {'request_type': request_type, 'model': chat_request.model, 'status_code': 400, 'error_message': error_msg}
@@ -187,8 +204,18 @@ async def process_request(chat_request: ChatCompletionRequest, http_request: Req
 
     key_manager.reset_tried_keys_for_request() # 在每次请求处理开始时重置 tried_keys 集合
 
-    contents, system_instruction = GeminiClient.convert_messages(
-        GeminiClient, chat_request.messages)
+    # 检查 current_api_key 是否为 None
+    if current_api_key is None:
+        error_msg = "没有可用的 API 密钥"
+        extra_log = {'request_type': request_type, 'model': chat_request.model, 'status_code': 500, 'error_message': error_msg}
+        log_msg = format_log_message('ERROR', error_msg, extra=extra_log)
+        logger.error(log_msg)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=error_msg)
+
+    # 初始化变量，稍后在循环中设置
+    contents = None
+    system_instruction = None
 
     retry_attempts = len(key_manager.api_keys) if key_manager.api_keys else 1 # 重试次数等于密钥数量，至少尝试 1 次
     for attempt in range(1, retry_attempts + 1):
@@ -204,7 +231,39 @@ async def process_request(chat_request: ChatCompletionRequest, http_request: Req
         log_msg = format_log_message('INFO', f"第 {attempt}/{retry_attempts} 次尝试 ... 使用密钥: {current_api_key[:8]}...", extra=extra_log)
         logger.info(log_msg)
 
-        gemini_client = GeminiClient(current_api_key)
+        # 再次检查 current_api_key 是否为 None，确保安全
+        if current_api_key is None:
+            log_msg_no_key = format_log_message('WARNING', "API密钥为空，无法创建GeminiClient实例", extra={'request_type': request_type, 'model': chat_request.model, 'status_code': 'N/A'})
+            logger.warning(log_msg_no_key)
+            continue  # 跳过本次循环
+            
+        try:
+            gemini_client = GeminiClient(current_api_key)
+            # 只有在第一次尝试时才调用convert_messages
+            if contents is None and system_instruction is None:
+                contents, system_instruction = gemini_client.convert_messages(chat_request.messages)
+                # 检查返回的内容是否为错误列表
+                if isinstance(contents, list):
+                    if not contents:  # 处理空列表情况
+                        error_msg = "消息格式错误: 无效的消息格式"
+                        extra_log = {'key': current_api_key[:8], 'request_type': request_type, 'model': chat_request.model, 'status_code': 400, 'error_message': error_msg}
+                        log_msg = format_log_message('ERROR', error_msg, extra=extra_log)
+                        logger.error(log_msg)
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+                    elif all(isinstance(item, str) for item in contents):
+                        error_msg = "消息格式错误: " + ", ".join(contents)
+                        extra_log = {'key': current_api_key[:8], 'request_type': request_type, 'model': chat_request.model, 'status_code': 400, 'error_message': error_msg}
+                        log_msg = format_log_message('ERROR', error_msg, extra=extra_log)
+                        logger.error(log_msg)
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+        except Exception as e:
+            error_msg = f"创建GeminiClient或转换消息时出错: {str(e)}"
+            extra_log = {'key': current_api_key[:8], 'request_type': request_type, 'model': chat_request.model, 'status_code': 'N/A', 'error_message': error_msg}
+            log_msg = format_log_message('ERROR', error_msg, extra=extra_log)
+            logger.error(log_msg)
+            if attempt < retry_attempts:
+                switch_api_key()
+                continue
         try:
             if chat_request.stream:
                 async def stream_generator():
@@ -272,10 +331,15 @@ async def process_request(chat_request: ChatCompletionRequest, http_request: Req
                             pass
                         response_content = gemini_task.result()
                         if response_content.text == "":
-                            extra_log_empty_response = {'key': current_api_key[:8], 'request_type': request_type, 'model': chat_request.model, 'status_code': 204}
-                            log_msg = format_log_message('INFO', "Gemini API 返回空响应", extra=extra_log_empty_response)
-                            logger.info(log_msg)
+                            extra_log_empty_response = {'key': current_api_key[:8], 'request_type': request_type, 'model': chat_request.model, 'status_code': 204, 'error_message': '空响应'}
+                            log_msg = format_log_message('WARNING', f"Gemini API 返回空响应，可能是模型限制或内容过滤，尝试下一个密钥", extra=extra_log_empty_response)
+                            logger.warning(log_msg)
+                            # 记录更多响应信息以帮助调试
+                            if hasattr(response_content, 'json_dumps'):
+                                logger.debug(f"完整响应: {response_content.json_dumps}")
                             # 继续循环
+                            if attempt < retry_attempts:
+                                switch_api_key()
                             continue
                         response = ChatCompletionResponse(id="chatcmpl-someid", object="chat.completion", created=1234567890, model=chat_request.model,
                                                         choices=[{"index": 0, "message": {"role": "assistant", "content": response_content.text}, "finish_reason": "stop"}])
@@ -315,6 +379,8 @@ async def process_request(chat_request: ChatCompletionRequest, http_request: Req
 
 @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
 async def chat_completions(request: ChatCompletionRequest, http_request: Request, _: None = Depends(verify_password)):
+    # 添加调试日志，打印请求体
+    logger.debug(f"Received chat completion request: {request.dict()}")
     return await process_request(request, http_request, "stream" if request.stream else "non-stream")
 
 
@@ -329,6 +395,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
+    # 获取有效和无效API密钥数量
+    valid_keys_count = 0
+    invalid_keys_count = 0
+    
+    # 检查所有API密钥的有效性
+    for key in key_manager.api_keys:
+        is_valid = await test_api_key(key)
+        if is_valid:
+            valid_keys_count += 1
+        else:
+            invalid_keys_count += 1
+    
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -358,6 +436,18 @@ async def root():
                 color: #28a745;
                 font-weight: bold;
             }}
+            .key-status {{
+                display: flex;
+                justify-content: space-between;
+                max-width: 300px;
+                margin-top: 10px;
+            }}
+            .valid-key {{
+                color: #28a745;
+            }}
+            .invalid-key {{
+                color: #dc3545;
+            }}
         </style>
     </head>
     <body>
@@ -366,7 +456,11 @@ async def root():
         <div class="info-box">
             <h2>🟢 运行状态</h2>
             <p class="status">服务运行中</p>
-            <p>可用API密钥数量: {len(key_manager.api_keys)}</p>
+            <p>API密钥总数: {len(key_manager.api_keys)}</p>
+            <div class="key-status">
+                <p class="valid-key">有效API密钥: {valid_keys_count}</p>
+                <p class="invalid-key">无效API密钥: {invalid_keys_count}</p>
+            </div>
             <p>可用模型数量: {len(GeminiClient.AVAILABLE_MODELS)}</p>
         </div>
 

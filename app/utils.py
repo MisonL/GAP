@@ -10,34 +10,10 @@ import httpx
 from threading import Lock
 import logging
 import sys
+from .log_config import format_log_message
 
-DEBUG = os.environ.get("DEBUG", "false").lower() == "true"
-LOG_FORMAT_DEBUG = '%(asctime)s - %(levelname)s - [%(key)s]-%(request_type)s-[%(model)s]-%(status_code)s: %(message)s - %(error_message)s'
-LOG_FORMAT_NORMAL = '[%(key)s]-%(request_type)s-[%(model)s]-%(status_code)s: %(message)s'
-
-# 配置 logger
+# 获取logger实例
 logger = logging.getLogger("my_logger")
-logger.setLevel(logging.DEBUG)
-
-handler = logging.StreamHandler()
-# formatter = logging.Formatter('%(message)s')
-# handler.setFormatter(formatter)
-logger.addHandler(handler)
-
-def format_log_message(level, message, extra=None):
-    extra = extra or {}
-    log_values = {
-        'asctime': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        'levelname': level,
-        'key': extra.get('key', 'N/A'),
-        'request_type': extra.get('request_type', 'N/A'),
-        'model': extra.get('model', 'N/A'),
-        'status_code': extra.get('status_code', 'N/A'),
-        'error_message': extra.get('error_message', ''),
-        'message': message
-    }
-    log_format = LOG_FORMAT_DEBUG if DEBUG else LOG_FORMAT_NORMAL
-    return log_format % log_values
 
 
 class APIKeyManager:
@@ -222,6 +198,45 @@ def protect_from_abuse(request: Request, max_requests_per_minute: int = 30, max_
     day_key = f"{request.client.host}:{day}"
 
     with rate_limit_lock:
+        # 清理过期的速率限制数据（每100次请求执行一次）
+        if len(rate_limit_data) > 0 and random.random() < 0.01:  # 1%的概率执行清理
+            current_minute = now // 60
+            current_day = now // (60 * 60 * 24)
+            keys_to_remove = []
+            
+            for key, value in list(rate_limit_data.items()):
+                try:
+                    if not isinstance(value, tuple) or len(value) != 2:
+                        # 数据格式不正确，标记为删除
+                        keys_to_remove.append(key)
+                        continue
+                        
+                    count, timestamp = value
+                    
+                    if ':' in key:
+                        prefix, time_value = key.split(':', 1)
+                        if time_value.isdigit():
+                            time_value = int(time_value)
+                            if ':' in prefix:  # 日级别键（包含IP地址）
+                                if time_value < current_day - 1:  # 保留最近2天的数据
+                                    keys_to_remove.append(key)
+                            else:  # 分钟级别键
+                                if time_value < current_minute - 10:  # 保留最近10分钟的数据
+                                    keys_to_remove.append(key)
+                except Exception as e:
+                    # 处理过程中出现任何异常，标记该键为删除
+                    logger.warning(f"清理速率限制数据时出错: {e}，将删除键: {key}")
+                    keys_to_remove.append(key)
+            
+            for key in keys_to_remove:
+                try:
+                    del rate_limit_data[key]
+                except KeyError:
+                    pass  # 键可能已被删除
+            
+            if keys_to_remove:
+                logger.debug(f"已清理 {len(keys_to_remove)} 条过期的速率限制记录，当前记录数: {len(rate_limit_data)}")
+        
         minute_count, minute_timestamp = rate_limit_data.get(
             minute_key, (0, now))
         if now - minute_timestamp >= 60:
