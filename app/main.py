@@ -61,6 +61,9 @@ PASSWORD = os.environ.get("PASSWORD", "123")
 MAX_REQUESTS_PER_MINUTE = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", "30"))
 MAX_REQUESTS_PER_DAY_PER_IP = int(
     os.environ.get("MAX_REQUESTS_PER_DAY_PER_IP", "600"))
+DISABLE_SAFETY_FILTERING = os.environ.get("DISABLE_SAFETY_FILTERING", "false").lower() == "true"
+if DISABLE_SAFETY_FILTERING:
+   logger.info("全局安全过滤已禁用 (DISABLE_SAFETY_FILTERING=true)")
 # MAX_RETRIES = int(os.environ.get('MaxRetries', '3').strip() or '3')
 RETRY_DELAY = 1
 MAX_RETRY_DELAY = 16
@@ -268,7 +271,9 @@ async def process_request(chat_request: ChatCompletionRequest, http_request: Req
             if chat_request.stream:
                 async def stream_generator():
                     try:
-                        async for chunk in gemini_client.stream_chat(chat_request, contents, safety_settings_g2 if 'gemini-2.0-flash-exp' in chat_request.model else safety_settings, system_instruction):
+                        # Determine safety settings based on env var and model
+                        current_safety_settings = safety_settings_g2 if DISABLE_SAFETY_FILTERING or 'gemini-2.0-flash-exp' in chat_request.model else safety_settings
+                        async for chunk in gemini_client.stream_chat(chat_request, contents, current_safety_settings, system_instruction):
                             formatted_chunk = {"id": "chatcmpl-someid", "object": "chat.completion.chunk", "created": 1234567,
                                                "model": chat_request.model, "choices": [{"delta": {"role": "assistant", "content": chunk}, "index": 0, "finish_reason": None}]}
                             yield f"data: {json.dumps(formatted_chunk)}\n\n"
@@ -286,7 +291,9 @@ async def process_request(chat_request: ChatCompletionRequest, http_request: Req
             else:
                 async def run_gemini_completion():
                     try:
-                        response_content = await asyncio.to_thread(gemini_client.complete_chat, chat_request, contents, safety_settings_g2 if 'gemini-2.0-flash-exp' in chat_request.model else safety_settings, system_instruction)
+                        # Determine safety settings based on env var and model
+                        current_safety_settings = safety_settings_g2 if DISABLE_SAFETY_FILTERING or 'gemini-2.0-flash-exp' in chat_request.model else safety_settings
+                        response_content = await asyncio.to_thread(gemini_client.complete_chat, chat_request, contents, current_safety_settings, system_instruction)
                         return response_content
                     except asyncio.CancelledError:
                         extra_log_gemini_cancel = {'key': current_api_key[:8], 'request_type': request_type, 'model': chat_request.model, 'error_message': '客户端断开导致API调用取消'}

@@ -22,7 +22,7 @@
 *   提供 `/v1/chat/completions` 接口，支持流式（streaming）和非流式响应，与 OpenAI API 格式兼容。
 *   自动将 OpenAI 格式的请求转换为 Gemini 格式。
 *   支持多种 Gemini 模型，包括最新的 Gemini 2.5 Pro 系列。
-*   自定义安全设置，解除内容限制。
+*   自定义安全设置，解除内容限制。可通过 `DISABLE_SAFETY_FILTERING` 环境变量全局禁用安全过滤。
 
 ### 📊 日志系统：
 
@@ -50,6 +50,13 @@
     *   `MAX_REQUESTS_PER_DAY_PER_IP`：每天每个 IP 最大请求数（默认 600）。
 *   超过速率限制时返回 429 错误。
 
+### ⚙️ 安全过滤控制（可选）：
+
+*   通过 `DISABLE_SAFETY_FILTERING` 环境变量控制是否全局禁用 Gemini API 的安全过滤。
+*   设置为 `"true"` 将对所有请求禁用安全过滤（使用 `OFF` 阈值）。
+*   默认为 `"false"`，仅对特定模型（如 `gemini-2.0-flash-exp`）禁用过滤。
+*   **警告：** 禁用安全过滤可能会导致模型生成不当或有害内容，请谨慎使用。
+
 ### 🧩 服务兼容
 
 *   提供的接口与 OpenAI API 格式兼容,便于接入各种服务。
@@ -75,6 +82,7 @@
     *   `MAX_LOG_BACKUPS`：（可选）保留的日志文件备份数量。
     *   `LOG_ROTATION_INTERVAL`：（可选）日志轮转间隔。
     *   `DEBUG`：（可选）设置为 "true" 启用详细日志记录。
+    *   `DISABLE_SAFETY_FILTERING`：（可选）设置为 "true" 将全局禁用 Gemini API 的安全过滤。默认为 "false"。**警告：** 禁用安全过滤可能会导致模型生成不当内容，请谨慎使用。
 4.  确保 `requirements.txt` 文件已包含必要的依赖。
 5.  Space 将会自动构建并运行。
 6.  URL格式为`https://your-space-url.hf.space`。
@@ -92,10 +100,15 @@
       # （可选）设置访问密码。如果留空或注释掉此行，将使用默认密码 "123"。
       # PASSWORD="your_secure_password"
 
+      # （可选）禁用 Gemini API 的安全过滤。设置为 "true" 将对所有请求禁用安全过滤。
+      # 警告：禁用安全过滤可能会导致模型生成不当或有害内容。请谨慎使用。
+      # 默认值为 "false"。
+      # DISABLE_SAFETY_FILTERING=false
+
       # （可选）设置速率限制。如果留空或注释掉，将使用默认值。
       # MAX_REQUESTS_PER_MINUTE=30
       # MAX_REQUESTS_PER_DAY_PER_IP=600
-      
+
       # （可选）日志配置
       # MAX_LOG_SIZE=10  # 单个日志文件最大大小（MB）
       # MAX_LOG_BACKUPS=5  # 保留的日志文件备份数量
@@ -106,6 +119,7 @@
       ```bash
       export GEMINI_API_KEYS="key1,key2"
       export PASSWORD="your_password"
+      export DISABLE_SAFETY_FILTERING="true"
       # ... 其他环境变量
       ```
 4.  运行：`uvicorn app.main:app --reload --host 0.0.0.0 --port 7860`
@@ -150,8 +164,13 @@ POST /v1/chat/completions
 *   确保你的 Gemini API 密钥具有足够的配额。
 *   日志文件存储在项目根目录的 `logs` 文件夹中，定期检查以确保磁盘空间充足。
 *   默认情况下，超过30天的日志文件会被自动清理。
+*   谨慎使用 `DISABLE_SAFETY_FILTERING` 选项，了解禁用安全过滤的潜在风险。
 
 ## 📋 版本历史
+
+### v1.1.2
+*   添加 `DISABLE_SAFETY_FILTERING` 环境变量，允许全局禁用安全过滤。
+*   修复流式响应中因安全过滤提前中断导致无助手消息的问题。
 
 ### v1.1.1
 *   添加日志轮转和清理机制，防止日志文件过大并自动清理过期日志。

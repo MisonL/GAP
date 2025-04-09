@@ -109,6 +109,8 @@ class GeminiClient:
 
     async def stream_chat(self, request: ChatCompletionRequest, contents, safety_settings, system_instruction):
         logger.info("流式开始 →")
+        text_yielded = False
+        safety_issue_detected = None
         api_version = "v1alpha" if "think" in request.model else "v1beta"
         url = f"https://generativelanguage.googleapis.com/{api_version}/models/{request.model}:streamGenerateContent?key={self.api_key}&alt=sse"
         headers = {
@@ -148,29 +150,49 @@ class GeminiClient:
                                         for part in parts:
                                             if 'text' in part:
                                                 text += part['text']
-                                        if text:
-                                            yield text
-                                        
-                                if candidate.get("finishReason") and candidate.get("finishReason") != "STOP":
-                                    logger.warning(f"模型的响应因违反内容政策而被标记: {candidate.get('finishReason')}，模型: {request.model}")
-                                    raise ValueError(f"模型的响应被截断: {candidate.get('finishReason')}")
-                                
-                                if 'safetyRatings' in candidate:
-                                    for rating in candidate['safetyRatings']:
-                                        if rating['probability'] == 'HIGH':
-                                            logger.warning(f"模型的响应因高概率被标记为 {rating['category']}，模型: {request.model}，概率: {rating['probability']}")
-                                            raise ValueError(f"模型的响应被截断: {rating['category']}")
+                                        text_in_chunk = "" # Check text within this specific chunk
+                                        for part in parts:
+                                            if 'text' in part:
+                                                text_in_chunk += part['text']
+                               
+                                        if text_in_chunk:
+                                            yield text_in_chunk
+                                            text_yielded = True # Mark that we have yielded text at least once
+
+                                        # Check for safety issues AFTER processing text in the chunk
+                                        finish_reason = candidate.get("finishReason")
+                                        if finish_reason and finish_reason != "STOP":
+                                            logger.warning(f"模型的响应因违反内容政策而被标记: {finish_reason}，模型: {request.model}")
+                                            safety_issue_detected = f"Finish Reason: {finish_reason}"
+                                            # Don't raise here, continue processing stream
+
+                                        if 'safetyRatings' in candidate:
+                                            for rating in candidate['safetyRatings']:
+                                                # Consider BLOCK_ONLY or BLOCK_MEDIUM_AND_ABOVE depending on API version/behavior
+                                                # Let's stick to HIGH for now as per original code
+                                                # Also check for explicit 'blocked' flag which might be present
+                                                if rating.get('blocked') or rating.get('probability') == 'HIGH':
+                                                    logger.warning(f"模型的响应因安全问题被阻止或标记: 类别={rating['category']}，模型: {request.model}，概率: {rating.get('probability', 'N/A')}, Blocked={rating.get('blocked', 'N/A')}")
+                                                    safety_issue_detected = f"Safety Issue: {rating['category']}"
+                                                    # Don't raise here, continue processing stream
+                                           
                         except json.JSONDecodeError:
                             logger.debug(f"JSON解析错误, 当前缓冲区内容: {buffer}")
                             continue
-                        except Exception as e:
-                            logger.error(f"流式处理期间发生错误: {e}")
-                            raise e
+                        # Removed generic Exception catch here to let it propagate if needed
                 except Exception as e:
                     logger.error(f"流式处理错误: {e}")
-                    raise e
+                    # Re-raise the original exception if it wasn't a safety issue detected within the loop
+                    if not safety_issue_detected:
+                        raise e
                 finally:
                     logger.info("流式结束 ←")
+                    # If the stream ended, no text was ever yielded, AND a safety issue was the likely cause
+                    if not text_yielded and safety_issue_detected:
+                         logger.error(f"流式传输因安全问题而终止，且未生成任何文本: {safety_issue_detected}")
+                         # Raise a specific error that main.py might catch for retry, or let it propagate
+                         # Using ValueError consistent with original code's explicit raises
+                         raise ValueError(f"流式传输因安全问题而终止，且未生成任何文本: {safety_issue_detected}")
 
 
     def complete_chat(self, request: ChatCompletionRequest, contents, safety_settings, system_instruction):
