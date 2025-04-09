@@ -10,3 +10,6 @@ venv/
 
 # Specific files to ignore
 优化建议.txt
+
+# macOS specific files
+.DS_Store
