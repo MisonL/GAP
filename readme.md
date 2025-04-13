@@ -4,7 +4,7 @@
 <!-- 例如: [![项目状态](https://img.shields.io/badge/status-active-success.svg)](...) -->
 <!-- [![许可证](https://img.shields.io/badge/license-TBD-lightgrey.svg)](LICENSE.md) -->
 
-本项目 fork 自 Mrjwj34 的项目（https://github.com/Mrjwj34/Hagem）进行二次开发（全程使用 AI 编码，模型主要是 Gemini-2.5-pro-exp-03-25）。
+本项目 fork 自 [Mrjwj34](https://github.com/Mrjwj34/Hagemi) 的项目进行二次开发（全程使用 AI 编码，模型主要是 Gemini-2.5-pro-exp-03-25）。
 
 这是一个基于 FastAPI 构建的 Gemini API 代理，旨在提供一个简单、安全且可配置的方式来访问 Google 的 Gemini 模型。适用于在 Hugging Face Spaces 上部署，并支持 OpenAI API 格式的工具集成。
 
