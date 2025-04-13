@@ -10,7 +10,9 @@ import tempfile # 用于获取系统临时目录
 # 尝试创建日志目录，优先在项目根目录下的 'logs' 文件夹
 try:
     # 获取当前文件所在目录的上级目录 (即项目根目录)
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # !! 注意：这里的路径计算可能需要根据新的目录结构调整 !!
+    # 假设 handlers 在 app 下，app 在项目根目录
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     log_dir = os.path.join(project_root, 'logs')  # 定义日志目录路径
     os.makedirs(log_dir, exist_ok=True)  # 创建目录，如果已存在则忽略
 except PermissionError:
@@ -72,7 +74,7 @@ def setup_logger():
 
     # --- 控制台处理程序 ---
     console_handler = logging.StreamHandler()  # 创建流处理程序 (输出到 stderr)
-    console_handler.setLevel(logging.INFO)     # 设置控制台输出的最低级别为 INFO
+    console_handler.setLevel(logging.INFO)     # 设置控制台输出的最低级别为 INFO (恢复默认)
     # 定义控制台输出的格式 (只包含消息本身)
     formatter = logging.Formatter('%(message)s')
     console_handler.setFormatter(formatter)    # 应用格式
