@@ -240,7 +240,10 @@ POST /v1/chat/completions
 <details>
 <summary>点击展开/折叠详细版本历史</summary>
 
-### v1.2.1 (本次更新)
+### v1.2.2 (本次更新)
+*   **修复**: 增加对 Gemini API 请求的读超时时间至 120 秒 (原 `httpx` 默认为 5 秒)，尝试解决处理大型文档或长时生成任务时流式响应可能提前中断的问题 (`app/core/gemini.py`)。
+
+### v1.2.1
 *   **优化**: 根据 Gemini API 免费层级限制 (RPD, RPM, TPD_Input, TPM_Input) 优化 Key 选择、评分、跟踪和报告逻辑。
 *   **翻译**: 将项目代码中的英文注释和日志信息翻译为中文（简体）。
 *   **修复**: 修复了 `gemini.py` 中流式处理 `finish_reason` 的传递问题，以提高 Roo Code 兼容性。

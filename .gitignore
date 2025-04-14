@@ -2,14 +2,11 @@
 # .env  <- Keep template .env file in repo, but remind users not to commit secrets!
 
 # Python cache files
-__pycache__/
+app/__pycache__/
 *.pyc
 
 # Virtual environment
 venv/
-
-# Specific files to ignore
-优化建议.txt
 
 # macOS specific files
 .DS_Store
