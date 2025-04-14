@@ -264,7 +264,8 @@ class GeminiClient:
 
         # 使用 httpx 进行异步流式请求
         async with httpx.AsyncClient() as client:
-            async with client.stream("POST", url, headers=headers, json=data, timeout=600) as response:
+            # 增加读超时为 120 秒，总超时保持 600 秒
+            async with client.stream("POST", url, headers=headers, json=data, timeout=httpx.Timeout(600.0, read=120.0)) as response:
                 buffer = b""  # 用于存储不完整的 JSON 数据块
                 try:
                     # 异步迭代处理响应的每一行（SSE 格式）
@@ -389,7 +390,8 @@ class GeminiClient:
             data["system_instruction"] = system_instruction
         # 使用 httpx 库发送异步 POST 请求
         async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=headers, json=data, timeout=600) # 添加了超时
+            # 增加读超时为 120 秒，总超时保持 600 秒
+            response = await client.post(url, headers=headers, json=data, timeout=httpx.Timeout(600.0, read=120.0))
             # 如果响应状态码表示错误，则抛出 HTTPStatusError
             response.raise_for_status()
             # 将响应的 JSON 数据包装在 ResponseWrapper 中并返回
