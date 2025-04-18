@@ -1,34 +1,35 @@
 # 导入必要的库
 import logging  # Python 标准日志库
-import os       # 用于路径操作和环境变量
-import sys      # 用于系统相关操作 (例如退出钩子)
-from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler  # 日志轮转处理器
-from datetime import datetime  # 用于获取当前时间
-import tempfile # 用于获取系统临时目录
+import os       # 用于路径操作和访问环境变量
+import sys      # 用于系统相关操作（例如设置退出钩子）
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler  # 日志文件轮转处理器
+from datetime import datetime  # 用于获取当前日期和时间
+import tempfile # 用于获取系统临时目录路径
 
 # --- 日志目录设置 ---
 # 尝试创建日志目录，优先在项目根目录下的 'logs' 文件夹
 try:
     # 获取当前文件所在目录的上级目录 (即项目根目录)
     # !! 注意：这里的路径计算可能需要根据新的目录结构调整 !!
-    # 假设 handlers 在 app 下，app 在项目根目录
-    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    log_dir = os.path.join(project_root, 'logs')  # 定义日志目录路径
-    os.makedirs(log_dir, exist_ok=True)  # 创建目录，如果已存在则忽略
+    # 假设 handlers 目录位于 app 目录下，而 app 目录位于项目根目录下
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) # 获取项目根目录路径
+    log_dir = os.path.join(project_root, 'logs')  # 定义日志目录路径为 '项目根目录/logs'
+    os.makedirs(log_dir, exist_ok=True)  # 创建日志目录，如果目录已存在则忽略错误
 except PermissionError:
-    # 如果在项目目录创建失败 (例如权限不足)，则尝试使用系统临时目录
+    # 如果在项目根目录下创建 'logs' 文件夹失败（例如因为权限不足）
+    # 则尝试在系统的临时目录下创建一个名为 'gemini_api_proxy_logs' 的文件夹
     log_dir = os.path.join(tempfile.gettempdir(), 'gemini_api_proxy_logs')
-    os.makedirs(log_dir, exist_ok=True)
-    print(f"警告: 无法在应用目录创建日志文件夹，将使用临时目录: {log_dir}")
+    os.makedirs(log_dir, exist_ok=True) # 尝试创建临时日志目录
+    print(f"警告: 无法在项目目录创建日志文件夹，将使用系统临时目录: {log_dir}")
 except Exception as e:
-    # 如果出现其他创建目录的错误，尝试在当前工作目录创建 'logs'
+    # 如果在项目根目录和临时目录创建都失败，则尝试在当前工作目录下创建 'logs' 文件夹
     log_dir = os.path.join(os.getcwd(), 'logs')
     try:
-        os.makedirs(log_dir, exist_ok=True)
+        os.makedirs(log_dir, exist_ok=True) # 尝试在当前工作目录创建
     except Exception as final_e:
-        # 如果所有尝试都失败，则禁用文件日志
+        # 如果所有尝试都失败了，则将 log_dir 设置为 None，禁用文件日志记录
         log_dir = None
-        print(f"警告: 无法创建日志目录: {final_e}，文件日志将被禁用")
+        print(f"警告: 尝试在多个位置创建日志目录均失败: {final_e}。文件日志记录将被禁用。")
 
 # --- 日志文件路径定义 ---
 if log_dir:
@@ -75,15 +76,15 @@ def setup_logger():
         logger.handlers.clear()
 
     # --- 控制台处理程序 ---
-    console_handler = logging.StreamHandler()  # 创建流处理程序 (输出到 stderr)
-    # 控制台级别也应根据 DEBUG 模式调整，或保持 INFO
+    console_handler = logging.StreamHandler()  # 创建流处理程序（默认输出到 stderr）
+    # 控制台日志的级别也应根据 DEBUG 模式调整，或者固定为 INFO
     console_log_level = logging.DEBUG if DEBUG else logging.INFO
-    console_handler.setLevel(console_log_level)
-    print(f"控制台日志级别设置为: {logging.getLevelName(console_log_level)}") # 添加启动时打印信息
-    # 定义控制台输出的格式 (只包含消息本身)
+    console_handler.setLevel(console_log_level) # 设置控制台处理程序的日志级别
+    print(f"控制台日志级别设置为: {logging.getLevelName(console_log_level)}") # 打印启动信息
+    # 定义控制台输出的格式（通常只包含消息本身，以便更清晰地查看）
     formatter = logging.Formatter('%(message)s')
-    console_handler.setFormatter(formatter)    # 应用格式
-    logger.addHandler(console_handler)         # 将处理程序添加到记录器
+    console_handler.setFormatter(formatter)    # 将格式器应用到处理程序
+    logger.addHandler(console_handler)         # 将控制台处理程序添加到日志记录器
 
     # --- 文件日志处理程序 ---
     # 仅在成功创建日志目录时才添加文件处理程序
@@ -105,9 +106,9 @@ def setup_logger():
                         backupCount=MAX_LOG_BACKUPS,   # 保留的备份文件数量
                         encoding='utf-8'               # 使用 UTF-8 编码
                     )
-                    file_handler.setLevel(logging.DEBUG)  # 应用日志记录 DEBUG 及以上级别
-                    file_handler.setFormatter(file_formatter) # 应用格式
-                    logger.addHandler(file_handler)         # 添加到记录器
+                    file_handler.setLevel(logging.DEBUG)  # 应用日志文件记录所有 DEBUG 及以上级别的日志
+                    file_handler.setFormatter(file_formatter) # 应用通用的文件日志格式
+                    logger.addHandler(file_handler)         # 将应用日志处理程序添加到记录器
                 except Exception as e:
                     print(f"警告: 无法创建应用日志处理程序: {e}")
 
@@ -121,9 +122,9 @@ def setup_logger():
                         backupCount=MAX_LOG_BACKUPS,   # 保留的备份文件数量
                         encoding='utf-8'               # 使用 UTF-8 编码
                     )
-                    error_handler.setLevel(logging.ERROR) # 错误日志只记录 ERROR 及以上级别
-                    error_handler.setFormatter(file_formatter) # 应用格式
-                    logger.addHandler(error_handler)         # 添加到记录器
+                    error_handler.setLevel(logging.ERROR) # 错误日志文件只记录 ERROR 及以上级别的日志
+                    error_handler.setFormatter(file_formatter) # 应用通用的文件日志格式
+                    logger.addHandler(error_handler)         # 将错误日志处理程序添加到记录器
                 except Exception as e:
                     print(f"警告: 无法创建错误日志处理程序: {e}")
 
@@ -145,7 +146,7 @@ def setup_logger():
         except Exception as e:
             # 捕获设置文件日志处理程序时的任何其他异常
             print(f"警告: 设置文件日志处理程序时出错: {e}")
-            # 即使文件日志设置失败，也要确保控制台日志仍然可用
+            # 即使文件日志处理程序的设置过程中出现错误，也要确保控制台日志记录仍然可用
 
     return logger # 返回配置好的日志记录器实例
 
@@ -171,9 +172,9 @@ def format_log_message(level, message, extra=None):
     error_message = extra.get('error_message', '')
 
     # 根据字段是否为空来条件性地添加格式化前缀/后缀
-    key_fmt = f"[{key}]-" if key else ""  # 如果 key 不为空，格式为 "[key]-"
-    model_fmt = f"[{model}]-" if model else "" # 如果 model 不为空，格式为 "[model]-"
-    error_fmt = f" - {error_message}" if error_message else "" # 如果 error_message 不为空，格式为 " - error_message"
+    key_fmt = f"[{key}]-" if key else ""  # 如果 key 不为空，格式化为 "[key]-"
+    model_fmt = f"[{model}]-" if model else "" # 如果 model 不为空，格式化为 "[model]-"
+    error_fmt = f" - {error_message}" if error_message else "" # 如果 error_message 不为空，格式化为 " - error_message"
 
     # 构建用于格式化字符串的字典
     log_values = {
@@ -198,8 +199,8 @@ def cleanup_old_logs(max_days=LOG_CLEANUP_DAYS):
     Args:
         max_days (int): 日志文件的最大保留天数。
     """
-    import glob  # 用于查找文件路径模式
-    import time  # 用于获取当前时间戳
+    import glob  # 用于查找匹配特定模式的文件路径
+    import time  # 用于获取当前时间戳以计算文件年龄
 
     # 如果日志目录无效 (log_dir 为 None)，则直接返回，不执行清理
     if not log_dir:
@@ -213,32 +214,39 @@ def cleanup_old_logs(max_days=LOG_CLEANUP_DAYS):
         # 查找日志目录下所有匹配 '*.log*' 的文件 (包括 .log, .log.1, .log.2023-10-27 等)
         log_files = glob.glob(os.path.join(log_dir, '*.log*'))
 
-        deleted_count = 0 # 记录删除的文件数量
-        # 遍历找到的所有日志文件
+        deleted_count = 0 # 初始化已删除文件的计数器
+        # 遍历所有找到的日志文件（包括备份文件）
         for file_path in log_files:
             try:
-                # 获取文件的最后修改时间戳
+                # 获取文件的最后修改时间戳（modification time）
                 file_mtime = os.path.getmtime(file_path)
 
-                # 如果文件的年龄超过了最大保留时间
+                # 计算文件的年龄（当前时间 - 最后修改时间）
+                # 如果文件年龄超过了设定的最大保留秒数
                 if now - file_mtime > max_age:
                     try:
-                        # 删除文件
+                        # 尝试删除这个过期的日志文件
                         os.remove(file_path)
-                        deleted_count += 1
-                        # 打印删除信息 (可选，也可以使用 logger.info)
-                        # print(f"已删除过期日志文件: {file_path}")
-                    except Exception as e:
-                        # 如果删除失败，打印错误信息
+                        deleted_count += 1 # 增加已删除文件计数
+                        # 可以选择性地打印或记录删除信息
+                        # print(f"已删除过期日志文件: {os.path.basename(file_path)}")
+                        # logger.info(f"已删除过期日志文件: {file_path}")
+                    except OSError as e: # 捕获删除文件时可能发生的 OS 错误
+                        # 如果删除失败，打印错误信息，但继续处理其他文件
                         print(f"删除日志文件失败 {file_path}: {e}")
+            except FileNotFoundError:
+                 # 如果在处理过程中文件被删除（例如并发清理），则忽略
+                 continue
             except Exception as e:
-                # 如果获取文件信息或比较时间时出错，打印错误信息
+                # 如果在获取文件信息或比较时间时发生其他错误，打印错误信息
                 print(f"处理日志文件时出错 {file_path}: {e}")
+
+        # 清理完成后打印总结信息
         if deleted_count > 0:
-            print(f"日志清理完成，共删除 {deleted_count} 个过期文件。")
+            print(f"日志清理完成，共删除 {deleted_count} 个超过 {max_days} 天的日志文件。")
         else:
-            print("日志清理完成，没有需要删除的过期文件。")
+            print(f"日志清理完成，没有找到超过 {max_days} 天的日志文件需要删除。")
     except Exception as e:
-        # 捕获清理过程中的任何其他异常
-        print(f"清理日志文件时出错: {e}")
-        # 即使清理失败，也不应影响主应用的运行
+        # 捕获在日志清理的顶层逻辑中发生的任何其他异常
+        print(f"执行日志清理任务时发生错误: {e}")
+        # 注意：即使日志清理失败，也不应中断主应用程序的运行

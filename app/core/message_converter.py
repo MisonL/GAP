@@ -7,11 +7,11 @@ import re
 import logging
 from typing import List, Dict, Any, Tuple, Union, Set
 
-# 尝试从父级 api.models 导入 Message，如果失败则尝试同级（以防结构变化）
+# 尝试从父级 api.models 导入 Message，如果失败则尝试同级（以防项目结构变化）
 try:
     from ..api.models import Message
 except ImportError:
-    from app.api.models import Message # Fallback if run directly or structure changes
+    from app.api.models import Message # 如果直接运行此文件或项目结构更改，则回退导入路径
 
 logger = logging.getLogger('my_logger')
 
@@ -107,7 +107,7 @@ def convert_messages(messages: List[Message], use_system_prompt=False) -> Union[
                 item_type = item.get('type')
                 if item_type == 'text':
                     # 添加文本部分
-                    parts.append({"text": item.get('text', '')}) # 使用 get 提供默认值
+                    parts.append({"text": item.get('text', '')}) # 使用 get 提供默认空字符串，防止 None
                 elif item_type == 'image_url':
                     # 处理图像 URL
                     image_url_dict = item.get('image_url', {})
@@ -168,7 +168,7 @@ def convert_messages(messages: List[Message], use_system_prompt=False) -> Union[
                         {"role": role_to_use, "parts": parts})
             elif not parts and not has_error_in_item:
                  logger.warning(f"消息 {i}: 内容列表为空或所有项目均无效，已跳过。")
-            # 如果有错误，错误信息已记录在 errors 列表中
+            # 如果当前多部分消息有错误，错误信息已记录在 errors 列表中，无需额外操作
 
         else:
             errors.append(f"消息 {i}: 不支持的内容类型 '{type(content)}'")

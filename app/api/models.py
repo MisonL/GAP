@@ -1,23 +1,23 @@
 # 导入类型注解相关的模块
-from typing import List, Dict, Optional, Union, Literal, Any # 添加 Any
+from typing import List, Dict, Optional, Union, Literal, Any # 导入 Any 类型
 # 导入 Pydantic 用于数据验证和模型定义
 from pydantic import BaseModel, Field
 
-# 定义消息模型，与 OpenAI API 兼容
+# 定义聊天消息的模型，用于表示单条聊天记录，与 OpenAI API 兼容
 class Message(BaseModel):
     """表示聊天消息的结构"""
     role: str  # 消息发送者的角色 (例如 "user", "assistant", "system")
     content: Union[str, List[Dict]]  # 消息内容。可以是纯文本字符串，也可以是包含多部分（如文本和图像）的字典列表，以支持多模态输入。
 
-# 定义响应消息模型，可能包含工具调用
+# 定义模型响应消息的模型，用于表示模型生成的单条消息，可能包含工具调用
 class ResponseMessage(BaseModel):
     """表示模型响应消息的结构，可能包含工具调用"""
-    role: str # 通常是 "assistant"
+    role: str # 消息发送者的角色，对于响应消息通常是 "assistant"
     content: Optional[str] = None # 响应内容，对于纯工具调用可能为 None
     tool_calls: Optional[List[Dict[str, Any]]] = None # 模型请求的工具调用列表
 
 
-# 定义聊天补全请求的模型，与 OpenAI API 兼容
+# 定义聊天补全请求的模型，包含了调用模型所需的所有参数，与 OpenAI API 兼容
 class ChatCompletionRequest(BaseModel):
     """表示聊天补全请求的结构"""
     model: str  # 要使用的模型名称
@@ -31,21 +31,21 @@ class ChatCompletionRequest(BaseModel):
     presence_penalty: Optional[float] = 0.0  # 对新出现 token 的惩罚因子
     frequency_penalty: Optional[float] = 0.0  # 对已出现 token 的惩罚因子
 
-# 定义聊天补全响应中的选项模型
+# 定义聊天补全响应中的单个选项模型
 class Choice(BaseModel):
     """表示聊天补全响应中的一个选项"""
     index: int  # 选项的索引 (通常为 0)
-    message: ResponseMessage  # 模型生成的消息 (应为 ResponseMessage 以包含 tool_calls)
+    message: ResponseMessage  # 模型生成的消息内容，使用 ResponseMessage 以支持工具调用
     finish_reason: Optional[str] = None  # 生成停止的原因 (例如 "stop", "length", "safety")
 
-# 定义 token 使用情况的模型
+# 定义 API 调用中 token 使用情况的模型
 class Usage(BaseModel):
     """表示 API 调用中的 token 使用情况"""
     prompt_tokens: int = 0  # 输入提示的 token 数量
     completion_tokens: int = 0  # 生成内容的 token 数量
     total_tokens: int = 0  # 总 token 数量
 
-# 定义聊天补全响应的模型，与 OpenAI API 兼容
+# 定义聊天补全响应的整体模型，包含了所有返回信息，与 OpenAI API 兼容
 class ChatCompletionResponse(BaseModel):
     """表示聊天补全响应的整体结构"""
     id: str  # 响应的唯一标识符 (目前为固定值)
@@ -55,7 +55,7 @@ class ChatCompletionResponse(BaseModel):
     choices: List[Choice]  # 包含生成结果的选项列表
     usage: Usage = Field(default_factory=Usage)  # Token 使用情况，如果未提供则使用默认工厂创建
 
-# 定义错误响应的模型
+# 定义 API 错误响应的模型
 class ErrorResponse(BaseModel):
     """表示 API 错误响应的结构"""
     message: str  # 错误信息
@@ -63,7 +63,7 @@ class ErrorResponse(BaseModel):
     param: Optional[str] = None  # 导致错误的参数 (如果适用)
     code: Optional[str] = None  # 错误代码 (如果适用)
 
-# 定义模型列表响应的模型
+# 定义获取可用模型列表的响应模型
 class ModelList(BaseModel):
     """表示模型列表响应的结构"""
     object: str = "list"  # 对象类型，固定为 "list"

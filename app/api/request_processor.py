@@ -11,17 +11,17 @@ from datetime import datetime
 from typing import Literal, List, Tuple, Dict, Any, Optional, Union
 from fastapi import HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from collections import Counter, defaultdict # Counter for IP stats
+from collections import Counter, defaultdict # Counter 用于 IP 统计
 import httpx
 
-# Relative imports
-from .models import ChatCompletionRequest, ChatCompletionResponse, ResponseMessage # ResponseMessage needed for saving context
+# 相对导入
+from .models import ChatCompletionRequest, ChatCompletionResponse, ResponseMessage # ResponseMessage 用于保存上下文
 from ..core.gemini import GeminiClient
 from ..core.response_wrapper import ResponseWrapper
-# Import context store and request utils
+# 导入上下文存储和请求工具
 from ..core import context_store
-from ..core import db_utils # Import db_utils to check memory mode
-from .request_utils import get_client_ip, get_current_timestamps, estimate_token_count, truncate_context # Import new utils
+from ..core import db_utils # 导入 db_utils 以检查内存模式
+from .request_utils import get_client_ip, get_current_timestamps, estimate_token_count, truncate_context # 导入新的工具函数
 from ..core.message_converter import convert_messages
 from ..core.utils import handle_gemini_error, protect_from_abuse, StreamProcessingError
 from ..core.utils import key_manager_instance as key_manager # 导入共享实例
@@ -49,7 +49,7 @@ async def process_request(
     chat_request: ChatCompletionRequest,
     http_request: Request,
     request_type: Literal['stream', 'non-stream'],
-    proxy_key: str # Added parameter, injected by auth dependency
+    proxy_key: str # 新增参数，由认证依赖注入
 ) -> Optional[Union[StreamingResponse, ChatCompletionResponse]]:
     """
     聊天补全（流式和非流式）的核心请求处理函数。
@@ -62,9 +62,9 @@ async def process_request(
         request_type: 'stream' 或 'non-stream'。
 
     Returns:
-        StreamingResponse for stream requests,
-        ChatCompletionResponse for non-stream requests,
-        or None if the client disconnected or a non-retryable error occurred early.
+        流式请求返回 StreamingResponse，
+        非流式请求返回 ChatCompletionResponse，
+        如果客户端断开连接或早期发生不可重试的错误，则返回 None。
 
     Raises:
         HTTPException: For user errors (e.g., bad input) or final processing errors.
@@ -91,40 +91,40 @@ async def process_request(
     # 保持在 endpoints.py 中，因为它更像是路由级别的检查
     # 此处假设模型已验证
 
-    # --- Context Management ---
-    # 1. Load historical context
+    # --- 上下文管理 ---
+    # 1. 加载历史上下文
     history_contents: Optional[List[Dict[str, Any]]] = context_store.load_context(proxy_key)
     logger.info(f"Loaded {len(history_contents) if history_contents else 0} historical messages for Key {proxy_key[:8]}...")
 
-    # 2. Convert new messages from the current request
+    # 2. 转换当前请求中的新消息
     conversion_result = convert_messages(chat_request.messages, use_system_prompt=True)
-    if isinstance(conversion_result, list): # Conversion error
+    if isinstance(conversion_result, list): # 转换错误
         error_msg = "; ".join(conversion_result)
-        logger.error(f"Message conversion failed (Key: {proxy_key[:8]}...): {error_msg}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Message conversion failed: {error_msg}")
-    new_contents, system_instruction = conversion_result # system_instruction is from the current request only
+        logger.error(f"消息转换失败 (Key: {proxy_key[:8]}...): {error_msg}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"消息转换失败: {error_msg}")
+    new_contents, system_instruction = conversion_result # system_instruction 仅来自当前请求
 
-    # 3. Merge history and new messages
+    # 3. 合并历史记录和新消息
     merged_contents = (history_contents or []) + new_contents
     if not merged_contents:
          logger.error(f"Merged message list is empty (Key: {proxy_key[:8]}...)")
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot process empty message list")
 
-    # 4. Truncate the merged context before sending to the API
+    # 4. 在发送到 API 之前截断合并后的上下文
     contents_to_send, is_over_limit_after_truncate = truncate_context(merged_contents, chat_request.model)
 
-    # Handle cases where truncation still results in exceeding limits (e.g., single long message)
+    # 处理截断后仍超限的情况（例如单个长消息）
     if is_over_limit_after_truncate:
          logger.error(f"Context exceeds token limit for model {chat_request.model} even after truncation (Key: {proxy_key[:8]}...)")
          raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=f"Request content exceeds processing capacity for model {chat_request.model}. Please shorten the input.")
 
-    # Handle cases where truncation results in an empty list (should not happen if input validation is correct)
+    # 处理截断后列表为空的情况（如果输入验证正确则不应发生）
     if not contents_to_send:
          logger.error(f"Message list became empty after truncation (Key: {proxy_key[:8]}...)")
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Processed message list is empty")
 
-    # Use the potentially truncated context for the API call
-    contents = contents_to_send # Rename for use in the rest of the function
+    # 使用可能被截断的上下文进行 API 调用
+    contents = contents_to_send # 重命名以便在函数其余部分使用
 
     # --- 请求处理循环 ---
     key_manager.reset_tried_keys_for_request()
@@ -301,7 +301,7 @@ async def process_request(
                             # TODO: 考虑将 Token 计数逻辑移至 request_utils.py
                             if limits and usage_metadata_received:
                                 prompt_tokens = usage_metadata_received.get('promptTokenCount', 0)
-                                # completion_tokens = usage_metadata_received.get('candidatesTokenCount', 0) # 输出 token 在流式中不直接用于限制
+                                # completion_tokens = usage_metadata_received.get('candidatesTokenCount', 0) # 输出 token 在流式中不直接用于速率限制
                                 if prompt_tokens > 0:
                                     with usage_lock:
                                         key_usage = usage_data[current_api_key][model_name]
@@ -323,7 +323,7 @@ async def process_request(
                                 else:
                                      logger.warning(f"Stream response successful but no valid prompt token count received (Key: {current_api_key[:8]}...): {usage_metadata_received}")
 
-                            # --- Save context after successful stream (configurable) ---
+                            # --- 成功流式传输后保存上下文（可配置）---
                             if not config.STREAM_SAVE_REPLY:
                                 # 默认行为：只保存到用户最后输入（更稳健，流中断也能保存）
                                 logger.info(f"Stream finished successfully for Key {proxy_key[:8]}.... Saving context up to user's last input (STREAM_SAVE_REPLY=false).")
@@ -373,7 +373,7 @@ async def process_request(
                 # 对于流式响应，我们假设它成功启动，直接返回。错误处理在生成器内部进行。
                 # 如果 stream_generator 内部发生错误导致无法生成数据，客户端会收到中断的流。
                 # 重试逻辑主要处理 API 调用本身的失败（例如密钥无效、网络问题）。
-                # 如果流成功启动但中途因模型原因（如安全）中断，这不算需要重试的错误。
+                # 如果流成功启动但中途因模型原因（如安全）中断，这不算是需要重试的错误。
                 logger.info(f"流式响应已启动 (Key: {current_api_key[:8]})")
                 return response # 直接返回流式响应
 
@@ -416,7 +416,7 @@ async def process_request(
                 # 获取 Gemini 任务结果
                 response_content: ResponseWrapper = gemini_task.result()
 
-                # --- Roo Code 兼容性处理 ---
+                # --- OpenAI API 兼容性处理 ---
                 assistant_content = response_content.text if response_content else ""
                 finish_reason = response_content.finish_reason if response_content else "stop"
 
@@ -488,15 +488,15 @@ async def process_request(
                 elif limits:
                      logger.warning(f"Non-stream response successful but ResponseWrapper missing usage_metadata (Key: {current_api_key[:8]}...).")
 
-                # --- Save context after successful non-stream response (including model reply) ---
-                if assistant_content is not None: # Ensure there's model content (even empty string)
-                    # 1. Construct the model reply part
+                # --- 成功非流式响应后保存上下文（包括模型回复）---
+                if assistant_content is not None: # 确保有模型内容（即使是空字符串）
+                    # 1. 构建模型回复部分
                     model_reply_part = {"role": "model", "parts": [{"text": assistant_content}]}
-                    # 2. Merge: Append model reply to the context that was sent to the API
+                    # 2. 合并：将模型回复附加到发送给 API 的上下文中
                     final_contents_to_save = contents_to_send + [model_reply_part]
-                    # 3. Truncate again (just in case adding the reply exceeds limits, though unlikely if initial truncation worked)
+                    # 3. 再次截断（以防添加回复后超限，尽管如果初始截断有效则不太可能）
                     truncated_contents_to_save, still_over_limit_final = truncate_context(final_contents_to_save, chat_request.model)
-                    # 4. Save (only if not over limit)
+                    # 4. 保存（仅当未超限时）
                     if not still_over_limit_final:
                         # 使用原始的 proxy_key 保存上下文
                         logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存非流式上下文 (内存模式: {db_utils.IS_MEMORY_DB})")
@@ -504,12 +504,12 @@ async def process_request(
                             context_store.save_context(proxy_key, truncated_contents_to_save)
                         except Exception as e:
                             logger.error(f"保存上下文失败 (Key: {proxy_key[:8]}...): {str(e)}")
-                        logger.info(f"Context saved successfully for Key {proxy_key[:8]}...") # Log the actual key used
+                        logger.info(f"上下文成功保存 for Key {proxy_key[:8]}...") # 记录实际使用的 Key
                     else:
-                        # This case should be rare if initial truncation is correct
-                        logger.error(f"Context exceeded limit even after final truncation when adding model reply (Key: {proxy_key[:8]}...). Context not saved.")
+                        # 这种情况应该很少见，如果初始截断正确的话
+                        logger.error(f"添加模型回复并最终截断后上下文仍然超限 (Key: {proxy_key[:8]}...). 上下文未保存。")
                 else:
-                     logger.warning(f"Non-stream response successful, but assistant_content was None. Cannot save model reply to context (Key: {proxy_key[:8]}...).")
+                     logger.warning(f"非流式响应成功，但 assistant_content 为 None。无法将模型回复保存到上下文 (Key: {proxy_key[:8]}...).")
 
                 return response # 成功，跳出重试循环
 

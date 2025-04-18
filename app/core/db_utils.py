@@ -8,7 +8,7 @@ import logging
 import os
 import tempfile
 from contextlib import contextmanager
-from typing import Optional # Added for type hinting
+from typing import Optional # 为类型提示添加
 
 # 导入配置以获取默认值
 from .. import config as app_config
@@ -21,19 +21,19 @@ DATABASE_PATH: str
 IS_MEMORY_DB: bool
 
 if _db_path_env:
-    # Attempt to use file-based database
+    # 尝试使用基于文件的数据库
     temp_db_path = _db_path_env
     temp_is_memory = False
     try:
-        db_dir = os.path.dirname(temp_db_path)
-        if db_dir:
-             os.makedirs(db_dir, exist_ok=True)
-             # Test write permissions
-             perm_test_file = os.path.join(db_dir, ".perm_test")
-             with open(perm_test_file, "w") as f:
+        db_dir = os.path.dirname(temp_db_path) # 获取数据库文件所在目录
+        if db_dir: # 如果指定了目录
+             os.makedirs(db_dir, exist_ok=True) # 创建目录（如果不存在）
+             # 测试写入权限
+             perm_test_file = os.path.join(db_dir, ".perm_test") # 创建一个临时测试文件路径
+             with open(perm_test_file, "w") as f: # 尝试写入文件
                  f.write("test")
-             os.remove(perm_test_file)
-        # Permissions seem okay, finalize settings
+             os.remove(perm_test_file) # 删除测试文件
+        # 权限似乎正常，最终确定设置
         DATABASE_PATH = temp_db_path
         IS_MEMORY_DB = temp_is_memory
         logger.info(f"上下文存储：使用文件数据库 -> {DATABASE_PATH}")
@@ -48,15 +48,15 @@ if _db_path_env:
          IS_MEMORY_DB = True
          logger.info("上下文存储：回退到共享内存数据库 (file::memory:?cache=shared)")
 else:
-    # Default to shared memory database
-    DATABASE_PATH = "file::memory:?cache=shared"
+    # 默认使用共享内存数据库
+    DATABASE_PATH = "file::memory:?cache=shared" # SQLite 共享内存数据库 URI
     IS_MEMORY_DB = True
     logger.info("上下文存储：使用共享内存数据库 (file::memory:?cache=shared)")
 
 DEFAULT_CONTEXT_TTL_DAYS = getattr(app_config, 'DEFAULT_CONTEXT_TTL_DAYS', 7)
 
-# --- Shared Connection for Memory Mode ---
-_shared_memory_conn: Optional[sqlite3.Connection] = None
+# --- 内存模式下的共享连接 ---
+_shared_memory_conn: Optional[sqlite3.Connection] = None # 用于缓存共享内存连接
 
 # --- 内部表创建逻辑 ---
 def _create_tables_if_not_exist(conn: sqlite3.Connection):
@@ -102,7 +102,7 @@ def _create_tables_if_not_exist(conn: sqlite3.Connection):
         # logger.info(f"在连接 {id(conn)} 上调用了 conn.commit() (表创建)。")
     except sqlite3.Error as e:
         logger.error(f"在连接 {id(conn)} 上创建表时出错: {e}", exc_info=True)
-        # Let the caller handle the error propagation
+        # 让调用者处理错误传播
 
 # --- 数据库连接 ---
 @contextmanager
@@ -114,38 +114,38 @@ def get_db_connection():
     """
     global _shared_memory_conn # Declare intent to modify the global variable
     conn = None
-    is_shared_conn = False # Flag to prevent closing the shared connection
+    is_shared_conn = False # 标记以防止关闭共享连接
 
     try:
         if IS_MEMORY_DB:
-            if _shared_memory_conn is None:
+            if _shared_memory_conn is None: # 如果共享连接尚未创建
                 logger.info("内存数据库模式：创建共享连接...")
-                # Use check_same_thread=False for shared memory connection as it might be accessed by different threads/requests
+                # 对于共享内存连接使用 check_same_thread=False，因为它可能被不同的线程/请求访问
                 _shared_memory_conn = sqlite3.connect(DATABASE_PATH, timeout=10, check_same_thread=False, uri=True)
-                _shared_memory_conn.row_factory = sqlite3.Row
-                _shared_memory_conn.execute("PRAGMA foreign_keys = ON;")
+                _shared_memory_conn.row_factory = sqlite3.Row # 设置行工厂以字典形式访问列
+                _shared_memory_conn.execute("PRAGMA foreign_keys = ON;") # 启用外键约束
                 logger.info(f"内存数据库模式：在共享连接 {id(_shared_memory_conn)} 上创建表...")
-                _create_tables_if_not_exist(_shared_memory_conn) # Create tables only once when the shared connection is made
+                _create_tables_if_not_exist(_shared_memory_conn) # 仅在创建共享连接时创建一次表
                 logger.info(f"内存数据库模式：共享连接 {id(_shared_memory_conn)} 已初始化。")
             # logger.debug(f"内存数据库模式：返回共享连接 {id(_shared_memory_conn)}")
             conn = _shared_memory_conn
             is_shared_conn = True
             yield conn
         else:
-            # File-based database: create a new connection for each request
+            # 基于文件的数据库：为每个请求创建一个新连接
             # logger.debug(f"文件数据库模式：创建新连接 ({DATABASE_PATH})...")
-            conn = sqlite3.connect(DATABASE_PATH, timeout=10, check_same_thread=True) # check_same_thread=True for file DB safety
+            conn = sqlite3.connect(DATABASE_PATH, timeout=10, check_same_thread=True) # 文件数据库使用 check_same_thread=True 以确保安全
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA foreign_keys = ON;")
-            # No need to create tables here for file DB, initialize_db_tables handles it once at startup
+            # 文件数据库不需要在此处创建表，initialize_db_tables 会在启动时处理一次
             # logger.debug(f"文件数据库连接 {id(conn)} 已准备好。")
             yield conn
 
     except sqlite3.Error as e:
         logger.error(f"数据库连接或设置错误 ({DATABASE_PATH}): {e}", exc_info=True)
-        raise # Re-raise to notify the caller
+        raise # 重新抛出异常以通知调用者
     finally:
-        if conn and not is_shared_conn: # Only close if it's not the shared memory connection
+        if conn and not is_shared_conn: # 仅当不是共享内存连接时才关闭
             # logger.debug(f"关闭文件数据库连接 {id(conn)}。")
             conn.close()
         # else:
@@ -161,17 +161,17 @@ def initialize_db_tables():
     """
     logger.info(f"开始显式数据库表初始化 ({DATABASE_PATH})...")
     try:
-        # Simply getting a connection via the context manager handles initialization
+        # 只需通过上下文管理器获取连接即可处理初始化
         with get_db_connection() as conn:
-             # For memory DB, this creates/retrieves the shared connection and ensures tables exist.
-             # For file DB, this creates the file/tables if they don't exist via the first connect.
+             # 对于内存数据库，这将创建/检索共享连接并确保表存在。
+             # 对于文件数据库，这将在首次连接时创建文件/表（如果它们不存在）。
              logger.info(f"数据库连接已获取 (类型: {'内存共享' if IS_MEMORY_DB else '文件'}, ID: {id(conn)})，初始化检查完成。")
-             pass # Connection obtained, initialization logic inside get_db_connection handled it
+             pass # 连接已获取，get_db_connection 内部的初始化逻辑已处理
         logger.info(f"显式数据库表初始化完成 ({DATABASE_PATH})。")
     except sqlite3.Error as e:
         logger.error(f"显式数据库表初始化失败 ({DATABASE_PATH}): {e}", exc_info=True)
-        raise RuntimeError(f"无法初始化数据库表: {e}") # Re-raise critical error on startup
-    except Exception as e: # Catch other potential exceptions during connection
+        raise RuntimeError(f"无法初始化数据库表: {e}") # 启动时重新抛出严重错误
+    except Exception as e: # 捕获连接期间其他可能的异常
         logger.error(f"显式数据库表初始化期间发生意外错误: {e}", exc_info=True)
         raise RuntimeError(f"无法初始化数据库表: {e}")
 
@@ -189,7 +189,7 @@ def get_all_proxy_keys() -> list[sqlite3.Row]:
             return keys
     except sqlite3.Error as e:
         logger.error(f"获取所有 proxy keys 时出错: {e}", exc_info=True)
-        return [] # Return empty list on error
+        return [] # 出错时返回空列表
 
 def get_proxy_key(key: str) -> Optional[sqlite3.Row]:
     """获取单个代理 Key 的信息。"""
@@ -252,7 +252,7 @@ def update_proxy_key(key: str, description: Optional[str] = None, is_active: Opt
         updates.append("is_active = ?")
         params.append(is_active)
 
-    params.append(key) # For the WHERE clause
+    params.append(key) # 用于 WHERE 子句
 
     sql = f"UPDATE proxy_keys SET {', '.join(updates)} WHERE key = ?"
 

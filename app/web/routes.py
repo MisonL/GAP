@@ -6,11 +6,11 @@ import logging
 # import pytz # 已移除，不再需要
 from datetime import datetime, timezone # 导入时区
 # from collections import Counter # 已移除，不再需要
-from fastapi import APIRouter, Request, Form, Depends, HTTPException, status, Response # Keep Response
+from fastapi import APIRouter, Request, Form, Depends, HTTPException, status, Response # 保留 Response 导入
 # 导入 Response, Request, HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse # Keep existing imports
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse # 保留现有导入
 from fastapi.templating import Jinja2Templates
-# 导入安全类型和新依赖项
+# 导入安全相关的类型和新的依赖项
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials # 虽然 verify_jwt_token 在 auth.py，但类型提示可能需要
 from typing import Optional, Annotated, Dict, Any # Annotated 用于表单依赖, Dict, Any 用于 JWT
 
@@ -23,7 +23,7 @@ from ..config import (
     PASSWORD,
     # ... (其他可能需要的配置)
     __version__,
-    # Import config values directly needed by render_status_page
+    # 导入 render_status_page (现已移除) 直接需要的配置值，部分可能仍用于模板
     REPORT_LOG_LEVEL_STR,
     USAGE_REPORT_INTERVAL_MINUTES,
     DISABLE_SAFETY_FILTERING,
@@ -58,25 +58,25 @@ templates = Jinja2Templates(directory="app/web/templates")
 
 # --- 根路径 (现在是登录页面) ---
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
-async def root_get(request: Request): # Removed CsrfProtect dependency
-    """显示状态页面或登录表单"""
-    # user_session = request.session.get("user", {}) # 安全地获取 session (Session 已移除)
-    # is_authenticated = user_session.get("authenticated", False) # (Session 已移除)
+async def root_get(request: Request): # 移除了 CsrfProtect 依赖
+    """显示登录表单页面"""
+    # user_session = request.session.get("user", {}) # 安全地获取 session (旧的 Session 逻辑已移除)
+    # is_authenticated = user_session.get("authenticated", False) # (旧的 Session 逻辑已移除)
     login_required = bool(PASSWORD) # 检查是否全局设置了密码
     # show_details = not PROTECT_STATUS_PAGE or is_authenticated # (Session 已移除)
     # 假设存在 login.html 模板用于显示登录表单
 
-    # --- CSRF code removed ---
+    # --- CSRF 相关代码已移除 ---
     # csrf_token, signed_token = csrf_protect.generate_csrf_tokens()
     response = templates.TemplateResponse(
         "login.html",
         {
             "request": request,
             "login_required": login_required,
-            # "csrf_token": csrf_token # Removed CSRF token
+            # "csrf_token": csrf_token # 移除了 CSRF token
         }
     )
-    # --- CSRF code removed ---
+    # --- CSRF 相关代码已移除 ---
     # csrf_protect.set_csrf_cookie(signed_token, response)
 
     return response
@@ -90,18 +90,18 @@ async def root_get(request: Request): # Removed CsrfProtect dependency
 # --- 新的登录处理路由 ---
 @router.post("/login", include_in_schema=False)
 async def login_for_access_token(
-    request: Request, # 添加 request 参数用于 CSRF 验证
+    request: Request, # 添加 request 参数 (虽然 CSRF 移除了，但保留以备将来使用或获取请求信息)
     password: str = Form(...)
-    # csrf_protect: CsrfProtect = Depends() # Removed CsrfProtect dependency
+    # csrf_protect: CsrfProtect = Depends() # 移除了 CsrfProtect 依赖
 ):
-    """处理 Web UI 登录请求，验证密码并返回 JWT"""
-    # --- CSRF validation removed ---
+    """处理 Web UI 登录请求，验证密码并返回 JWT 访问令牌"""
+    # --- CSRF 验证已移除 ---
     # try:
     #     await csrf_protect.validate_csrf(request)
     # except CsrfProtectException as e:
     #     logger.warning(f"CSRF validation failed during login: {e.message}")
     #     raise HTTPException(status_code=e.status_code, detail=e.message)
-    # --- CSRF validation removed ---
+    # --- CSRF 验证已移除 ---
 
     if not PASSWORD:
         logger.error("尝试登录，但 Web UI 密码 (PASSWORD) 未设置。")
@@ -188,24 +188,24 @@ async def require_file_db_mode():
     "/manage/keys",
     response_class=HTMLResponse,
     include_in_schema=False,
-    # dependencies=[Depends(require_file_db_mode)] # Dependency removed
+    # dependencies=[Depends(require_file_db_mode)] # 依赖已移除 (改为在 API 端点检查)
 )
 async def manage_keys_page(request: Request):
-    """显示代理 Key 管理页面的 HTML 骨架，或在内存模式下显示提示信息。"""
+    """显示代理 Key 管理页面的 HTML 骨架。如果处于内存数据库模式，则显示提示信息。"""
     is_memory_mode = db_utils.IS_MEMORY_DB
     if is_memory_mode:
         logger.debug("渲染 Key 管理页面骨架 (内存模式提示)")
         return templates.TemplateResponse(
             "manage_keys.html",
-            # Add 'now' to the context
+            # 添加 'now' 到上下文，用于模板中可能的缓存控制或显示
             {"request": request, "is_memory_mode": True, "now": datetime.now(timezone.utc)}
         )
     else:
         logger.debug("渲染 Key 管理页面骨架 (文件模式)")
-        # 页面骨架，实际数据通过 API 获取
+        # 仅渲染页面骨架，实际的 Key 数据将由前端通过 API 请求获取并填充
         return templates.TemplateResponse(
             "manage_keys.html",
-            # Add 'now' to the context
+            # 添加 'now' 到上下文
             {"request": request, "is_memory_mode": False, "now": datetime.now(timezone.utc)}
         )
 
@@ -246,14 +246,14 @@ async def get_manage_keys_data(token_payload: Dict[str, Any] = Depends(verify_jw
 # 添加新 Key 的 API 端点
 @router.post(
     "/api/manage/keys/add",
-    status_code=status.HTTP_201_CREATED, # Use 201 for successful creation
-    dependencies=[Depends(verify_jwt_token), Depends(require_file_db_mode)] # 添加 JWT 和文件模式检查
+    status_code=status.HTTP_201_CREATED, # 成功创建资源时返回 201 状态码
+    dependencies=[Depends(verify_jwt_token), Depends(require_file_db_mode)] # 添加 JWT 认证和文件数据库模式检查依赖
 )
 async def add_new_key(
-    key_data: AddKeyRequest, # 使用 Pydantic 模型接收数据
-    token_payload: Dict[str, Any] = Depends(verify_jwt_token)
+    key_data: AddKeyRequest, # 使用 Pydantic 模型自动验证请求体数据
+    token_payload: Dict[str, Any] = Depends(verify_jwt_token) # 获取已验证的 JWT payload
 ):
-    """添加一个新的代理 Key (自动生成 UUID)。"""
+    """API 端点：添加一个新的代理 Key (Key 值由 UUID 自动生成)。"""
     logger.debug(f"用户 {token_payload.get('sub')} 请求添加新 Key")
     new_key = str(uuid.uuid4())
     description = key_data.description # Pydantic 会处理 None
@@ -353,8 +353,8 @@ async def delete_existing_key(
 
     if success:
         logger.info(f"成功删除 Key: {proxy_key[:8]}...")
-        # No content to return for 204
-        return None # FastAPI 会自动处理 204 响应
+        # 204 状态码表示成功处理请求，但无需返回任何内容
+        return None # FastAPI 会自动生成无内容的 204 响应
     else:
         # delete_proxy_key 内部已记录 Key 未找到的警告
         logger.warning(f"尝试删除不存在的 Key: {proxy_key[:8]}...")
@@ -422,19 +422,21 @@ async def update_ttl(request: Request, ttl_days: int = Form(...), token_payload:
     try:
         if ttl_days < 0: raise ValueError("TTL 不能为负数")
         context_store.set_ttl_days(ttl_days)
-        # TODO: Flash 消息 (JWT 模式下通常不使用)
+        # TODO: 考虑是否需要向前端返回成功/失败信息，而非仅重定向 (JWT 模式下 Flash 消息不常用)
         logger.info(f"上下文 TTL 已更新为 {ttl_days} 天")
     except ValueError as e:
-        # TODO: Flash 消息 (JWT 模式下通常不使用)
+        # TODO: 考虑是否需要向前端返回错误信息
         logger.error(f"更新 TTL 失败: {e}")
+    # 操作完成后重定向回上下文管理页面
     return RedirectResponse(url="/manage/context", status_code=status.HTTP_303_SEE_OTHER)
 
 # 使用新的 JWT 依赖项保护此路由
-@router.post("/manage/context/delete/{proxy_key}", response_class=RedirectResponse) # Removed dependency from decorator
-async def delete_single_context(request: Request, proxy_key: str, token_payload: Dict[str, Any] = Depends(verify_jwt_token)): # Keep dependency here
-    """删除指定 Key 的上下文"""
+@router.post("/manage/context/delete/{proxy_key}", response_class=RedirectResponse) # 从装饰器移除依赖 (已移到函数参数)
+async def delete_single_context(request: Request, proxy_key: str, token_payload: Dict[str, Any] = Depends(verify_jwt_token)): # 在此处保留 JWT 验证依赖
+    """删除指定代理 Key 关联的上下文记录"""
     logger.debug(f"用户 {token_payload.get('sub')} 尝试删除 Key {proxy_key[:8]}... 的上下文")
     success = context_store.delete_context_for_key(proxy_key)
-    # TODO: Flash 消息 (如果需要的话，但 JWT 模式下 Flash 消息不常用)
-    logger.info(f"删除 Key {proxy_key[:8]}... 的上下文 {'成功' if success else '失败'}")
+    # TODO: 考虑是否需要向前端返回成功/失败信息 (JWT 模式下 Flash 消息不常用)
+    logger.info(f"删除 Key {proxy_key[:8]}... 的上下文 {'成功' if success else '失败 (Key 可能不存在)'}")
+    # 操作完成后重定向回上下文管理页面
     return RedirectResponse(url="/manage/context", status_code=status.HTTP_303_SEE_OTHER)
