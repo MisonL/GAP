@@ -1,0 +1,21 @@
+{% extends "_base.html" %}
+
+{% block title %}管理首页{% endblock %}
+
+{% block content %}
+<h2>管理首页</h2>
+
+<p>欢迎来到 Gemini API 代理管理界面。</p>
+<p>请使用上方导航链接管理代理 Key 和对话上下文。</p>
+
+{# 可以添加一些概览信息，例如 Key 总数、上下文记录总数等 #}
+{#
+<h2>概览</h2>
+<ul>
+    <li>代理 Key 总数: {{ key_count }}</li>
+    <li>活动上下文记录数: {{ context_count }}</li>
+    <li>当前上下文 TTL: {{ current_ttl }} 天</li>
+</ul>
+#}
+
+{% endblock %}

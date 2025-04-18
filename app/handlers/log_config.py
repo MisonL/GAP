@@ -65,8 +65,10 @@ def setup_logger():
     """
     # 获取名为 'my_logger' 的日志记录器实例
     logger = logging.getLogger("my_logger")
-    # 设置日志记录器处理的最低级别为 DEBUG
-    logger.setLevel(logging.DEBUG)
+    # 根据 DEBUG 环境变量设置基础日志级别
+    base_log_level = logging.DEBUG if DEBUG else logging.INFO
+    logger.setLevel(base_log_level)
+    print(f"日志基础级别设置为: {logging.getLevelName(base_log_level)}") # 添加启动时打印信息
 
     # 清除可能已存在的旧的处理程序，防止重复添加
     if logger.handlers:
@@ -74,7 +76,10 @@ def setup_logger():
 
     # --- 控制台处理程序 ---
     console_handler = logging.StreamHandler()  # 创建流处理程序 (输出到 stderr)
-    console_handler.setLevel(logging.INFO)     # 设置控制台输出的最低级别为 INFO (恢复默认)
+    # 控制台级别也应根据 DEBUG 模式调整，或保持 INFO
+    console_log_level = logging.DEBUG if DEBUG else logging.INFO
+    console_handler.setLevel(console_log_level)
+    print(f"控制台日志级别设置为: {logging.getLevelName(console_log_level)}") # 添加启动时打印信息
     # 定义控制台输出的格式 (只包含消息本身)
     formatter = logging.Formatter('%(message)s')
     console_handler.setFormatter(formatter)    # 应用格式

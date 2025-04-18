@@ -27,8 +27,8 @@ usage_lock = threading.Lock() # 保护 usage_data 访问的锁
 # 存储格式: key -> model -> score (得分)
 key_scores_cache: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
 cache_lock = threading.Lock() # 保护 key_scores_cache 访问的锁
-# 记录缓存上次更新的时间戳
-cache_last_updated: float = 0.0
+# 记录每个模型缓存上次更新的时间戳
+cache_last_updated: Dict[str, float] = defaultdict(float) # 改为字典
 
 # --- 每日 RPD 总量跟踪 ---
 
@@ -51,10 +51,10 @@ ip_input_token_counts_lock = threading.Lock() # 重命名
 # --- 常量 ---
 RPM_WINDOW_SECONDS = 60 # RPM 计算的时间窗口（秒）
 TPM_WINDOW_SECONDS = 60 # TPM_Input 计算的时间窗口（秒）
-CACHE_REFRESH_INTERVAL_SECONDS = 10 # Key 得分缓存刷新间隔 (秒，应与后台任务同步)
+CACHE_REFRESH_INTERVAL_SECONDS = 300 # Key 得分缓存刷新间隔 (秒，改为 5 分钟)
 
 # --- 更新函数 ---
-def update_cache_timestamp():
-    """更新缓存时间戳为当前时间"""
+def update_cache_timestamp(model_name: str): # 添加 model_name 参数
+    """更新指定模型缓存时间戳为当前时间"""
     global cache_last_updated
-    cache_last_updated = time.time()
+    cache_last_updated[model_name] = time.time() # 更新字典中对应模型的时间戳
