@@ -8,5 +8,8 @@ app/__pycache__/
 # Virtual environment
 venv/
 
+# log files
+logs
+
 # macOS specific files
 .DS_Store
