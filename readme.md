@@ -15,8 +15,7 @@
   - [🚀 部署到 Hugging Face Spaces](#-部署到-hugging-face-spaces)
   - [💻 本地运行](#-本地运行)
   - [🔌 接入其他服务](#-接入其他服务)
-  - [🔑 上下文管理](#-上下文管理)
-- [ API 接口说明](#-api-接口说明)
+- [API 接口说明](#-api-接口说明)
 - [⚠️ 注意事项](#️-注意事项)
 - [🤝 贡献](#-贡献)
 - [📜 版本历史](#-版本历史)
@@ -51,7 +50,7 @@
 
     *本代理程序会跟踪这些指标，用于智能选择可用密钥并进行本地速率预检查。*
 
-###  模型列表接口
+### 模型列表接口
 *   提供 `/v1/models` 接口，返回可用的 Gemini 模型列表。
 *   自动检测并显示当前 API 密钥支持的所有模型。
 
@@ -115,7 +114,7 @@
 
 </details>
 
-## 🛠️ 使用方式：
+## 🛠️ 使用方式
 
 ### 🚀 部署到 Hugging Face Spaces：
 
@@ -165,41 +164,38 @@
     ```
 4.  **配置环境变量：**
     *   **（推荐）** 在项目根目录创建 `.env` 文件，并填入以下内容（根据需要取消注释并修改）：
-      下面是一个 `.env` 文件内容的示例，展示了可配置的环境变量及其说明。请根据需要取消注释并修改值。
-
-      | 环境变量                                | 说明                                                                                                                               | 默认值/示例                               |
-      | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-      | `GEMINI_API_KEYS`                       | **（必需）** 你的 Gemini API 密钥，用逗号分隔。                                                                                       | `YOUR_API_KEY_HERE` or `key1,key2,key3`   |
-      | `PASSWORD`                              | （可选）设置服务的 API 密钥（用于内存模式认证和 Web UI 登录）。                                                                         | `"123"`                                   |
-      | `SECRET_KEY`                            | **（必需）** 用于 Web UI Session 和 JWT 加密的密钥。请设置一个长而随机的字符串。                                                          | `your_very_strong_random_secret_key_here` |
-      | `MAX_REQUESTS_PER_MINUTE`               | （可选）每分钟最大请求数。                                                                                                           | `30`                                      |
-      | `MAX_REQUESTS_PER_DAY_PER_IP`           | （可选）每天每个 IP 最大请求数。                                                                                                       | `600`                                     |
-      | `MAX_LOG_SIZE`                          | （可选）单个日志文件最大大小（MB）。                                                                                                   | `10`                                      |
-      | `MAX_LOG_BACKUPS`                       | （可选）保留的日志文件备份数量。                                                                                                       | `5`                                       |
-      | `LOG_ROTATION_INTERVAL`                 | （可选）日志轮转间隔。                                                                                                               | `midnight`                                |
-      | `DEBUG`                                 | （可选）设置为 `"true"` 启用详细日志记录。                                                                                             | `false`                                   |
-      | `DISABLE_SAFETY_FILTERING`              | （可选）设置为 `"true"` 将全局禁用 Gemini API 的安全过滤。**警告：** 可能导致不当内容。                                                    | `false`                                   |
-      | `USAGE_REPORT_INTERVAL_MINUTES`         | （可选）周期性使用情况报告的间隔时间（分钟）。                                                                                         | `30`                                      |
-      | `REPORT_LOG_LEVEL`                      | （可选）周期性报告的日志级别（DEBUG, INFO, WARNING, ERROR, CRITICAL）。设为 `WARNING` 可在 HF Logs 显示。                               | `INFO`                                    |
-      | `PROTECT_STATUS_PAGE`                   | （可选）设置为 `"true"` 将对根路径 `/` 的状态页面启用密码保护（使用 `PASSWORD`）。                                                       | `false`                                   |
-      | `CONTEXT_DB_PATH`                       | （可选）设置此路径以启用基于文件的 SQLite 存储。**未设置则使用内存数据库 (`:memory:`)。**                                                | `app/data/context_store.db`               |
-      | `DEFAULT_MAX_CONTEXT_TOKENS`            | （可选）当模型未在 `model_limits.json` 中定义时的回退 Token 限制。                                                                     | `30000`                                   |
-      | `CONTEXT_TOKEN_SAFETY_MARGIN`           | （可选）从模型 `input_token_limit` 减去的安全边际。                                                                                    | `200`                                     |
-      | `MEMORY_CONTEXT_CLEANUP_INTERVAL_SECONDS` | （可选）内存数据库模式下，后台清理任务的运行间隔（秒）。                                                                                 | `3600`                                    |
-      | `MAX_CONTEXT_RECORDS_MEMORY`            | （可选）内存数据库模式下，允许存储的最大上下文记录条数。                                                                                 | `5000`                                    |
-      | `JWT_ALGORITHM`                         | （可选）JWT 签名算法。                                                                                                               | `HS256`                                   |
-      | `ACCESS_TOKEN_EXPIRE_MINUTES`           | （可选）Web UI 登录 JWT 的有效期（分钟）。                                                                                             | `30`                                      |
-      | `CACHE_REFRESH_INTERVAL_SECONDS`        | （可选）Key 分数缓存刷新间隔（秒）。                                                                                                   | `10`                                      |
-      | `STREAM_SAVE_REPLY`                     | （可选）设置为 `"true"` 时，流式响应结束后会尝试保存包含模型回复的完整上下文。                                                              | `false`                                   |
+      下面是一个 `.env` 文件内容的示例。请根据需要取消注释并修改值。**详细的环境变量说明请参考上方“部署到 Hugging Face Spaces”部分的表格。**
+      ```dotenv
+      # .env 文件示例
+      
+      # (必需) Gemini API 密钥，逗号分隔
+      GEMINI_API_KEYS=YOUR_API_KEY_1,YOUR_API_KEY_2
+      
+      # (必需) Web UI 和 JWT 密钥
+      SECRET_KEY=your_very_strong_random_secret_key_here
+      
+      # (可选) 服务 API 密钥 (内存模式认证 & Web UI 登录)
+      PASSWORD="123"
+      
+      # (可选) 启用文件存储上下文 (否则使用内存)
+      # CONTEXT_DB_PATH=app/data/context_store.db
+      
+      # (可选) 启用调试日志
+      # DEBUG=true
+      
+      # (可选) 禁用安全过滤 (谨慎使用!)
+      # DISABLE_SAFETY_FILTERING=true
+      
+      # ... 其他可选环境变量参考上方表格 ...
+      ```
     *   **（或者）** 直接在终端设置环境变量（仅对当前会话有效）：
       ```bash
       export GEMINI_API_KEYS="key1,key2"
+      export SECRET_KEY="your_secret"
       export PASSWORD="your_password"
-      export DISABLE_SAFETY_FILTERING="true"
       # ... 其他环境变量
       ```
 5.  运行：`uvicorn app.main:app --reload --host 0.0.0.0 --port 7860`
-
 
 ### 🔌 接入其他服务
 
@@ -207,7 +203,7 @@
 2.  在 API Base URL 中填入 `https://your-space-url.hf.space/v1` 或本地运行地址 `http://localhost:7860/v1`。
 3.  在 API Key 中填入你的认证凭证：
     *   **内存模式 (HF Spaces 默认):** 填入 `PASSWORD` 环境变量的值。
-    *   **文件模式 (本地部署，设置了 `CONTEXT_DB_PATH`):** 填入你手动添加到数据库 `proxy_keys` 表中的代理 Key。（**注意:** v1.3.0 移除了 Web UI 创建 Key 的功能，需要手动管理数据库中的 Key）。
+    *   **文件模式 (本地部署，设置了 `CONTEXT_DB_PATH`):** 填入你通过 `/manage/keys` Web UI 添加或手动添加到数据库 `proxy_keys` 表中的代理 Key。
 
 ## 📝 API 接口说明
 
@@ -240,13 +236,15 @@ POST /v1/chat/completions
 }
 ```
 **认证:**
-*   API 请求 (`/v1/...`) 的认证方式取决于部署模式：
-    *   **内存模式 (HF Spaces 默认):** 在 Header 中提供 `Authorization: Bearer <PASSWORD环境变量的值>`。
-    *   **文件模式 (本地部署，设置了 `CONTEXT_DB_PATH`):** 在 Header 中提供 `Authorization: Bearer <数据库proxy_keys表中的有效代理Key>`。
-*   Web UI (`/`, `/manage/context`) 使用基于 `PASSWORD` 环境变量的登录和 JWT 进行认证。
-```
+*   **API 请求 (`/v1/...`)**:
+    *   使用 HTTP `Authorization` Header 传递 Bearer Token。
+    *   **内存模式 (默认):** Token 为 `PASSWORD` 环境变量的值。
+    *   **文件模式 (`CONTEXT_DB_PATH` 已设置):** Token 为数据库 `proxy_keys` 表中有效的代理 Key (可通过 `/manage/keys` UI 管理)。
+*   **Web UI 请求 (`/`, `/manage/context`, `/manage/keys`)**:
+    *   需要通过 `/login` 页面使用 `PASSWORD` 环境变量的值进行登录。
+    *   登录成功后，使用 JWT (JSON Web Token) 进行会话认证。需要设置 `SECRET_KEY` 环境变量。
 
-## ⚠️ 注意事项：
+## ⚠️ 注意事项
 
 *   **强烈建议在生产环境中设置 `PASSWORD` 环境变量（作为 API 密钥），并使用强密钥。**
 *   根据你的使用情况调整速率限制相关的环境变量。
@@ -269,30 +267,6 @@ POST /v1/chat/completions
 *   **代码贡献:** 如果你想贡献代码，请先 Fork 本仓库，在你的分支上进行修改，然后提交 Pull Request。
 
 
-## 🔑 上下文管理 (v1.3.0 新增)
-
-此版本引入了多轮对话上下文保持功能。
-
-*   **启用方式:**
-    1.  **设置环境变量:** 对于 Web UI 访问，确保设置了 `SECRET_KEY` 和 `PASSWORD`。对于 API 调用，根据需要设置 `PASSWORD` (内存模式) 或配置数据库代理 Key (文件模式)。
-    2.  **访问管理界面 (Web UI):** 访问部署后的根路径 `/`，使用 `PASSWORD` 登录。然后访问 `/manage/context` 查看和管理上下文。在**文件存储模式**下，还可以访问 `/manage/keys` 来管理代理 Key。
-    3.  **(文件模式) 管理代理 Key:** 提供 `/manage/keys` Web UI 用于添加、启用/禁用、删除代理 Key。此功能仅在设置了 `CONTEXT_DB_PATH` 时可用。
-    4.  **客户端配置 (API 调用):**
-        *   **内存模式:** 在 HTTP Header 中添加 `Authorization: Bearer <PASSWORD环境变量的值>`。
-        *   **文件模式:** 在 HTTP Header 中添加 `Authorization: Bearer <数据库中的有效代理Key>`。
-*   **工作机制:**
-    *   服务通过 `Authorization` Header 中的凭证（`PASSWORD` 或代理 Key）识别不同的对话。
-    *   对话历史（包括用户输入和模型回复）存储在 SQLite 数据库中（默认为内存模式，可通过 `CONTEXT_DB_PATH` 配置为文件模式）。
-    *   在每次请求时，服务会加载与代理 Key 关联的历史记录，并与新消息合并。
-    *   根据请求模型的 `input_token_limit`（在 `model_limits.json` 中配置）和安全边际 (`CONTEXT_TOKEN_SAFETY_MARGIN`)，自动从对话历史的**开头**移除旧消息以防止超出 Token 限制。
-    *   上下文记录会根据 TTL 设置（默认为 7 天，可在 `/manage/context` 配置）自动清理。
-*   **重要提示:**
-    *   **必须为不同的对话/任务使用不同的代理 Key**，否则它们的上下文会混淆！
-    *   **用户责任:** 虽然系统会自动从对话历史开头移除旧消息以适应模型限制，但对于极长的对话，用户仍需注意上下文可能带来的影响（如相关性降低、潜在的截断），并在必要时主动管理对话长度。
-    *   在 Hugging Face Spaces **免费层**，默认使用内存数据库，**上下文会在 Space 重启时丢失**。对于需要持久上下文的用户，请考虑升级 Space 并设置 `CONTEXT_DB_PATH` 指向持久存储路径（如果可用），或在本地部署。
-    *   上下文管理功能依赖于 `model_limits.json` 中正确的 `input_token_limit` 配置。
-    *   内存数据库模式下有后台任务定期清理超时的上下文。
-
 ## 📜 版本历史
 
 <details>
@@ -314,7 +288,7 @@ POST /v1/chat/completions
 *   **本地化**: 将核心 Python 代码中剩余的英文注释和日志消息更新为简体中文。
 *   **依赖更新**: 添加 `python-jose[cryptography]` 依赖；移除 `SessionMiddleware` 和 `fastapi-csrf-protect`。
 *   **安全增强**: (CSRF 防护已移除)。
-    *   **模型限制更新**: 更新 `app/data/model_limits.json` 以符合最新的 Google Gemini API 速率限制政策 (Free Tier)，包括调整现有模型 (`gemini-2.5-pro-exp-03-25`) 限制和添加新模型 (`gemini-2.5-flash-preview-04-17`)。
+*   **模型限制更新**: 更新 `app/data/model_limits.json` 以符合最新的 Google Gemini API 速率限制政策 (Free Tier)，包括调整现有模型 (`gemini-2.5-pro-exp-03-25`) 限制和添加新模型 (`gemini-2.5-flash-preview-04-17`)。
 *   **(旧版本信息更新)**: 更新了 README 中关于上下文管理和 API 认证的说明，以反映 JWT 认证的变化（例如，Web UI 不再需要代理 Key，API 认证方式不变）。
 *   **修复**: 修复了状态页面“启动时无效密钥数”显示不正确的问题 (此问题在 v1.3.0 重构前已修复，此处保留记录)。
 
