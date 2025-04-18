@@ -81,15 +81,15 @@ def save_context(proxy_key: str, contents: List[Dict[str, Any]]):
             cursor = conn.cursor()
             # 使用 ISO 格式存储 UTC 时间戳
             last_used_ts = datetime.now(timezone.utc).isoformat()
-            # Ensure the proxy_key exists in the proxy_keys table before referencing it
-            # This is crucial for memory mode where keys might not be pre-populated
+            # 在引用之前确保 proxy_key 存在于 proxy_keys 表中
+            # 这对于内存模式至关重要，因为 Key 可能不会预先填充
             cursor.execute("INSERT OR IGNORE INTO proxy_keys (key) VALUES (?)", (proxy_key,))
-            logger.info(f"准备在连接 {id(conn)} 上为 Key {proxy_key[:8]}... 执行 INSERT OR REPLACE...") # Changed to info
+            logger.info(f"准备在连接 {id(conn)} 上为 Key {proxy_key[:8]}... 执行 INSERT OR REPLACE...") # 日志级别改为 info
             cursor.execute("""
                 INSERT OR REPLACE INTO contexts (proxy_key, contents, last_used)
                 VALUES (?, ?, ?)
             """, (proxy_key, contents_json, last_used_ts))
-            logger.info(f"在连接 {id(conn)} 上为 Key {proxy_key[:8]}... 执行 INSERT OR REPLACE 完成。") # Removed "准备提交"
+            logger.info(f"在连接 {id(conn)} 上为 Key {proxy_key[:8]}... 执行 INSERT OR REPLACE 完成。") # 移除了 "准备提交" 日志
 
             # --- 新增：内存数据库记录数限制 ---
             if IS_MEMORY_DB and MAX_CONTEXT_RECORDS_MEMORY > 0:
@@ -123,8 +123,8 @@ def save_context(proxy_key: str, contents: List[Dict[str, Any]]):
     except sqlite3.Error as e:
         logger.error(f"为 Key {proxy_key[:8]}... 保存上下文失败: {e}", exc_info=True)
     except json.JSONDecodeError as e:
-        logger.error(f"反序列化上下文为 JSON 时失败 (Key: {proxy_key[:8]}...): {e}", exc_info=True) # Corrected log message: Deserialization error
-    except Exception as e: # Catch any other unexpected errors during saving
+        logger.error(f"反序列化上下文为 JSON 时失败 (Key: {proxy_key[:8]}...): {e}", exc_info=True) # 修正了日志消息：反序列化错误
+    except Exception as e: # 捕获保存期间任何其他意外错误
         logger.error(f"保存上下文时发生意外错误 (Key: {proxy_key[:8]}...): {e}", exc_info=True)
 
 def load_context(proxy_key: str) -> Optional[List[Dict[str, Any]]]:
@@ -221,12 +221,12 @@ def list_all_context_keys_info() -> List[Dict[str, Any]]:
             logger.info(f"list_all_context_keys_info: Preparing to execute SELECT query on connection {id(conn)}...")
             cursor.execute("SELECT proxy_key, length(contents) as content_length, last_used FROM contexts ORDER BY last_used DESC")
             rows = cursor.fetchall()
-            # Log the raw rows fetched from the database at INFO level
+            # 以 INFO 级别记录从数据库获取的原始行
             logger.info(f"list_all_context_keys_info: Fetched {len(rows)} rows from DB. Raw rows: {rows}")
             contexts_info = [dict(row) for row in rows]
     except sqlite3.Error as e:
         logger.error(f"列出所有上下文信息失败 ({DATABASE_PATH}): {e}", exc_info=True)
-        # Return empty list on error
+        # 出错时返回空列表
         contexts_info = []
     return contexts_info
 

@@ -23,7 +23,7 @@ class GeminiClient:
     """
     AVAILABLE_MODELS = []  # 类变量，存储可用的模型列表
     # 从环境变量读取额外的模型名称，用逗号分隔
-    EXTRA_MODELS = [model.strip() for model in os.environ.get("EXTRA_MODELS", "").split(",") if model.strip()] # 确保去除空格并过滤空字符串
+    EXTRA_MODELS = [model.strip() for model in os.environ.get("EXTRA_MODELS", "").split(",") if model.strip()] # 确保去除首尾空格并过滤空字符串
 
     def __init__(self, api_key: str):
         """
@@ -48,7 +48,7 @@ class GeminiClient:
             system_instruction: Gemini API 格式的系统指令字典 (如果提供)。
 
         Yields:
-            Union[str, Dict[str, Any]]: 从 API 返回的文本块 (str) 或包含 _usage_metadata 或 _final_finish_reason 的字典。
+            联合类型[str, Dict[str, Any]]: 从 API 返回的文本块 (str) 或包含特殊键 (_usage_metadata 或 _final_finish_reason) 的字典。
 
         Raises:
             httpx.HTTPStatusError: 如果 API 返回错误状态码。
@@ -61,7 +61,7 @@ class GeminiClient:
         usage_metadata = None
         final_finish_reason = "STOP"
         # 根据模型名称选择 API 版本 (这个逻辑可能需要更新或移除，取决于 Google API 的演进)
-        api_version = "v1beta" # 默认使用 v1beta
+        api_version = "v1beta" # 默认使用 v1beta API 版本
         # url = f"https://generativelanguage.googleapis.com/{api_version}/models/{request.model}:streamGenerateContent?key={self.api_key}&alt=sse"
         # 统一使用 generateContent，流式通过 stream=true 参数控制 (如果 API 支持)
         # 查阅最新文档，似乎 streamGenerateContent 仍然是推荐的流式端点
@@ -73,7 +73,7 @@ class GeminiClient:
             "generationConfig": {
                 "temperature": request.temperature,
                 "maxOutputTokens": request.max_tokens,
-                # topP, topK 等其他参数可以按需添加
+                # topP, topK 等其他生成参数可以根据需要添加
             },
             "safetySettings": safety_settings,
         }
@@ -82,16 +82,16 @@ class GeminiClient:
 
         try:
             async with httpx.AsyncClient() as client:
-                # 增加读超时为 120 秒，总超时保持 600 秒
+                # 设置请求超时：总超时 600 秒，读取超时 120 秒
                 async with client.stream("POST", url, headers=headers, json=data, timeout=httpx.Timeout(600.0, read=120.0)) as response:
-                    # 检查初始响应状态码
+                    # 检查初始 HTTP 响应状态码
                     if response.status_code >= 400:
-                         # 尝试读取错误详情
+                         # 尝试读取错误响应体
                          error_body = await response.aread()
                          error_detail = f"API 请求失败，状态码: {response.status_code}, 响应: {error_body.decode('utf-8', errors='replace')}"
                          logger.error(error_detail)
                          # 根据状态码抛出特定异常或通用异常
-                         response.raise_for_status() # 这会根据状态码抛出 HTTPStatusError
+                         response.raise_for_status() # 这会根据状态码自动抛出 httpx.HTTPStatusError
 
                     buffer = b""
                     async for line in response.aiter_lines():
@@ -129,7 +129,7 @@ class GeminiClient:
 
                                 if 'safetyRatings' in candidate:
                                     for rating in candidate['safetyRatings']:
-                                        if rating.get('blocked') or rating.get('probability') in ['HIGH', 'MEDIUM']: # 考虑 MEDIUM
+                                        if rating.get('blocked') or rating.get('probability') in ['HIGH', 'MEDIUM']: # 也考虑 MEDIUM 概率
                                             log_level = logging.WARNING if rating.get('blocked') or rating.get('probability') == 'HIGH' else logging.INFO
                                             logger.log(log_level, f"流式响应安全评分: Category={rating['category']}, Probability={rating.get('probability', 'N/A')}, Blocked={rating.get('blocked', 'N/A')}, Model: {request.model}, Key: {self.api_key[:8]}...")
                                             if rating.get('blocked') or rating.get('probability') == 'HIGH':
@@ -139,31 +139,31 @@ class GeminiClient:
                         except json.JSONDecodeError:
                             logger.debug(f"JSON 解析错误, 当前缓冲区: {buffer}")
                             continue
-                        except Exception as inner_e: # 捕获处理块内部的异常
+                        except Exception as inner_e: # 捕获处理流数据块时内部的异常
                             logger.error(f"处理流数据块时出错: {inner_e}", exc_info=True)
-                            # 可以选择在这里中断或继续处理下一个块
-                            raise # 重新抛出，让外部知道出错了
+                            # 可以选择在此处中断流或继续处理下一个块
+                            raise # 重新抛出异常，让外部调用者知道发生了错误
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"流式 API 请求失败 (HTTPStatusError): {e.response.status_code} - {e.response.text}", exc_info=False) # 只记录关键信息
+            logger.error(f"流式 API 请求失败 (HTTPStatusError): {e.response.status_code} - {e.response.text}", exc_info=False) # 只记录关键错误信息，避免日志过长
             raise # 重新抛出，由调用者处理
         except httpx.RequestError as e:
             logger.error(f"流式 API 请求网络错误 (RequestError): {e}", exc_info=True)
-            raise # 重新抛出
+            raise # 重新抛出网络请求错误
         except Exception as e:
             # 捕获流处理过程中的其他异常
             error_detail = f"流处理意外错误: {e}"
             logger.error(error_detail, exc_info=True)
             # 可以抛出自定义异常或重新抛出原始异常
-            raise RuntimeError(error_detail) from e # 使用 RuntimeError 包装
+            raise RuntimeError(error_detail) from e # 使用 RuntimeError 包装原始异常
         finally:
             logger.info(f"流式请求结束 (Key: {self.api_key[:8]}..., Model: {request.model}) ←")
             # 如果流结束但从未产生文本且检测到安全问题，记录错误但不在此处抛出异常，
-            # 让调用者根据 final_finish_reason 和 usage_metadata 处理
+            # 让调用者根据最终的 finish_reason 和 usage_metadata 来处理这种情况
             if not text_yielded and safety_issue_detected:
                 logger.error(f"流结束但未产生文本，检测到安全问题 ({safety_issue_detected}), Key: {self.api_key[:8]}...")
 
-            # 在生成器结束时，按顺序 yield 最终完成原因和使用情况元数据
+            # 在生成器正常结束时，按顺序 yield 最终完成原因和使用情况元数据（如果存在）
             yield {'_final_finish_reason': final_finish_reason}
             if usage_metadata:
                 yield {'_usage_metadata': usage_metadata}
@@ -189,7 +189,7 @@ class GeminiClient:
         """
         logger.info(f"非流式请求开始 (Key: {self.api_key[:8]}..., Model: {request.model})")
         # 根据模型名称选择 API 版本
-        api_version = "v1beta" # 默认使用 v1beta
+        api_version = "v1beta" # 默认使用 v1beta API 版本
         url = f"https://generativelanguage.googleapis.com/{api_version}/models/{request.model}:generateContent?key={self.api_key}"
         headers = {"Content-Type": "application/json"}
         data = {
@@ -197,7 +197,7 @@ class GeminiClient:
             "generationConfig": {
                 "temperature": request.temperature,
                 "maxOutputTokens": request.max_tokens,
-                 # topP, topK 等其他参数可以按需添加
+                 # topP, topK 等其他生成参数可以根据需要添加
             },
             "safetySettings": safety_settings,
         }
@@ -205,15 +205,15 @@ class GeminiClient:
             data["system_instruction"] = system_instruction
 
         async with httpx.AsyncClient() as client:
-             # 增加读超时为 120 秒，总超时保持 600 秒
+             # 设置请求超时：总超时 600 秒，读取超时 120 秒
             response = await client.post(url, headers=headers, json=data, timeout=httpx.Timeout(600.0, read=120.0))
-            # 如果响应状态码表示错误，则抛出 HTTPStatusError
-            # 在抛出前记录更详细的错误信息
+            # 如果响应状态码表示错误 (>= 400)，则抛出 HTTPStatusError
+            # 在抛出异常前记录更详细的错误信息
             if response.status_code >= 400:
                  error_detail = f"API 请求失败，状态码: {response.status_code}, 响应: {response.text}"
                  logger.error(error_detail)
             response.raise_for_status()
-            # 将响应的 JSON 数据包装在 ResponseWrapper 中并返回
+            # 将响应的 JSON 数据包装在 ResponseWrapper 对象中并返回
             logger.info(f"非流式请求成功 (Key: {self.api_key[:8]}..., Model: {request.model})")
             return ResponseWrapper(response.json())
 
@@ -238,7 +238,7 @@ class GeminiClient:
             raise ValueError("API Key 不能为空")
 
         logger.info(f"尝试使用 Key {api_key[:8]}... 获取模型列表")
-        api_version = "v1beta" # 通常使用 v1beta 获取模型列表
+        api_version = "v1beta" # 通常使用 v1beta API 版本获取模型列表
         url = f"https://generativelanguage.googleapis.com/{api_version}/models?key={api_key}"
         headers = {"Content-Type": "application/json"}
 

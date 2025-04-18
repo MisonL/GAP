@@ -67,21 +67,21 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        # 可选：检查 'exp' 是否存在且是数字
+        # 可选：检查 'exp' 字段是否存在且为数字类型
         if "exp" not in payload or not isinstance(payload["exp"], (int, float)):
-             logger.warning(f"解码的 JWT payload 中缺少有效的 'exp' 字段: {payload}")
+             logger.warning(f"解码后的 JWT payload 中缺少有效的 'exp' 字段: {payload}")
              return None
-        # 可选：检查令牌是否已过期 (虽然 jwt.decode 会检查，但可以显式确认)
+        # 可选：再次检查令牌是否已过期（虽然 jwt.decode 内部会进行检查，但可以显式确认以增加健壮性）
         # exp_timestamp = payload["exp"]
         # if datetime.now(timezone.utc).timestamp() > exp_timestamp:
-        #     logger.debug(f"JWT 已过期: {token}")
+        #     logger.debug(f"JWT 令牌已过期: {token[:10]}...") # 记录部分 token 以供调试
         #     return None
 
-        # 可以在这里添加额外的验证，例如检查 'sub' 是否存在等
+        # 可以在此处添加额外的验证逻辑，例如检查 'sub' (subject) 字段是否存在等
         return payload
-    except JWTError as e: # 捕获所有 JWT 相关错误 (过期、签名无效等)
-        logger.debug(f"JWT 验证失败: {e} (Token: {token[:10]}...)") # 记录 JWT 错误，但不记录完整 token
+    except JWTError as e: # 捕获所有 JWT 相关错误（例如过期、签名无效、格式错误等）
+        logger.debug(f"JWT 验证失败: {e} (Token: {token[:10]}...)") # 记录 JWT 错误信息，但不记录完整的 token
         return None
-    except Exception as e: # 捕获其他可能的解码错误
+    except Exception as e: # 捕获其他在解码过程中可能发生的意外错误
         logger.error(f"解码 token 时发生意外错误: {e}", exc_info=True)
         return None
