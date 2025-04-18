@@ -77,6 +77,40 @@
             color: #666;
             margin-bottom: 15px;
         }
+        /* 为新加的密钥部分添加一些间距 */
+        .key-section {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ccc;
+        }
+        #generatedKey {
+             background-color: #e9ecef; /* 轻微灰色背景表示只读 */
+             min-height: 40px; /* 单行密钥不需要太高 */
+             margin-bottom: 10px;
+             font-family: monospace; /* 等宽字体更适合显示密钥 */
+             font-size: 0.95rem;
+        }
+        #generateKeyButton {
+             /* 样式可以复用主按钮，但颜色或宽度可调整 */
+             background-color: #17a2b8; /* 信息蓝 */
+             margin-bottom: 10px; /* 和下方文本框保持距离 */
+        }
+        #generateKeyButton:hover {
+             background-color: #117a8b;
+        }
+        #copyKeyButton {
+             /* 样式复用之前的复制按钮 */
+             display: inline-block;
+             width: auto;
+             padding: 8px 15px;
+             font-size: 0.95rem;
+             background-color: #ffc107; /* 警告黄，区分一下 */
+             color: #333;
+             margin-bottom: 15px;
+        }
+         #copyKeyButton:hover {
+             background-color: #e0a800;
+         }
     </style>
 </head>
 <body>
@@ -96,6 +130,18 @@
     <label for="outputResult">拼接结果:</label>
     <textarea id="outputResult" readonly placeholder="结果将显示在这里..."></textarea>
     <button id="copyButton" onclick="copyResult()">复制结果</button>
+
+    <!-- 新增：强密钥生成区域 -->
+    <div class="key-section">
+        <h2>生成强密钥</h2>
+        <p class="description">点击下方按钮生成一个符合 <code>openssl rand -hex 32</code> 标准的 64 位十六进制强密钥。</p>
+        <button id="generateKeyButton" onclick="generateStrongKey()">生成强密钥</button>
+        <label for="generatedKey">生成的密钥:</label>
+        <textarea id="generatedKey" readonly placeholder="密钥将显示在这里..."></textarea>
+        <button id="copyKeyButton" onclick="copyGeneratedKey()">复制密钥</button>
+    </div>
+    <!-- 结束：强密钥生成区域 -->
+
 
     <script>
         function processData() {
@@ -139,6 +185,57 @@
                 console.error('自动复制失败: ', err);
                 alert('自动复制失败，请手动选择文本并复制。\n错误信息: ' + err);
                 // 可以考虑在此处添加旧版浏览器的回退方法 (document.execCommand)，但现代浏览器通常支持 clipboard API
+            });
+        }
+
+        // 新增：生成强密钥函数
+        function generateStrongKey() {
+            const keyTextArea = document.getElementById('generatedKey');
+            try {
+                // 生成 32 个随机字节
+                const randomBytes = new Uint8Array(32);
+                window.crypto.getRandomValues(randomBytes);
+
+                // 将字节数组转换为十六进制字符串
+                const hexString = Array.from(randomBytes)
+                    .map(byte => byte.toString(16).padStart(2, '0'))
+                    .join('');
+
+                keyTextArea.value = hexString;
+            } catch (error) {
+                console.error("密钥生成失败:", error);
+                keyTextArea.value = "错误：无法生成安全随机数。请确保浏览器支持 Crypto API。";
+                alert("生成密钥时出错，请查看控制台获取详细信息。");
+            }
+        }
+
+        // 新增：复制生成的密钥函数
+        function copyGeneratedKey() {
+            const keyTextArea = document.getElementById('generatedKey');
+            const textToCopy = keyTextArea.value;
+            const copyBtn = document.getElementById('copyKeyButton'); // 获取按钮元素
+
+            if (!textToCopy || textToCopy.startsWith("错误")) {
+                alert("没有有效的密钥可复制。");
+                return; // 如果没有内容或内容是错误信息，则不执行后续操作
+            }
+
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                // 复制成功
+                const originalText = copyBtn.innerText; // 保存原始按钮文字
+                copyBtn.innerText = '已复制!'; // 修改按钮文字提示
+                copyBtn.disabled = true; // 暂时禁用按钮防止重复点击
+
+                // 2秒后恢复按钮文字和状态
+                setTimeout(() => {
+                    copyBtn.innerText = originalText;
+                    copyBtn.disabled = false;
+                }, 2000);
+
+            }).catch(err => {
+                // 复制失败
+                console.error('自动复制密钥失败: ', err);
+                alert('自动复制失败，请手动选择文本并复制。\n错误信息: ' + err);
             });
         }
     </script>

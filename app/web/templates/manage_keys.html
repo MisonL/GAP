@@ -1,0 +1,299 @@
+{% extends "_base.html" %}
+
+{% block title %}管理代理 Key{% endblock %}
+
+{% block content %}
+<div class="container mt-4" id="manage-keys-content">
+    {% if is_memory_mode %}
+        <h2>代理 Key 管理</h2>
+        <div class="alert alert-warning" role="alert">
+            <strong>提示：</strong> 代理 Key 管理功能仅在启用文件数据库模式时可用。当前应用运行在内存模式下。
+            <br>
+            如需使用此功能，请在配置文件或环境变量中设置 <code>CONTEXT_DB_PATH</code> 指向一个 SQLite 文件路径，然后重启应用。
+        </div>
+    {% else %}
+        <h2>管理代理 Key (文件存储模式)</h2>
+        <p>在这里管理用于 API 调用的代理 Key。</p>
+
+
+    <h4>添加新 Key</h4>
+    <form id="add-key-form" class="mb-4">
+        <div class="mb-3">
+            <label for="keyDescription" class="form-label">描述 (可选)</label>
+            <input type="text" class="form-control" id="keyDescription" placeholder="例如：用于测试客户端 A">
+        </div>
+        {# CSRF token input might not be needed if using JWT for API calls #}
+        <button type="submit" class="btn btn-primary">生成并添加 Key</button>
+        <span id="add-key-status" class="ms-2"></span>
+    </form>
+
+    <hr>
+
+    <h4>现有 Key 列表</h4>
+    <button id="refresh-keys-btn" class="btn btn-secondary mb-3">刷新列表</button>
+    <div id="keys-table-container">
+        <p id="loading-keys-msg">正在加载 Key 列表...</p>
+        <table class="table table-striped table-bordered" id="keys-table" style="display: none;">
+            <thead>
+                <tr>
+                    <th>代理 Key (点击复制)</th>
+                    <th>描述</th>
+                    <th>创建时间</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="keys-table-body">
+                <!-- Key 数据将通过 JS 动态填充 -->
+            </tbody>
+        </table>
+        <p id="no-keys-msg" style="display: none;">没有找到任何代理 Key。</p>
+        <p id="error-keys-msg" class="text-danger" style="display: none;">加载 Key 列表时出错。</p>
+    </div>
+
+    <!-- 编辑 Key 模态框 (示例，后续实现) -->
+    <!--
+    <div class="modal fade" id="editKeyModal" tabindex="-1" aria-labelledby="editKeyModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="editKeyModalLabel">编辑 Key 描述</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <form id="edit-key-form">
+              <input type="hidden" id="editKeyInput">
+              <div class="mb-3">
+                <label for="editDescriptionInput" class="form-label">新描述</label>
+                <input type="text" class="form-control" id="editDescriptionInput">
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+            <button type="button" class="btn btn-primary" id="saveEditKeyBtn">保存更改</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    -->
+
+    {% endif %} {# End of 'if not is_memory_mode' #}
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Only run JS if the main content is present (i.e., not in memory mode)
+        if (document.getElementById('add-key-form')) {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            window.location.href = '/'; // 重定向到登录页
+            return;
+        }
+
+        const keysTableBody = document.getElementById('keys-table-body');
+        const keysTable = document.getElementById('keys-table');
+        const loadingMsg = document.getElementById('loading-keys-msg');
+        const noKeysMsg = document.getElementById('no-keys-msg');
+        const errorMsg = document.getElementById('error-keys-msg');
+        const addKeyForm = document.getElementById('add-key-form');
+        const keyDescriptionInput = document.getElementById('keyDescription');
+        const addKeyStatus = document.getElementById('add-key-status');
+        const refreshBtn = document.getElementById('refresh-keys-btn');
+
+        async function fetchKeys() {
+            loadingMsg.style.display = 'block';
+            keysTable.style.display = 'none';
+            noKeysMsg.style.display = 'none';
+            errorMsg.style.display = 'none';
+            keysTableBody.innerHTML = ''; // 清空旧数据
+
+            try {
+                // Use fetchWithCsrf which handles Authorization and CSRF
+                const response = await fetchWithCsrf('/api/manage/keys/data');
+
+                if (response.status === 401 || response.status === 403) {
+                    localStorage.removeItem('access_token');
+                    window.location.href = '/';
+                    return;
+                }
+                 if (response.status === 404) { // 404 表示非文件模式
+                    loadingMsg.textContent = '代理 Key 管理仅在文件存储模式下可用。';
+                    return; // 不再继续处理
+                }
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                loadingMsg.style.display = 'none';
+
+                if (data.keys && data.keys.length > 0) { // Corrected: Use && instead of &amp;&amp;
+                    keysTable.style.display = 'table';
+                    data.keys.forEach(keyInfo => {
+                        const row = keysTableBody.insertRow();
+                        // Corrected: Use > and < instead of > and < inside template literal
+                        row.innerHTML = `
+                            <td><span class="key-value" title="点击复制">${keyInfo.key}</span></td>
+                            <td>${keyInfo.description || ''}</td>
+                            <td>${new Date(keyInfo.created_at).toLocaleString()}</td>
+                            <td>
+                                <span class="badge ${keyInfo.is_active ? 'bg-success' : 'bg-secondary'}">
+                                    ${keyInfo.is_active ? '活动' : '禁用'}
+                                </span>
+                                <button class="btn btn-sm btn-outline-secondary ms-1 toggle-status-btn" data-key="${keyInfo.key}" data-current-status="${keyInfo.is_active}">
+                                    切换
+                                </button>
+                            </td>
+                            <td>
+                                <!-- <button class="btn btn-sm btn-warning edit-btn" data-key="${keyInfo.key}" data-description="${keyInfo.description || ''}" data-bs-toggle="modal" data-bs-target="#editKeyModal">编辑</button> -->
+                                <button class="btn btn-sm btn-danger delete-btn" data-key="${keyInfo.key}">删除</button>
+                            </td>
+                        `;
+                    });
+                    attachEventListeners(); // 绑定事件监听器
+                } else {
+                    noKeysMsg.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error fetching keys:', error);
+                loadingMsg.style.display = 'none';
+                errorMsg.style.display = 'block';
+            }
+        }
+
+        function attachEventListeners() {
+            // 复制 Key
+            document.querySelectorAll('.key-value').forEach(span => {
+                span.style.cursor = 'pointer';
+                span.addEventListener('click', () => {
+                    navigator.clipboard.writeText(span.textContent).then(() => {
+                        alert('Key 已复制到剪贴板');
+                    }).catch(err => {
+                        console.error('无法复制 Key:', err);
+                        alert('复制失败');
+                    });
+                });
+            });
+
+            // 切换状态
+            document.querySelectorAll('.toggle-status-btn').forEach(button => {
+                button.addEventListener('click', async (event) => {
+                    const key = event.target.dataset.key;
+                    const currentStatus = event.target.dataset.currentStatus === 'true';
+                    const newStatus = !currentStatus;
+                    if (!confirm(`确定要将 Key "${key.substring(0, 8)}..." 的状态切换为 ${newStatus ? '活动' : '禁用'} 吗？`)) {
+                        return;
+                    }
+                    try {
+                        // Use fetchWithCsrf for PUT request
+                        const response = await fetchWithCsrf(`/api/manage/keys/update/${key}`, {
+                            method: 'PUT',
+                            headers: {
+                                // Authorization handled by fetchWithCsrf
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ is_active: newStatus })
+                        });
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        fetchKeys(); // 重新加载列表
+                    } catch (error) {
+                        console.error('Error toggling key status:', error);
+                        alert('切换状态失败');
+                    }
+                });
+            });
+
+            // 删除 Key
+            document.querySelectorAll('.delete-btn').forEach(button => {
+                button.addEventListener('click', async (event) => {
+                    const key = event.target.dataset.key;
+                    if (!confirm(`确定要删除 Key "${key.substring(0, 8)}..." 吗？这将同时删除关联的上下文记录！`)) {
+                        return;
+                    }
+                    try {
+                        // Use fetchWithCsrf for DELETE request
+                        const response = await fetchWithCsrf(`/api/manage/keys/delete/${key}`, {
+                            method: 'DELETE'
+                            // Authorization handled by fetchWithCsrf
+                        });
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        fetchKeys(); // 重新加载列表
+                    } catch (error) {
+                        console.error('Error deleting key:', error);
+                        alert('删除 Key 失败');
+                    }
+                });
+            });
+
+            // 编辑 Key (待实现模态框逻辑)
+            /*
+            document.querySelectorAll('.edit-btn').forEach(button => {
+                button.addEventListener('click', (event) => {
+                    const key = event.target.dataset.key;
+                    const description = event.target.dataset.description;
+                    document.getElementById('editKeyInput').value = key;
+                    document.getElementById('editDescriptionInput').value = description;
+                });
+            });
+            */
+        }
+
+        // 添加 Key 表单提交
+        addKeyForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const description = keyDescriptionInput.value.trim();
+            addKeyStatus.textContent = '正在添加...';
+            addKeyStatus.className = 'ms-2 text-info';
+
+            try {
+                // Use fetchWithCsrf for POST request
+                const response = await fetchWithCsrf('/api/manage/keys/add', {
+                    method: 'POST',
+                    headers: {
+                        // Authorization handled by fetchWithCsrf
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ description: description || null }) // 发送 null 如果为空
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: '添加失败，请检查日志。' }));
+                    throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                // Corrected access to key based on API response structure in routes.py
+                // Corrected: Use && instead of &amp;&amp;
+                const newKey = result.key && result.key.key ? result.key.key : '未知';
+                addKeyStatus.textContent = `添加成功！新 Key: ${newKey.substring(0, 8)}...`;
+                addKeyStatus.className = 'ms-2 text-success';
+                keyDescriptionInput.value = ''; // 清空输入框
+                fetchKeys(); // 重新加载列表
+            } catch (error) {
+                console.error('Error adding key:', error);
+                addKeyStatus.textContent = `添加失败: ${error.message}`;
+                addKeyStatus.className = 'ms-2 text-danger';
+            }
+        });
+
+        // 刷新按钮
+        refreshBtn.addEventListener('click', fetchKeys);
+
+        // 初始加载
+        fetchKeys();
+
+        // 编辑 Key 模态框保存 (待实现)
+        /*
+        document.getElementById('saveEditKeyBtn').addEventListener('click', async () => {
+            const key = document.getElementById('editKeyInput').value;
+            const newDescription = document.getElementById('editDescriptionInput').value.trim();
+            // ... 调用 PUT /api/manage/keys/update/{key} ...
+            // ... 关闭模态框，刷新列表 ...
+        });
+        */
+        } // End of 'if (document.getElementById('add-key-form'))'
+    });
+</script>
+{% endblock %}

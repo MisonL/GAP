@@ -1,8 +1,11 @@
 fastapi
-uvicorn
-httpx
+uvicorn[standard] # 明确使用 standard 以包含常用依赖
+httpx>=0.20 # 确保版本支持所需功能
 python-dotenv
-requests
-apscheduler
-pytz
-python-multipart
+apscheduler # 用于后台任务
+pytz # 用于时区处理
+python-multipart # 用于处理表单数据
+jinja2 # 用于 Web UI 模板
+starlette[full] # 用于 Session 和静态文件支持
+requests # Diagnostic: Add back temporarily to check environment
+python-jose[cryptography]>=3.3.0 # For JWT support

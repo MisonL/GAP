@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {# CSRF meta tag removed #}
+    <title>{% block title %}Gemini API 代理{% endblock %} - 管理界面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            padding: 0;
+            margin: 0;
+            background-color: #f8f9fa;
+            color: #343a40;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        header {
+            background-color: #007bff;
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        header nav a {
+            color: white;
+            text-decoration: none;
+            margin-left: 1.5rem;
+            font-weight: 500;
+        }
+         header nav a:hover {
+            text-decoration: underline;
+        }
+        .container {
+            max-width: 1000px; /* Wider container */
+            margin: 2rem auto;
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            flex-grow: 1; /* Make container grow */
+        }
+        h2 {
+            color: #495057;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 0.5rem;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        th, td {
+            border: 1px solid #dee2e6;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            vertical-align: middle; /* Align vertically */
+        }
+        th {
+            background-color: #e9ecef;
+            color: #495057;
+            font-weight: 600;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        .actions form {
+            display: inline-block; /* Keep forms inline */
+            margin-right: 5px;
+        }
+        button, input[type="submit"], .button-link {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+        button.primary, input[type="submit"].primary, .button-link.primary {
+            background-color: #007bff;
+            color: white;
+        }
+        button.primary:hover, input[type="submit"].primary:hover, .button-link.primary:hover {
+            background-color: #0056b3;
+        }
+        button.danger, input[type="submit"].danger, .button-link.danger {
+            background-color: #dc3545;
+            color: white;
+        }
+         button.danger:hover, input[type="submit"].danger:hover, .button-link.danger:hover {
+            background-color: #c82333;
+        }
+         button.secondary, input[type="submit"].secondary, .button-link.secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+         button.secondary:hover, input[type="submit"].secondary:hover, .button-link.secondary:hover {
+            background-color: #5a6268;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-sizing: border-box; /* Include padding in width */
+        }
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        .alert {
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .alert-error {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        footer {
+            text-align: center;
+            margin-top: 2rem;
+            padding: 1rem;
+            font-size: 0.9em;
+            color: #6c757d;
+            background-color: #e9ecef;
+        }
+        .mono {
+            font-family: monospace;
+            font-size: 0.85em;
+            word-break: break-all; /* Break long keys */
+        }
+        .description {
+             max-width: 300px; /* Limit description width */
+             white-space: nowrap;
+             overflow: hidden;
+             text-overflow: ellipsis;
+        }
+         .status-active { color: #28a745; }
+         .status-inactive { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>代理管理界面</h1>
+        <nav>
+            {# <a href="/">状态页</a> #} {# 移除状态页链接 #}
+            {# <a href="/manage">管理首页</a> #} {# 移除管理首页链接 #}
+            {# <a href="/manage/keys">代理 Key 管理</a> #} {# 移除 Key 管理链接 #}
+            <a href="/manage/context">上下文管理</a>
+            {% if not is_memory_db %} {# 仅在文件模式下显示 Key 管理 #}
+            <a href="/manage/keys">代理 Key 管理</a>
+            {% endif %}
+            <a href="#" id="logout-button" style="margin-left: 2rem; color: #ffc107;">登出</a> {# 添加登出按钮 #}
+        </nav>
+    </header>
+
+    <div class="container">
+        {# {% with messages = get_flashed_messages(with_categories=true) %} #}
+        {#     {% if messages %} #}
+        {#         {% for category, message in messages %} #}
+        {#             <div class="alert alert-{{ category }}">{{ message }}</div> #}
+        {#         {% endfor %} #}
+        {#     {% endif %} #}
+        {# {% endwith %} #}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer>
+        Gemini API Proxy - &copy; {{ now.year }}
+    </footer>
+
+    {# 基础登出逻辑，子模板可以添加更多脚本 #}
+    <script>
+        // --- CSRF Token Helper Functions Removed ---
+        // function getCookie(name) { ... } // Keep getCookie if needed elsewhere, otherwise remove
+        // function getCsrfToken() { ... }
+        // async function fetchWithCsrf(url, options = {}) { ... }
+        // --- End CSRF Token Helper Functions ---
+
+        // --- Standard Fetch Helper (Optional, but good practice) ---
+        // Example: Add a helper that automatically adds JWT if present
+        async function fetchWithAuth(url, options = {}) {
+             if (!options.headers) {
+                 options.headers = {};
+             }
+             const accessToken = localStorage.getItem('access_token');
+             if (accessToken) {
+                 options.headers['Authorization'] = `Bearer ${accessToken}`;
+             }
+             // Add other common headers or options if needed
+             return fetch(url, options);
+         }
+        // --- End Standard Fetch Helper ---
+
+
+        // 登出逻辑
+        const logoutButton = document.getElementById('logout-button');
+        if (logoutButton) {
+            logoutButton.addEventListener('click', function(event) {
+                event.preventDefault(); // 阻止默认的链接跳转行为
+                console.log('执行登出操作...');
+                // 从 localStorage 清除 token
+                localStorage.removeItem('access_token');
+                console.log('Access token 已从 localStorage 移除。');
+                // 重定向到登录页面
+                window.location.href = '/';
+            });
+        } else {
+            console.error('未找到 ID 为 logout-button 的元素。');
+        }
+    </script>
+    {# 允许子模板添加自己的脚本 #}
+    {% block scripts %}{% endblock %}
+</body>
+</html>
