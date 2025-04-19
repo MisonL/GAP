@@ -71,34 +71,34 @@ async def verify_proxy_key(request: Request) -> str:
 
     # 根据数据库模式选择验证方式
     if IS_MEMORY_DB: # 检查当前是否为内存数据库模式
-        # --- 内存数据库模式：使用 PASSWORD 验证 ---
-        if not app_config.PASSWORD: # 内存模式下必须设置 PASSWORD 环境变量
-            logger.error("API 认证失败(内存模式)：未设置 PASSWORD 环境变量。")
+        # --- 内存数据库模式：使用 WEB_UI_PASSWORDS 验证 ---
+        if not app_config.WEB_UI_PASSWORDS: # 内存模式下必须设置 WEB_UI_PASSWORDS (PASSWORD 环境变量)
+            logger.error("API 认证失败(内存模式)：未设置 WEB_UI_PASSWORDS (PASSWORD 环境变量)。")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="服务配置错误：缺少 API 认证密码。",
             )
-        if token != app_config.PASSWORD: # 验证提供的令牌是否与全局密码匹配
-            logger.warning(f"API 认证失败(内存模式)：提供的令牌与 PASSWORD 不匹配。")
+        # 检查提供的令牌是否在配置的密码列表中
+        if token not in app_config.WEB_UI_PASSWORDS:
+            logger.warning(f"API 认证失败(内存模式)：提供的令牌与配置的密码不匹配。")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="未授权：无效的令牌。",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        logger.debug("API 认证成功 (内存模式，使用 PASSWORD)。")
-        # 在内存模式下，我们仍然可以将 PASSWORD (作为 token) 存储在 state 中，
-        # 以便上下文管理等功能（如果需要）可以基于它工作，尽管所有客户端共享它。
-        request.state.proxy_key = token # 将验证通过的令牌（即 PASSWORD）存储在请求状态中，供后续使用
+        logger.debug(f"API 认证成功 (内存模式，使用 Key: {token[:8]}...).")
+        # 将验证通过的令牌（即用户提供的密码/key）存储在请求状态中
+        request.state.proxy_key = token
         return token
     else:
         # --- 文件数据库模式：使用数据库中的代理 Key 验证 ---
-        if not context_store.is_valid_proxy_key(token): # 调用 context_store 检查代理 Key 是否在数据库中且有效
-            # is_valid_proxy_key 内部会记录 Key 无效的警告
+        # 保持现有逻辑不变
+        if not await context_store.is_valid_proxy_key(token): # is_valid_proxy_key 现在是 async 的
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, # 使用 403 表示令牌格式正确但无效/无权限
+                status_code=status.HTTP_403_FORBIDDEN,
                 detail="未授权：无效或非活动的代理 API Key。",
             )
         logger.debug(f"API 认证成功 (文件模式，使用代理 Key: {token[:8]}...)。")
         # 将有效的代理 Key 存储在 request state 中
-        request.state.proxy_key = token # 将验证通过的代理 Key 存储在请求状态中，供后续使用
+        request.state.proxy_key = token
         return token

@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("正在初始化数据库表...")
 
     try:
-        db_utils.initialize_db_tables() # 调用数据库工具函数来创建或验证所需的数据库表
+        await db_utils.initialize_db_tables() # 调用异步数据库工具函数来创建或验证所需的数据库表
     except Exception as e:
         logger.error(f"数据库表初始化失败，应用可能无法正常运行: {e}", exc_info=True)
         # 根据需要决定是否阻止应用启动 (对于数据库错误，通常应该阻止)

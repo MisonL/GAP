@@ -93,7 +93,7 @@ async def process_request(
 
     # --- 上下文管理 ---
     # 1. 加载历史上下文
-    history_contents: Optional[List[Dict[str, Any]]] = context_store.load_context(proxy_key)
+    history_contents: Optional[List[Dict[str, Any]]] = await context_store.load_context(proxy_key) # 添加 await
     logger.info(f"Loaded {len(history_contents) if history_contents else 0} historical messages for Key {proxy_key[:8]}...")
 
     # 2. 转换当前请求中的新消息
@@ -329,7 +329,7 @@ async def process_request(
                                 logger.info(f"Stream finished successfully for Key {proxy_key[:8]}.... Saving context up to user's last input (STREAM_SAVE_REPLY=false).")
                                 logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存流式上下文 (不含回复) (内存模式: {db_utils.IS_MEMORY_DB})")
                                 try:
-                                    context_store.save_context(proxy_key, contents_to_send)
+                                    await context_store.save_context(proxy_key, contents_to_send) # 添加 await
                                 except Exception as e:
                                     logger.error(f"保存流式上下文 (不含回复) 失败 (Key: {proxy_key[:8]}...): {str(e)}")
                             else:
@@ -346,7 +346,7 @@ async def process_request(
                                     if not still_over_limit_final:
                                         logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存流式上下文 (含回复) (内存模式: {db_utils.IS_MEMORY_DB})")
                                         try:
-                                            context_store.save_context(proxy_key, truncated_contents_to_save)
+                                            await context_store.save_context(proxy_key, truncated_contents_to_save) # 添加 await
                                             logger.info(f"流式上下文 (含回复) 保存成功 for Key {proxy_key[:8]}...")
                                         except Exception as e:
                                             logger.error(f"保存流式上下文 (含回复) 失败 (Key: {proxy_key[:8]}...): {str(e)}")
@@ -359,9 +359,39 @@ async def process_request(
                         logger.info(f"客户端连接已中断 (IP: {client_ip})")
                         # 不需要 yield [DONE]
                     except httpx.HTTPStatusError as http_err: # 捕获 stream_chat 可能抛出的 HTTP 错误
-                        last_error = f"流式 API 错误: {http_err.response.status_code}"
+                        status_code = http_err.response.status_code
+                        last_error = f"流式 API 错误: {status_code}"
                         logger.error(f"{last_error} - {http_err.response.text}", exc_info=False)
                         stream_error_occurred = True
+
+                        error_type = "api_error"
+                        if status_code == 400:
+                            error_message = "请求无效或格式错误，请检查您的输入。"
+                            error_type = "invalid_request_error"
+                        elif status_code == 401:
+                            error_message = "API 密钥无效或认证失败。"
+                            error_type = "authentication_error"
+                        elif status_code == 403:
+                            error_message = "API 密钥无权访问所请求的资源。"
+                            error_type = "permission_error"
+                        elif status_code == 429:
+                            error_message = "请求频率过高或超出配额，请稍后重试。"
+                            error_type = "rate_limit_error"
+                            logger.warning(f"流式请求遇到 429 错误 (Key: {current_api_key[:8]}...): {error_message}")
+                        elif status_code == 500:
+                            error_message = "Gemini API 服务器内部错误，请稍后重试。"
+                            error_type = "server_error"
+                        elif status_code == 503:
+                            error_message = "Gemini API 服务暂时不可用，请稍后重试。"
+                            error_type = "service_unavailable_error"
+                        else:
+                            error_message = f"API 请求失败，状态码: {status_code}。请检查日志获取详情。"
+
+                        # 发送错误信息给客户端并结束流
+                        yield f"data: {json.dumps({'error': {'message': error_message, 'type': error_type, 'code': status_code}})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return # 中断生成器
+
                     except Exception as stream_e:
                         last_error = f"流处理中捕获到意外异常: {stream_e}"
                         logger.error(last_error, exc_info=True)
@@ -501,7 +531,7 @@ async def process_request(
                         # 使用原始的 proxy_key 保存上下文
                         logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存非流式上下文 (内存模式: {db_utils.IS_MEMORY_DB})")
                         try:
-                            context_store.save_context(proxy_key, truncated_contents_to_save)
+                            await context_store.save_context(proxy_key, truncated_contents_to_save) # 添加 await
                         except Exception as e:
                             logger.error(f"保存上下文失败 (Key: {proxy_key[:8]}...): {str(e)}")
                         logger.info(f"上下文成功保存 for Key {proxy_key[:8]}...") # 记录实际使用的 Key
@@ -533,12 +563,42 @@ async def process_request(
 
     # --- 重试循环结束 ---
     # 如果所有尝试都失败了
-    final_error_msg = last_error or "所有 API 密钥均尝试失败或无可用密钥"
-    extra_log_fail = {'request_type': request_type, 'model': chat_request.model, 'status_code': 500, 'error_message': final_error_msg, 'ip': client_ip}
-    log_msg = format_log_message('ERROR', f"请求处理最终失败: {final_error_msg}", extra=extra_log_fail)
-    logger.error(log_msg)
-    # 抛出最终的 HTTPException
-    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=final_error_msg)
+    if response is None: # 确保是在所有尝试失败后
+        final_error_msg = last_error or "所有 API 密钥均尝试失败或无可用密钥"
+        extra_log_fail = {'request_type': request_type, 'model': chat_request.model, 'error_message': final_error_msg, 'ip': client_ip}
+
+        status_code = status.HTTP_500_INTERNAL_SERVER_ERROR # 默认 500
+        detail_msg = f"API 请求处理失败: {final_error_msg}" # 默认消息
+
+        if last_error:
+            # 尝试从 last_error 中提取或判断错误类型
+            last_error_lower = last_error.lower()
+            if "400" in last_error or "invalid" in last_error_lower or "bad request" in last_error_lower:
+                status_code = status.HTTP_400_BAD_REQUEST
+                detail_msg = "请求无效或格式错误，请检查您的输入。"
+            elif "401" in last_error or "unauthorized" in last_error_lower or "authentication" in last_error_lower:
+                status_code = status.HTTP_401_UNAUTHORIZED
+                detail_msg = "API 密钥无效或认证失败。"
+            elif "403" in last_error or "forbidden" in last_error_lower or "permission" in last_error_lower:
+                status_code = status.HTTP_403_FORBIDDEN
+                detail_msg = "API 密钥无权访问所请求的资源。"
+            elif "429" in last_error or "rate_limit" in last_error_lower or "quota" in last_error_lower or "频率限制" in last_error:
+                status_code = status.HTTP_429_TOO_MANY_REQUESTS
+                detail_msg = "请求频率过高或超出配额，请稍后重试。"
+            elif "500" in last_error or "internal server error" in last_error_lower:
+                status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+                detail_msg = "Gemini API 服务器内部错误，请稍后重试。"
+            elif "503" in last_error or "service unavailable" in last_error_lower:
+                status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+                detail_msg = "Gemini API 服务暂时不可用，请稍后重试。"
+            # 可以添加更多特定错误的判断
+
+        # 记录最终错误日志
+        log_level = logging.WARNING if status_code == 429 else logging.ERROR
+        logger.log(log_level, f"请求处理最终失败 ({status_code}): {final_error_msg}", extra={**extra_log_fail, 'status_code': status_code})
+
+        # 抛出最终的 HTTPException
+        raise HTTPException(status_code=status_code, detail=detail_msg)
 
 
 # --- 辅助函数 (例如处理工具调用) ---

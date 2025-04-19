@@ -4,6 +4,7 @@
 周期性使用情况报告和 Key 分数缓存刷新。
 """
 import logging
+import asyncio # 导入 asyncio
 from typing import TYPE_CHECKING
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -15,7 +16,7 @@ from ..config import ( # 上一级目录导入
     CACHE_REFRESH_INTERVAL_SECONDS # 确保导入
 )
 # 导入上下文存储相关 (清理函数)
-from .context_store import cleanup_memory_context
+from . import context_store # 导入整个模块以便调用 async 函数
 # 导入数据库工具 (数据库模式)
 from .db_utils import IS_MEMORY_DB
 # 导入日志清理任务
@@ -34,6 +35,19 @@ logger = logging.getLogger('my_logger') # 使用相同的日志记录器实例�
 # --- 调度器实例 ---
 scheduler = BackgroundScheduler()
 
+# --- 同步包装器，用于从调度器调用异步函数 ---
+def run_cleanup_memory_context(max_age_seconds: int):
+    """同步包装器，用于运行异步的 cleanup_memory_context"""
+    logger.debug(f"调度器触发 run_cleanup_memory_context (max_age={max_age_seconds})")
+    try:
+        # 使用 asyncio.run() 在新/当前事件循环中运行异步函数
+        # 注意：如果主应用事件循环复杂，这可能不是最佳实践，
+        # 但对于简单的后台任务通常足够。
+        # 更好的方法可能是获取正在运行的循环并使用 run_coroutine_threadsafe。
+        asyncio.run(context_store.cleanup_memory_context(max_age_seconds))
+        logger.debug(f"run_cleanup_memory_context (max_age={max_age_seconds}) 完成")
+    except Exception as e:
+        logger.error(f"运行 cleanup_memory_context 时出错: {e}", exc_info=True)
 
 # --- 调度器设置与启动 ---
 def setup_scheduler(key_manager: 'APIKeyManager'):
@@ -44,8 +58,10 @@ def setup_scheduler(key_manager: 'APIKeyManager'):
     # 每日 RPD/TPD_Input 重置任务 (PT 午夜) - 从 daily_reset 导入
     scheduler.add_job(reset_daily_counts, 'cron', hour=0, minute=0, timezone='America/Los_Angeles', id='daily_reset', name='每日限制重置', replace_existing=True)
     # 周期性使用报告任务 - 从 usage_reporter 导入
+    # TODO: 检查 report_usage 是否需要变成 async 并添加包装器
     scheduler.add_job(report_usage, 'interval', minutes=USAGE_REPORT_INTERVAL_MINUTES, args=[key_manager], id='usage_report', name='使用报告', replace_existing=True)
     # Key 得分缓存更新任务 (每 10 秒) - 从 key_management 导入
+    # TODO: 检查 _refresh_all_key_scores 是否需要变成 async 并添加包装器
     scheduler.add_job(_refresh_all_key_scores, 'interval', seconds=CACHE_REFRESH_INTERVAL_SECONDS, args=[key_manager], id='key_score_update', name='Key 得分更新', replace_existing=True) # 注意：_refresh_all_key_scores 现在只需要 key_manager 参数
 
     # 仅在内存数据库模式下添加上下文清理任务
@@ -60,7 +76,7 @@ def setup_scheduler(key_manager: 'APIKeyManager'):
         cleanup_max_age = cleanup_interval * 2 # 清理掉超过2倍检查间隔未使用的记录
 
         scheduler.add_job(
-            cleanup_memory_context, # 直接调用导入的函数
+            run_cleanup_memory_context, # 调用同步包装器
             'interval',
             seconds=cleanup_run_interval, # 按较短间隔运行检查
             args=[cleanup_max_age], # 传递最大保留时间（秒）

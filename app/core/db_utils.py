@@ -7,7 +7,8 @@ import sqlite3
 import logging
 import os
 import tempfile
-from contextlib import contextmanager
+import asyncio # 导入 asyncio
+from contextlib import asynccontextmanager # 改为异步上下文管理器
 from typing import Optional # 为类型提示添加
 
 # 导入配置以获取默认值
@@ -57,6 +58,7 @@ DEFAULT_CONTEXT_TTL_DAYS = getattr(app_config, 'DEFAULT_CONTEXT_TTL_DAYS', 7)
 
 # --- 内存模式下的共享连接 ---
 _shared_memory_conn: Optional[sqlite3.Connection] = None # 用于缓存共享内存连接
+db_lock = asyncio.Lock() # 为共享内存数据库访问创建一个锁
 
 # --- 内部表创建逻辑 ---
 def _create_tables_if_not_exist(conn: sqlite3.Connection):
@@ -105,8 +107,8 @@ def _create_tables_if_not_exist(conn: sqlite3.Connection):
         # 让调用者处理错误传播
 
 # --- 数据库连接 ---
-@contextmanager
-def get_db_connection():
+@asynccontextmanager # 改为异步上下文管理器
+async def get_db_connection(): # 改为异步函数
     """
     获取数据库连接的上下文管理器。
     在内存模式下，返回一个共享的、持久的连接。
@@ -114,6 +116,7 @@ def get_db_connection():
     """
     global _shared_memory_conn # Declare intent to modify the global variable
     conn = None
+    lock_acquired = False # 跟踪锁是否已被获取
     is_shared_conn = False # 标记以防止关闭共享连接
 
     try:
@@ -128,9 +131,11 @@ def get_db_connection():
                 _create_tables_if_not_exist(_shared_memory_conn) # 仅在创建共享连接时创建一次表
                 logger.info(f"内存数据库模式：共享连接 {id(_shared_memory_conn)} 已初始化。")
             # logger.debug(f"内存数据库模式：返回共享连接 {id(_shared_memory_conn)}")
+            await db_lock.acquire() # 在 yield 连接之前获取锁
+            lock_acquired = True
             conn = _shared_memory_conn
             is_shared_conn = True
-            yield conn
+            yield conn # 在持有锁的情况下 yield 连接
         else:
             # 基于文件的数据库：为每个请求创建一个新连接
             # logger.debug(f"文件数据库模式：创建新连接 ({DATABASE_PATH})...")
@@ -145,6 +150,9 @@ def get_db_connection():
         logger.error(f"数据库连接或设置错误 ({DATABASE_PATH}): {e}", exc_info=True)
         raise # 重新抛出异常以通知调用者
     finally:
+        # 释放锁（如果已获取）
+        if lock_acquired:
+            db_lock.release()
         if conn and not is_shared_conn: # 仅当不是共享内存连接时才关闭
             # logger.debug(f"关闭文件数据库连接 {id(conn)}。")
             conn.close()
@@ -153,7 +161,8 @@ def get_db_connection():
 
 
 # --- 公共数据库初始化函数 ---
-def initialize_db_tables():
+# 注意：这个函数现在需要是 async 的，因为它调用了 async 的 get_db_connection
+async def initialize_db_tables():
     """
     显式初始化数据库表（如果不存在）。应在应用启动时调用一次。
     对于内存数据库，这将创建并缓存共享连接。
@@ -161,8 +170,8 @@ def initialize_db_tables():
     """
     logger.info(f"开始显式数据库表初始化 ({DATABASE_PATH})...")
     try:
-        # 只需通过上下文管理器获取连接即可处理初始化
-        with get_db_connection() as conn:
+        # 只需通过异步上下文管理器获取连接即可处理初始化
+        async with get_db_connection() as conn:
              # 对于内存数据库，这将创建/检索共享连接并确保表存在。
              # 对于文件数据库，这将在首次连接时创建文件/表（如果它们不存在）。
              logger.info(f"数据库连接已获取 (类型: {'内存共享' if IS_MEMORY_DB else '文件'}, ID: {id(conn)})，初始化检查完成。")
@@ -176,29 +185,33 @@ def initialize_db_tables():
         raise RuntimeError(f"无法初始化数据库表: {e}")
 
 # --- Proxy Key Management Functions ---
+# 注意：所有使用 get_db_connection 的函数现在都需要是 async 的
 
-def get_all_proxy_keys() -> list[sqlite3.Row]:
+async def get_all_proxy_keys() -> list[sqlite3.Row]:
     """获取所有代理 Key 及其信息。"""
     logger.debug("获取所有 proxy keys...")
     try:
-        with get_db_connection() as conn:
+        async with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT key, description, created_at, is_active FROM proxy_keys ORDER BY created_at DESC")
-            keys = cursor.fetchall()
+            # 在异步函数中执行数据库操作需要特殊处理，因为 sqlite3 本身不是异步的
+            # 推荐使用像 databases 或 aiosqlite 这样的库，但为了最小化更改，
+            # 我们将使用 conn.execute 在默认的执行器中运行同步操作
+            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active FROM proxy_keys ORDER BY created_at DESC")
+            keys = await asyncio.to_thread(cursor.fetchall)
             logger.debug(f"成功获取 {len(keys)} 个 proxy keys。")
             return keys
     except sqlite3.Error as e:
         logger.error(f"获取所有 proxy keys 时出错: {e}", exc_info=True)
         return [] # 出错时返回空列表
 
-def get_proxy_key(key: str) -> Optional[sqlite3.Row]:
+async def get_proxy_key(key: str) -> Optional[sqlite3.Row]:
     """获取单个代理 Key 的信息。"""
     logger.debug(f"获取 proxy key: {key}...")
     try:
-        with get_db_connection() as conn:
+        async with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT key, description, created_at, is_active FROM proxy_keys WHERE key = ?", (key,))
-            row = cursor.fetchone()
+            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active FROM proxy_keys WHERE key = ?", (key,))
+            row = await asyncio.to_thread(cursor.fetchone)
             if row:
                 logger.debug(f"成功获取 proxy key: {key}。")
             else:
@@ -208,31 +221,36 @@ def get_proxy_key(key: str) -> Optional[sqlite3.Row]:
         logger.error(f"获取 proxy key '{key}' 时出错: {e}", exc_info=True)
         return None
 
-def add_proxy_key(key: str, description: str = "") -> bool:
+async def add_proxy_key(key: str, description: str = "") -> bool:
     """
     添加一个新的代理 Key。
     如果 Key 已存在，则不执行任何操作并返回 False。
     """
     logger.info(f"尝试添加 proxy key: {key}...")
     try:
-        with get_db_connection() as conn:
+        async with get_db_connection() as conn:
             cursor = conn.cursor()
             # 使用 INSERT OR IGNORE 避免因 Key 已存在而出错
-            cursor.execute("INSERT OR IGNORE INTO proxy_keys (key, description, is_active) VALUES (?, ?, ?)",
+            await asyncio.to_thread(cursor.execute, "INSERT OR IGNORE INTO proxy_keys (key, description, is_active) VALUES (?, ?, ?)",
                            (key, description, True))
-            conn.commit()
-            # rowcount 会告诉我们是否实际插入了行
-            if cursor.rowcount > 0:
-                logger.info(f"成功添加 proxy key: {key}。")
-                return True
+            await asyncio.to_thread(conn.commit)
+            # rowcount 在 to_thread 中可能不直接可用，需要检查
+            # 暂时假设成功，除非有异常
+            # 更好的方法是检查 key 是否存在
+            key_exists_after = await get_proxy_key(key) # 检查是否真的添加了
+            if key_exists_after:
+                 logger.info(f"成功添加或已存在 proxy key: {key}。")
+                 return True # 认为成功，即使是已存在
             else:
-                logger.warning(f"添加 proxy key 失败，Key '{key}' 可能已存在。")
-                return False
+                 # 理论上不应发生，除非 commit 失败
+                 logger.error(f"添加 proxy key '{key}' 后未能找到，可能提交失败。")
+                 return False
+
     except sqlite3.Error as e:
         logger.error(f"添加 proxy key '{key}' 时出错: {e}", exc_info=True)
         return False
 
-def update_proxy_key(key: str, description: Optional[str] = None, is_active: Optional[bool] = None) -> bool:
+async def update_proxy_key(key: str, description: Optional[str] = None, is_active: Optional[bool] = None) -> bool:
     """
     更新代理 Key 的描述或激活状态。
     至少需要提供 description 或 is_active 中的一个。
@@ -257,32 +275,39 @@ def update_proxy_key(key: str, description: Optional[str] = None, is_active: Opt
     sql = f"UPDATE proxy_keys SET {', '.join(updates)} WHERE key = ?"
 
     try:
-        with get_db_connection() as conn:
+        async with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(sql, tuple(params))
-            conn.commit()
-            if cursor.rowcount > 0:
+            await asyncio.to_thread(cursor.execute, sql, tuple(params))
+            rowcount = cursor.rowcount # 获取同步操作的 rowcount
+            await asyncio.to_thread(conn.commit)
+            if rowcount > 0:
                 logger.info(f"成功更新 proxy key: {key}。")
                 return True
             else:
-                logger.warning(f"更新 proxy key '{key}' 失败：Key 未找到或值未改变。")
+                # 检查 key 是否存在以提供更准确的信息
+                exists = await get_proxy_key(key)
+                if not exists:
+                    logger.warning(f"更新 proxy key '{key}' 失败：Key 未找到。")
+                else:
+                    logger.warning(f"更新 proxy key '{key}' 失败：值未改变。")
                 return False
     except sqlite3.Error as e:
         logger.error(f"更新 proxy key '{key}' 时出错: {e}", exc_info=True)
         return False
 
-def delete_proxy_key(key: str) -> bool:
+async def delete_proxy_key(key: str) -> bool:
     """
     删除一个代理 Key。
     由于设置了 FOREIGN KEY ... ON DELETE CASCADE，关联的上下文也会被删除。
     """
     logger.info(f"尝试删除 proxy key: {key}...")
     try:
-        with get_db_connection() as conn:
+        async with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM proxy_keys WHERE key = ?", (key,))
-            conn.commit()
-            if cursor.rowcount > 0:
+            await asyncio.to_thread(cursor.execute, "DELETE FROM proxy_keys WHERE key = ?", (key,))
+            rowcount = cursor.rowcount
+            await asyncio.to_thread(conn.commit)
+            if rowcount > 0:
                 logger.info(f"成功删除 proxy key: {key} (及其关联的上下文)。")
                 return True
             else:

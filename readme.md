@@ -105,7 +105,7 @@
     *   模型名称验证：启动时记录可用模型列表，确保客户端使用正确的模型名称。
 
 *   **上下文管理 (v1.3.0 新增)**:
-    *   支持基于代理 Key (`Authorization: Bearer <proxy_key>`) 的多轮对话上下文保持。
+    *   支持基于认证凭证 (`Authorization: Bearer <credential>`) 的多轮对话上下文保持。在内存模式下，此凭证是 `PASSWORD` 环境变量中的某个值；在文件模式下，是数据库中的代理 Key。
     *   使用 SQLite 进行上下文存储。**默认使用内存模式** (`:memory:`)，适用于 HF Spaces 免费层（重启丢失数据）。可通过 `CONTEXT_DB_PATH` 环境变量启用**文件持久化存储**。
     *   根据模型 `input_token_limit` (在 `model_limits.json` 中配置) 自动截断过长的上下文。
     *   内存模式下，会定期自动清理超过 TTL 设置的旧上下文，防止内存溢出。
@@ -114,7 +114,10 @@
     *   **清除上下文:** 可在 `/manage/context` Web 界面中选择并删除特定 Key 关联的对话历史。
 
 
-    *   **⚠️ 重要提醒:** 上下文与 `Authorization` Header 中提供的凭证 (内存模式下的 `PASSWORD` 或文件模式下的数据库代理 Key) 严格绑定。**为不同的对话或任务使用相同的 Key 会导致上下文混淆！请务必为每个独立的对话/任务使用不同的 Key。**
+    *   **⚠️ 重要提醒:** 上下文与 `Authorization` Header 中提供的凭证严格绑定。
+        *   在**内存模式**下，此凭证是 `PASSWORD` 环境变量中配置的**某个**值。
+        *   在**文件模式**下，此凭证是数据库中有效的代理 Key。
+        **为不同的对话或任务使用相同的凭证会导致上下文混淆！请务必为每个独立的对话/任务使用不同的凭证 (即在内存模式下使用不同的密码，或在文件模式下使用不同的代理 Key)。**
 
 
 ![Web UI 上下文管理界面截图](assets/images/web-manage-context.png)
@@ -132,7 +135,7 @@
     | 环境变量                                | 说明                                                                                                                               | 默认值/示例                               |
     | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
     | `GEMINI_API_KEYS`                       | **（必需）** 你的 Gemini API 密钥，用逗号分隔。                                                                                       | `key1,key2,key3`                          |
-    | `PASSWORD`                              | （可选）设置服务的 API 密钥（用于内存模式认证和 Web UI 登录）。                                                                         | `"123"`                                   |
+    | `PASSWORD`                              | （可选）设置服务的 API 密钥（用于内存模式认证和 Web UI 登录）。**在内存模式下，支持逗号分隔配置多个 Key，每个 Key 对应一个独立的用户和上下文。** | `"123,password2,password3"`               |
     | `SECRET_KEY`                            | **（必需）** 用于 Web UI Session 和 JWT 加密的密钥。请设置一个长而随机的字符串。                                                          |                                           |
     | `MAX_REQUESTS_PER_MINUTE`               | （可选）每分钟最大请求数。                                                                                                           | `30`                                      |
     | `MAX_REQUESTS_PER_DAY_PER_IP`           | （可选）每天每个 IP 最大请求数。                                                                                                       | `600`                                     |
@@ -182,7 +185,8 @@
       SECRET_KEY=your_very_strong_random_secret_key_here
       
       # (可选) 服务 API 密钥 (内存模式认证 & Web UI 登录)
-      PASSWORD="123"
+      # 在内存模式下，支持逗号分隔配置多个 Key，每个 Key 对应一个独立的用户和上下文。
+      PASSWORD="123,password2,password3"
       
       # (可选) 启用文件存储上下文 (否则使用内存)
       # CONTEXT_DB_PATH=app/data/context_store.db
@@ -209,7 +213,7 @@
 1.  在连接中选择 OpenAI。
 2.  在 API Base URL 中填入 `https://your-space-url.hf.space/v1` 或本地运行地址 `http://localhost:7860/v1`。
 3.  在 API Key 中填入你的认证凭证：
-    *   **内存模式 (HF Spaces 默认):** 填入 `PASSWORD` 环境变量的值。
+    *   **内存模式 (HF Spaces 默认):** 填入 `PASSWORD` 环境变量中配置的**某个**值。
     *   **文件模式 (本地部署，设置了 `CONTEXT_DB_PATH`):** 填入你通过 `/manage/keys` Web UI 添加或手动添加到数据库 `proxy_keys` 表中的代理 Key。
 
 ## 📝 API 接口说明
@@ -245,7 +249,7 @@ POST /v1/chat/completions
 **认证:**
 *   **API 请求 (`/v1/...`)**:
     *   使用 HTTP `Authorization` Header 传递 Bearer Token。
-    *   **内存模式 (默认):** Token 为 `PASSWORD` 环境变量的值。
+    *   **内存模式 (默认):** Token 为 `PASSWORD` 环境变量中配置的**某个**值。
     *   **文件模式 (`CONTEXT_DB_PATH` 已设置):** Token 为数据库 `proxy_keys` 表中有效的代理 Key (可通过 `/manage/keys` UI 管理)。
 *   **Web UI 请求 (`/`, `/manage/context`, `/manage/keys`)**:
     *   需要通过 `/login` 页面使用 `PASSWORD` 环境变量的值进行登录。
@@ -281,7 +285,18 @@ POST /v1/chat/completions
 <details>
 <summary>点击展开/折叠详细版本历史</summary>
 
-### v1.3.0 (本次更新)
+### v1.4.0
+*   **新功能**: 在内存模式下支持通过逗号分隔的 `PASSWORD` 环境变量配置多个中转用户 Key。
+    *   每个配置的密码/Key都作为一个独立的用户标识符，拥有独立的上下文。
+    *   更新了 Web UI 登录和 API 认证逻辑，以验证用户提供的凭证是否在配置的 `PASSWORD` 列表中。
+    *   上下文管理现在在内存模式下与用户提供的密码/Key关联。
+*   **文档更新**: 更新了 `readme.md`，说明了内存模式下多中转用户 Key 的配置和使用方法。
+
+
+### v1.3.1
+*   **修复**: 解决了在内存数据库模式下，Web UI 删除上下文后应用可能意外关闭的问题。通过为共享内存数据库连接引入 `asyncio.Lock`，并更新相关数据库操作函数为异步，避免了并发访问冲突。
+
+### v1.3.0
 *   **Web UI 认证重构**: 使用 JWT (JSON Web Token) 替代 Session Cookie 进行 Web UI 认证，解决登录持久性问题，特别是 Hugging Face Spaces 环境。
     *   新增 `/login` API 端点处理密码验证和 JWT 签发。
     *   新增 `login.html` 模板及前端 JavaScript 实现异步登录和 Token 存储 (`localStorage`)。

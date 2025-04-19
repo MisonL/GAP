@@ -15,11 +15,13 @@ load_dotenv()
 logger = logging.getLogger('my_logger') # 获取日志记录器实例
 
 # --- 应用版本 ---
-__version__ = "1.3.0" # 更新版本号
+__version__ = "1.4.0" # 更新版本号，支持内存模式多中转用户 Key
 
 
 # --- 应用配置 ---
 PASSWORD = os.environ.get("PASSWORD") # Web UI 密码 (强制设置)
+WEB_UI_PASSWORDS: List[str] = [p.strip() for p in PASSWORD.split(',') if p.strip()] if PASSWORD else []
+
 SECRET_KEY = os.environ.get("SECRET_KEY") # 用于 Session 中间件，必须设置！
 MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", "30")) # 每分钟最大请求数 (本地限制)
 MAX_REQUESTS_PER_DAY_PER_IP: int = int(os.environ.get("MAX_REQUESTS_PER_DAY_PER_IP", "600")) # 每个 IP 每天最大请求数

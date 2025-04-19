@@ -4,6 +4,7 @@
 """
 import logging
 # import pytz # 已移除，不再需要
+import asyncio # 导入 asyncio，虽然不直接用，但依赖的模块用了
 from datetime import datetime, timezone # 导入时区
 # from collections import Counter # 已移除，不再需要
 from fastapi import APIRouter, Request, Form, Depends, HTTPException, status, Response # 保留 Response 导入
@@ -103,21 +104,22 @@ async def login_for_access_token(
     #     raise HTTPException(status_code=e.status_code, detail=e.message)
     # --- CSRF 验证已移除 ---
 
-    if not PASSWORD:
-        logger.error("尝试登录，但 Web UI 密码 (PASSWORD) 未设置。")
+    # 检查是否配置了任何密码
+    if not config.WEB_UI_PASSWORDS:
+        logger.error("尝试登录，但 Web UI 密码 (PASSWORD) 未设置或为空。")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, # 使用 503 表示服务未正确配置
             detail="Web UI 登录未启用 (密码未设置)",
         )
 
-    if password == PASSWORD:
+    # 检查提交的密码是否在配置的密码列表中
+    if password in config.WEB_UI_PASSWORDS:
         # 密码正确，创建 JWT
-        # 注意：JWT payload 可以包含任何你需要的信息，这里只放一个简单的标识
-        # 在实际应用中，可能会包含 user_id, role 等
-        access_token_data = {"sub": "web_ui_user"} # 'sub' (subject) 是 JWT 标准字段
+        # 将成功匹配的密码作为用户标识符存储在 JWT 的 'sub' 字段中
+        access_token_data = {"sub": password}
         try:
             access_token = create_access_token(data=access_token_data)
-            logger.info("Web UI 登录成功，已签发 JWT。")
+            logger.info(f"Web UI 登录成功，用户 Key: {password[:8]}... 已签发 JWT。")
             return JSONResponse(content={"access_token": access_token, "token_type": "bearer"})
         except ValueError as e: # 捕获 create_access_token 中 SECRET_KEY 未设置的错误
              logger.error(f"无法创建 JWT: {e}")
@@ -137,7 +139,7 @@ async def login_for_access_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="密码错误",
-            headers={"WWW-Authenticate": "Bearer"}, # 虽然这里不是直接用 Bearer，但登录失败返回 401 是惯例
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
 
@@ -218,7 +220,7 @@ async def get_manage_keys_data(token_payload: Dict[str, Any] = Depends(verify_jw
     """获取代理 Key 管理页面所需的数据。"""
     logger.debug(f"用户 {token_payload.get('sub')} 请求 Key 管理数据")
     try:
-        keys_data = db_utils.get_all_proxy_keys()
+        keys_data = await db_utils.get_all_proxy_keys() # 添加 await
         # 转换 Row 对象为字典列表，并格式化日期
         result = []
         for row in keys_data:
@@ -258,12 +260,12 @@ async def add_new_key(
     new_key = str(uuid.uuid4())
     description = key_data.description # Pydantic 会处理 None
 
-    success = db_utils.add_proxy_key(key=new_key, description=description)
+    success = await db_utils.add_proxy_key(key=new_key, description=description) # 添加 await
 
     if success:
         logger.info(f"成功添加新 Key: {new_key[:8]}... (描述: {description})")
         # 返回新创建的 Key 信息可能更有用
-        new_key_info = db_utils.get_proxy_key(new_key)
+        new_key_info = await db_utils.get_proxy_key(new_key) # 添加 await
         if new_key_info:
              key_dict = dict(new_key_info)
              created_at_val = key_dict.get('created_at')
@@ -301,7 +303,7 @@ async def update_existing_key(
          logger.warning(f"更新 Key {proxy_key[:8]}... 的请求未提供任何更新字段。")
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="必须提供 description 或 is_active 进行更新")
 
-    success = db_utils.update_proxy_key(
+    success = await db_utils.update_proxy_key( # 添加 await
         key=proxy_key,
         description=update_data.description,
         is_active=update_data.is_active
@@ -309,7 +311,7 @@ async def update_existing_key(
 
     if success:
         logger.info(f"成功更新 Key: {proxy_key[:8]}...")
-        updated_key_info = db_utils.get_proxy_key(proxy_key)
+        updated_key_info = await db_utils.get_proxy_key(proxy_key) # 添加 await
         if updated_key_info:
              key_dict = dict(updated_key_info)
              created_at_val = key_dict.get('created_at')
@@ -327,7 +329,7 @@ async def update_existing_key(
     else:
         # update_proxy_key 内部已记录 Key 未找到或未改变的警告
         # 检查 Key 是否存在，以返回更具体的错误
-        existing_key = db_utils.get_proxy_key(proxy_key)
+        existing_key = await db_utils.get_proxy_key(proxy_key) # 添加 await
         if not existing_key:
             logger.warning(f"尝试更新不存在的 Key: {proxy_key[:8]}...")
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Key '{proxy_key}' 不存在")
@@ -349,7 +351,7 @@ async def delete_existing_key(
     """删除指定的代理 Key (及其关联的上下文)。"""
     logger.debug(f"用户 {token_payload.get('sub')} 请求删除 Key: {proxy_key[:8]}...")
 
-    success = db_utils.delete_proxy_key(key=proxy_key)
+    success = await db_utils.delete_proxy_key(key=proxy_key) # 添加 await
 
     if success:
         logger.info(f"成功删除 Key: {proxy_key[:8]}...")
@@ -372,8 +374,8 @@ async def manage_context_page(request: Request): # 移除 CsrfProtect 依赖
     需要 JWT 认证。
     """
     # 不再需要在这里获取数据，只渲染模板
-    # current_ttl_days = context_store.get_ttl_days()
-    # contexts_info = context_store.list_all_context_keys_info()
+    # current_ttl_days = await context_store.get_ttl_days() # 改为 await
+    # contexts_info = await context_store.list_all_context_keys_info() # 改为 await
     # # 转换 datetime 对象 ... (移除)
     context = {
         "request": request,
@@ -398,8 +400,8 @@ async def get_manage_context_data(token_payload: Dict[str, Any] = Depends(verify
     """
     logger.debug(f"用户 {token_payload.get('sub')} 请求上下文管理数据")
     try:
-        current_ttl_days = context_store.get_ttl_days()
-        contexts_info = context_store.list_all_context_keys_info()
+        current_ttl_days = await context_store.get_ttl_days() # 添加 await
+        contexts_info = await context_store.list_all_context_keys_info() # 添加 await
         # 转换 datetime 对象为 ISO 格式字符串以便 JSON 序列化
         for ctx in contexts_info:
             if isinstance(ctx.get('last_used'), datetime):
@@ -421,7 +423,7 @@ async def update_ttl(request: Request, ttl_days: int = Form(...), token_payload:
     logger.debug(f"用户 {token_payload.get('sub')} 尝试更新 TTL 为 {ttl_days} 天")
     try:
         if ttl_days < 0: raise ValueError("TTL 不能为负数")
-        context_store.set_ttl_days(ttl_days)
+        await context_store.set_ttl_days(ttl_days) # 添加 await
         # TODO: 考虑是否需要向前端返回成功/失败信息，而非仅重定向 (JWT 模式下 Flash 消息不常用)
         logger.info(f"上下文 TTL 已更新为 {ttl_days} 天")
     except ValueError as e:
@@ -435,7 +437,7 @@ async def update_ttl(request: Request, ttl_days: int = Form(...), token_payload:
 async def delete_single_context(request: Request, proxy_key: str, token_payload: Dict[str, Any] = Depends(verify_jwt_token)): # 在此处保留 JWT 验证依赖
     """删除指定代理 Key 关联的上下文记录"""
     logger.debug(f"用户 {token_payload.get('sub')} 尝试删除 Key {proxy_key[:8]}... 的上下文")
-    success = context_store.delete_context_for_key(proxy_key)
+    success = await context_store.delete_context_for_key(proxy_key) # 添加 await
     # TODO: 考虑是否需要向前端返回成功/失败信息 (JWT 模式下 Flash 消息不常用)
     logger.info(f"删除 Key {proxy_key[:8]}... 的上下文 {'成功' if success else '失败 (Key 可能不存在)'}")
     # 操作完成后重定向回上下文管理页面
