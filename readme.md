@@ -136,6 +136,7 @@
     | 环境变量                                | 说明                                                                                                                               | 默认值/示例                               |
     | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
     | `GEMINI_API_KEYS`                       | **（必需）** 你的 Gemini API 密钥，用逗号分隔。                                                                                       | `key1,key2,key3`                          |
+    | `ADMIN_API_KEY`                         | **（必需）** 中转服务管理员 API Key，用于管理所有上下文和 Key（文件模式）。拥有最高权限。 | `your_admin_api_key_here`                 |
     | `PASSWORD`                              | （可选）设置服务的 API 密钥（用于内存模式认证和 Web UI 登录）。**在内存模式下，支持逗号分隔配置多个 Key，每个 Key 对应一个独立的用户和上下文。** | `"123,password2,password3"`               |
     | `SECRET_KEY`                            | **（必需）** 用于 Web UI Session 和 JWT 加密的密钥。请设置一个长而随机的字符串。                                                          |                                           |
     | `MAX_REQUESTS_PER_MINUTE`               | （可选）每分钟最大请求数。                                                                                                           | `30`                                      |
@@ -308,6 +309,13 @@ POST /v1/chat/completions
 
 <details>
 <summary>点击展开/折叠详细版本历史</summary>
+
+### v1.4.2
+    *   **配置与提示**: 
+        *   将 `ADMIN_API_KEY` 环境变量标记为 **必需** (`readme.md`)。
+        *   在 Web UI (登录页及管理页) 顶部添加横幅警告，提示用户 `ADMIN_API_KEY` 未设置 (`app/web/routes.py`, `app/web/templates/_base.html`, `app/web/templates/login.html`)。
+        *   在应用程序启动时，如果 `ADMIN_API_KEY` 未设置或无有效 `GEMINI_API_KEYS`，在终端日志中添加 **红色** 警告/错误信息 (`app/main.py`)。
+
 
 ### v1.4.1
     *   **许可证**: 添加了知识共享署名-非商业性使用 4.0 国际 (CC BY-NC 4.0) 许可证 ([LICENSE](LICENSE), [LICENSE.zh-CN](LICENSE.zh-CN))，并在 README 中添加了说明。

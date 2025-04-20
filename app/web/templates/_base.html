@@ -194,6 +194,12 @@
         {#     {% endif %} #}
         {# {% endwith %} #}
 
+        {% if admin_key_missing %}
+        <div class="alert alert-error" role="alert">
+            <strong>警告：</strong> 管理员 API Key (ADMIN_API_KEY) 未设置！部分管理功能（如代理 Key 管理）将不可用。请在环境变量中配置 ADMIN_API_KEY 以启用全部功能。
+        </div>
+        {% endif %}
+
         {% block content %}{% endblock %}
     </div>
 
