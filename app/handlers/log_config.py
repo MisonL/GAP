@@ -128,21 +128,6 @@ def setup_logger():
                 except Exception as e:
                     print(f"警告: 无法创建错误日志处理程序: {e}")
 
-            # --- 访问日志处理程序 (基于大小轮转, 暂未使用但保留) ---
-            # if access_log_file: # 检查路径是否有效
-            #     try:
-            #         access_handler = RotatingFileHandler(
-            #             access_log_file,
-            #             maxBytes=MAX_LOG_SIZE,
-            #             backupCount=MAX_LOG_BACKUPS,
-            #             encoding='utf-8'
-            #         )
-            #         access_handler.setLevel(logging.INFO) # 访问日志记录 INFO 及以上级别
-            #         access_handler.setFormatter(file_formatter) # 应用格式
-            #         logger.addHandler(access_handler)         # 添加到记录器
-            #     except Exception as e:
-            #         print(f"警告: 无法创建访问日志处理程序: {e}")
-
         except Exception as e:
             # 捕获设置文件日志处理程序时的任何其他异常
             print(f"警告: 设置文件日志处理程序时出错: {e}")

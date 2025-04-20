@@ -1,5 +1,4 @@
 # 导入必要的库
-# import requests  # 不再需要，使用 httpx
 import json      # 用于处理 JSON 数据
 import os        # 用于访问环境变量
 import asyncio   # 用于异步操作
@@ -8,7 +7,6 @@ from ..api.models import ChatCompletionRequest # 仅导入需要的模型
 from typing import Optional, Dict, Any, List, AsyncGenerator, Union # 增加了 AsyncGenerator, Union
 import httpx     # 用于发送异步 HTTP 请求
 import logging   # 用于日志记录
-# from .utils import StreamProcessingError # 移除了，因为 stream_chat 内部处理了
 from .response_wrapper import ResponseWrapper # 新增导入
 # convert_messages 不再由此类直接调用，由外部调用者处理
 

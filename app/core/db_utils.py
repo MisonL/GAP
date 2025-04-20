@@ -10,6 +10,7 @@ import tempfile
 import asyncio # 导入 asyncio
 from contextlib import asynccontextmanager # 改为异步上下文管理器
 from typing import Optional # 为类型提示添加
+from datetime import datetime, timezone # 新增：用于有效期检查
 
 # 导入配置以获取默认值
 from .. import config as app_config
@@ -72,7 +73,8 @@ def _create_tables_if_not_exist(conn: sqlite3.Connection):
                 key TEXT PRIMARY KEY,
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_active BOOLEAN DEFAULT TRUE
+                is_active BOOLEAN DEFAULT TRUE,
+                expires_at DATETIME NULL -- 新增：Key 的过期时间，NULL 表示永不过期
             )
         """)
         # 创建 contexts 表
@@ -196,7 +198,7 @@ async def get_all_proxy_keys() -> list[sqlite3.Row]:
             # 在异步函数中执行数据库操作需要特殊处理，因为 sqlite3 本身不是异步的
             # 推荐使用像 databases 或 aiosqlite 这样的库，但为了最小化更改，
             # 我们将使用 conn.execute 在默认的执行器中运行同步操作
-            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active FROM proxy_keys ORDER BY created_at DESC")
+            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active, expires_at FROM proxy_keys ORDER BY created_at DESC") # 添加 expires_at
             keys = await asyncio.to_thread(cursor.fetchall)
             logger.debug(f"成功获取 {len(keys)} 个 proxy keys。")
             return keys
@@ -206,33 +208,70 @@ async def get_all_proxy_keys() -> list[sqlite3.Row]:
 
 async def get_proxy_key(key: str) -> Optional[sqlite3.Row]:
     """获取单个代理 Key 的信息。"""
-    logger.debug(f"获取 proxy key: {key}...")
+    # logger.debug(f"获取 proxy key: {key}...") # 减少日志噪音
+    if not key: return None # 增加空 key 检查
     try:
         async with get_db_connection() as conn:
             cursor = conn.cursor()
-            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active FROM proxy_keys WHERE key = ?", (key,))
+            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active, expires_at FROM proxy_keys WHERE key = ?", (key,)) # 添加 expires_at
             row = await asyncio.to_thread(cursor.fetchone)
-            if row:
-                logger.debug(f"成功获取 proxy key: {key}。")
-            else:
-                logger.debug(f"Proxy key 未找到: {key}。")
+            # if row:
+            #     logger.debug(f"成功获取 proxy key: {key}。")
+            # else:
+            #     logger.debug(f"Proxy key 未找到: {key}。")
             return row
     except sqlite3.Error as e:
         logger.error(f"获取 proxy key '{key}' 时出错: {e}", exc_info=True)
         return None
 
-async def add_proxy_key(key: str, description: str = "") -> bool:
+# 注意：此函数现在需要是 async，因为它调用了 async 的 get_proxy_key
+async def is_valid_proxy_key(key: str) -> bool:
+    """检查代理 Key 是否有效、处于活动状态且未过期 (从数据库)"""
+    key_info = await get_proxy_key(key) # 使用 await 调用
+    if not key_info or not key_info.get('is_active'):
+        # logger.debug(f"Key '{key[:8]}...' 无效或不活动。") # 减少日志
+        return False
+
+    # 检查有效期
+    expires_at_str = key_info.get('expires_at')
+    if expires_at_str:
+        try:
+            # 假设存储的是 ISO 格式的 UTC 时间字符串
+            # SQLite 可能返回不带时区的字符串，解析时需指定 UTC
+            expires_at_dt = datetime.fromisoformat(expires_at_str).replace(tzinfo=timezone.utc)
+            now_utc = datetime.now(timezone.utc)
+            if expires_at_dt < now_utc:
+                logger.info(f"Proxy key '{key[:8]}...' 已过期 (过期时间: {expires_at_str})。")
+                return False
+        except (ValueError, TypeError) as e:
+            logger.error(f"无法解析 proxy key '{key[:8]}...' 的过期时间 '{expires_at_str}': {e}。视为无效。")
+            return False # 如果无法解析过期时间，视为无效
+
+    # Key 存在、活动且未过期 (或无过期时间)
+    # logger.debug(f"Key '{key[:8]}...' 验证通过。") # 减少日志
+    return True
+
+
+async def add_proxy_key(key: str, description: str = "", expires_at: Optional[str] = None) -> bool:
     """
     添加一个新的代理 Key。
     如果 Key 已存在，则不执行任何操作并返回 False。
+
+    Args:
+        key: 要添加的 Key。
+        description: Key 的描述。
+        expires_at: Key 的过期时间 (ISO 格式字符串)，None 表示永不过期。
     """
-    logger.info(f"尝试添加 proxy key: {key}...")
+    logger.info(f"尝试添加 proxy key: {key} (Expires: {expires_at})...")
     try:
         async with get_db_connection() as conn:
             cursor = conn.cursor()
             # 使用 INSERT OR IGNORE 避免因 Key 已存在而出错
-            await asyncio.to_thread(cursor.execute, "INSERT OR IGNORE INTO proxy_keys (key, description, is_active) VALUES (?, ?, ?)",
-                           (key, description, True))
+            await asyncio.to_thread(
+                cursor.execute,
+                "INSERT OR IGNORE INTO proxy_keys (key, description, is_active, expires_at) VALUES (?, ?, ?, ?)",
+                (key, description, True, expires_at) # 添加 expires_at
+            )
             await asyncio.to_thread(conn.commit)
             # rowcount 在 to_thread 中可能不直接可用，需要检查
             # 暂时假设成功，除非有异常
@@ -250,16 +289,27 @@ async def add_proxy_key(key: str, description: str = "") -> bool:
         logger.error(f"添加 proxy key '{key}' 时出错: {e}", exc_info=True)
         return False
 
-async def update_proxy_key(key: str, description: Optional[str] = None, is_active: Optional[bool] = None) -> bool:
+async def update_proxy_key(
+    key: str,
+    description: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    expires_at: Optional[str] = None # 添加 expires_at 参数
+) -> bool:
     """
-    更新代理 Key 的描述或激活状态。
-    至少需要提供 description 或 is_active 中的一个。
+    更新代理 Key 的描述、激活状态或过期时间。
+    至少需要提供 description, is_active 或 expires_at 中的一个。
+
+    Args:
+        key: 要更新的 Key。
+        description: 新的描述 (可选)。
+        is_active: 新的激活状态 (可选)。
+        expires_at: 新的过期时间 (ISO 格式字符串)，None 表示清除过期时间 (可选)。
     """
-    if description is None and is_active is None:
-        logger.warning(f"更新 proxy key '{key}' 失败：未提供要更新的字段 (description 或 is_active)。")
+    if description is None and is_active is None and expires_at is None: # 检查是否提供了任何更新字段
+        logger.warning(f"更新 proxy key '{key}' 失败：未提供要更新的字段 (description, is_active, 或 expires_at)。")
         return False
 
-    logger.info(f"尝试更新 proxy key: {key}...")
+    logger.info(f"尝试更新 proxy key: {key} (Description: {description}, Active: {is_active}, Expires: {expires_at})...")
     updates = []
     params = []
 
@@ -269,6 +319,14 @@ async def update_proxy_key(key: str, description: Optional[str] = None, is_activ
     if is_active is not None:
         updates.append("is_active = ?")
         params.append(is_active)
+    if expires_at is not None: # 如果提供了 expires_at (即使是空字符串，也表示要更新)
+        updates.append("expires_at = ?")
+        # 如果传入的是空字符串，将其转换为 None 存入数据库，表示永不过期
+        params.append(expires_at if expires_at else None)
+
+    if not updates: # 再次检查，以防 expires_at 是 None 但其他也是 None
+         logger.warning(f"更新 proxy key '{key}' 失败：逻辑错误，没有有效的更新字段。")
+         return False
 
     params.append(key) # 用于 WHERE 子句
 

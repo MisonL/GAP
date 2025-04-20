@@ -58,10 +58,10 @@ def setup_scheduler(key_manager: 'APIKeyManager'):
     # 每日 RPD/TPD_Input 重置任务 (PT 午夜) - 从 daily_reset 导入
     scheduler.add_job(reset_daily_counts, 'cron', hour=0, minute=0, timezone='America/Los_Angeles', id='daily_reset', name='每日限制重置', replace_existing=True)
     # 周期性使用报告任务 - 从 usage_reporter 导入
-    # TODO: 检查 report_usage 是否需要变成 async 并添加包装器
+    # (已确认 report_usage 不需要 async)
     scheduler.add_job(report_usage, 'interval', minutes=USAGE_REPORT_INTERVAL_MINUTES, args=[key_manager], id='usage_report', name='使用报告', replace_existing=True)
     # Key 得分缓存更新任务 (每 10 秒) - 从 key_management 导入
-    # TODO: 检查 _refresh_all_key_scores 是否需要变成 async 并添加包装器
+    # (已确认 _refresh_all_key_scores 不需要 async)
     scheduler.add_job(_refresh_all_key_scores, 'interval', seconds=CACHE_REFRESH_INTERVAL_SECONDS, args=[key_manager], id='key_score_update', name='Key 得分更新', replace_existing=True) # 注意：_refresh_all_key_scores 现在只需要 key_manager 参数
 
     # 仅在内存数据库模式下添加上下文清理任务

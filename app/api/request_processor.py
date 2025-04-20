@@ -21,11 +21,10 @@ from ..core.response_wrapper import ResponseWrapper
 # 导入上下文存储和请求工具
 from ..core import context_store
 from ..core import db_utils # 导入 db_utils 以检查内存模式
-from .request_utils import get_client_ip, get_current_timestamps, estimate_token_count, truncate_context # 导入新的工具函数
+from .request_utils import get_client_ip, get_current_timestamps, estimate_token_count, truncate_context, process_tool_calls, check_rate_limits_and_update_counts, update_token_counts # 导入新的工具函数, 添加 process_tool_calls, check_rate_limits_and_update_counts 和 update_token_counts
 from ..core.message_converter import convert_messages
-from ..core.utils import handle_gemini_error, protect_from_abuse, StreamProcessingError
+from ..core.utils import handle_gemini_error, protect_from_abuse # 移除 StreamProcessingError
 from ..core.utils import key_manager_instance as key_manager # 导入共享实例
-from .request_utils import get_client_ip, get_current_timestamps # 新增导入
 from .. import config # 导入根配置
 from ..config import ( # 导入具体配置项
     DISABLE_SAFETY_FILTERING,
@@ -150,70 +149,12 @@ async def process_request(
         log_msg = format_log_message('INFO', f"第 {attempt}/{retry_attempts} 次尝试，选择密钥: {current_api_key[:8]}...", extra=extra_log)
         logger.info(log_msg)
 
-        # --- 模型速率限制预检查 ---
-        # TODO: 考虑将此检查移至 request_utils.py
+        # --- 模型速率限制预检查 (移至 request_utils.check_rate_limits_and_update_counts) ---
         model_name = chat_request.model
         limits = config.MODEL_LIMITS.get(model_name)
-        perform_api_call = True
-        if limits:
-            now = time.time()
-            with usage_lock:
-                key_usage = usage_data.setdefault(current_api_key, defaultdict(lambda: defaultdict(int)))[model_name]
-
-                # 检查 RPD
-                rpd_limit = limits.get("rpd")
-                if rpd_limit is not None and key_usage.get("rpd_count", 0) >= rpd_limit:
-                    logger.warning(f"预检查失败 (Key: {current_api_key[:8]}, Model: {model_name}): RPD 达到限制 ({key_usage.get('rpd_count', 0)}/{rpd_limit})。跳过此 Key。")
-                    perform_api_call = False
-                # 检查 TPD_Input
-                if perform_api_call:
-                    tpd_input_limit = limits.get("tpd_input")
-                    if tpd_input_limit is not None and key_usage.get("tpd_input_count", 0) >= tpd_input_limit:
-                        logger.warning(f"预检查失败 (Key: {current_api_key[:8]}, Model: {model_name}): TPD_Input 达到限制 ({key_usage.get('tpd_input_count', 0)}/{tpd_input_limit})。跳过此 Key。")
-                        perform_api_call = False
-                # 检查 RPM
-                if perform_api_call:
-                    rpm_limit = limits.get("rpm")
-                    if rpm_limit is not None:
-                        if now - key_usage.get("rpm_timestamp", 0) < RPM_WINDOW_SECONDS:
-                            if key_usage.get("rpm_count", 0) >= rpm_limit:
-                                 logger.warning(f"预检查失败 (Key: {current_api_key[:8]}, Model: {model_name}): RPM 达到限制 ({key_usage.get('rpm_count', 0)}/{rpm_limit})。跳过此 Key。")
-                                 perform_api_call = False
-                        else:
-                            key_usage["rpm_count"] = 0
-                            key_usage["rpm_timestamp"] = 0 # 重置时间戳
-                # 检查 TPM_Input
-                if perform_api_call:
-                    tpm_input_limit = limits.get("tpm_input")
-                    if tpm_input_limit is not None:
-                        if now - key_usage.get("tpm_input_timestamp", 0) < TPM_WINDOW_SECONDS:
-                             if key_usage.get("tpm_input_count", 0) >= tpm_input_limit:
-                                 logger.warning(f"预检查失败 (Key: {current_api_key[:8]}, Model: {model_name}): TPM_Input 达到限制 ({key_usage.get('tpm_input_count', 0)}/{tpm_input_limit})。跳过此 Key。")
-                                 perform_api_call = False
-                        else:
-                            key_usage["tpm_input_count"] = 0
-                            key_usage["tpm_input_timestamp"] = 0 # 重置时间戳
-
-            if not perform_api_call:
-                continue # 跳过此 Key，尝试下一个
-
-            # --- 预检查通过，增加计数 ---
-            with usage_lock:
-                key_usage = usage_data[current_api_key][model_name]
-                # 更新 RPM
-                if now - key_usage.get("rpm_timestamp", 0) >= RPM_WINDOW_SECONDS:
-                    key_usage["rpm_count"] = 1
-                    key_usage["rpm_timestamp"] = now
-                else:
-                    key_usage["rpm_count"] = key_usage.get("rpm_count", 0) + 1
-                # 更新 RPD
-                key_usage["rpd_count"] = key_usage.get("rpd_count", 0) + 1
-                # 更新最后请求时间戳
-                key_usage["last_request_timestamp"] = now
-                logger.debug(f"计数增加 (Key: {current_api_key[:8]}, Model: {model_name}): RPM={key_usage['rpm_count']}, RPD={key_usage['rpd_count']}")
-        else:
-             logger.warning(f"模型 '{model_name}' 不在 model_limits.json 中，跳过本地速率限制检查。")
-
+        # 调用新的检查函数
+        if not check_rate_limits_and_update_counts(current_api_key, model_name, limits):
+            continue # 如果检查失败 (达到限制)，跳过此 Key，尝试下一个
 
         # --- API 调用尝试 ---
         try:
@@ -297,31 +238,12 @@ async def process_request(
 
                             yield "data: [DONE]\n\n"
 
-                            # --- 处理 Token 计数（成功情况）---
-                            # TODO: 考虑将 Token 计数逻辑移至 request_utils.py
-                            if limits and usage_metadata_received:
-                                prompt_tokens = usage_metadata_received.get('promptTokenCount', 0)
-                                # completion_tokens = usage_metadata_received.get('candidatesTokenCount', 0) # 输出 token 在流式中不直接用于速率限制
-                                if prompt_tokens > 0:
-                                    with usage_lock:
-                                        key_usage = usage_data[current_api_key][model_name]
-                                        # 更新 TPD_Input
-                                        key_usage["tpd_input_count"] = key_usage.get("tpd_input_count", 0) + prompt_tokens
-                                        # 更新 TPM_Input
-                                        tpm_input_limit = limits.get("tpm_input")
-                                        if tpm_input_limit is not None:
-                                            now_tpm = time.time()
-                                            if now_tpm - key_usage.get("tpm_input_timestamp", 0) >= TPM_WINDOW_SECONDS:
-                                                key_usage["tpm_input_count"] = prompt_tokens
-                                                key_usage["tpm_input_timestamp"] = now_tpm
-                                            else:
-                                                key_usage["tpm_input_count"] = key_usage.get("tpm_input_count", 0) + prompt_tokens
-                                            logger.debug(f"输入 Token 计数更新 (Key: {current_api_key[:8]}, Model: {model_name}): Added TPD_Input={prompt_tokens}, TPM_Input={key_usage['tpm_input_count']}")
-                                    # 记录 IP 输入 Token 消耗
-                                    with ip_input_token_counts_lock:
-                                        ip_daily_input_token_counts.setdefault(today_date_str_pt, Counter())[client_ip] += prompt_tokens
-                                else:
-                                     logger.warning(f"Stream response successful but no valid prompt token count received (Key: {current_api_key[:8]}...): {usage_metadata_received}")
+                            # --- 处理 Token 计数（成功情况，移至 request_utils.update_token_counts）---
+                            if usage_metadata_received:
+                                prompt_tokens = usage_metadata_received.get('promptTokenCount') # 获取 prompt_tokens
+                                update_token_counts(current_api_key, model_name, limits, prompt_tokens, client_ip, today_date_str_pt)
+                            else:
+                                logger.warning(f"Stream response successful but no usage metadata received (Key: {current_api_key[:8]}...). Token counts not updated.")
 
                             # --- 成功流式传输后保存上下文（可配置）---
                             if not config.STREAM_SAVE_REPLY:
@@ -491,32 +413,12 @@ async def process_request(
 
                 logger.info(f"非流式请求处理成功 (Key: {current_api_key[:8]})")
 
-                # --- 处理 Token 计数（成功情况）---
-                # TODO: 考虑移至 request_utils.py
-                if limits and response_content and response_content.usage_metadata:
-                    prompt_tokens = response_content.prompt_token_count
-                    if prompt_tokens and prompt_tokens > 0:
-                        with usage_lock:
-                            key_usage = usage_data[current_api_key][model_name]
-                            # 更新 TPD_Input
-                            key_usage["tpd_input_count"] = key_usage.get("tpd_input_count", 0) + prompt_tokens
-                            # 更新 TPM_Input
-                            tpm_input_limit = limits.get("tpm_input")
-                            if tpm_input_limit is not None:
-                                now_tpm = time.time()
-                                if now_tpm - key_usage.get("tpm_input_timestamp", 0) >= TPM_WINDOW_SECONDS:
-                                    key_usage["tpm_input_count"] = prompt_tokens
-                                    key_usage["tpm_input_timestamp"] = now_tpm
-                                else:
-                                    key_usage["tpm_input_count"] = key_usage.get("tpm_input_count", 0) + prompt_tokens
-                                logger.debug(f"输入 Token 计数更新 (Key: {current_api_key[:8]}, Model: {model_name}): Added TPD_Input={prompt_tokens}, TPM_Input={key_usage['tpm_input_count']}")
-                        # 记录 IP 输入 Token 消耗
-                        with ip_input_token_counts_lock:
-                            ip_daily_input_token_counts.setdefault(today_date_str_pt, Counter())[client_ip] += prompt_tokens
-                    else:
-                        logger.warning(f"Non-stream response successful but no valid prompt token count received (Key: {current_api_key[:8]}...): {response_content.usage_metadata}")
-                elif limits:
-                     logger.warning(f"Non-stream response successful but ResponseWrapper missing usage_metadata (Key: {current_api_key[:8]}...).")
+                # --- 处理 Token 计数（成功情况，移至 request_utils.update_token_counts）---
+                if response_content and response_content.usage_metadata:
+                    prompt_tokens = response_content.prompt_token_count # 获取 prompt_tokens
+                    update_token_counts(current_api_key, model_name, limits, prompt_tokens, client_ip, today_date_str_pt)
+                else:
+                     logger.warning(f"Non-stream response successful but ResponseWrapper missing usage_metadata (Key: {current_api_key[:8]}...). Token counts not updated.")
 
                 # --- 成功非流式响应后保存上下文（包括模型回复）---
                 if assistant_content is not None: # 确保有模型内容（即使是空字符串）
@@ -601,51 +503,4 @@ async def process_request(
         raise HTTPException(status_code=status_code, detail=detail_msg)
 
 
-# --- 辅助函数 (例如处理工具调用) ---
-# TODO: 考虑将此函数移至 request_utils.py
-def process_tool_calls(gemini_tool_calls: Any) -> Optional[List[Dict[str, Any]]]:
-    """
-    将 Gemini 返回的 functionCall 列表转换为 OpenAI 兼容的 tool_calls 格式。
-    Gemini: [{'functionCall': {'name': 'func_name', 'args': {...}}}]
-    OpenAI: [{'id': 'call_...', 'type': 'function', 'function': {'name': 'func_name', 'arguments': '{...}'}}]
-    """
-    if not isinstance(gemini_tool_calls, list):
-        logger.warning(f"期望 gemini_tool_calls 是列表，但得到 {type(gemini_tool_calls)}")
-        return None
-
-    openai_tool_calls = []
-    for i, call in enumerate(gemini_tool_calls):
-        if not isinstance(call, dict):
-             logger.warning(f"工具调用列表中的元素不是字典: {call}")
-             continue
-
-        func_call = call # Gemini 直接返回 functionCall 字典
-
-        if not isinstance(func_call, dict):
-             logger.warning(f"functionCall 元素不是字典: {func_call}")
-             continue
-
-        func_name = func_call.get('name')
-        func_args = func_call.get('args')
-
-        if not func_name or not isinstance(func_args, dict):
-            logger.warning(f"functionCall 缺少 name 或 args 不是字典: {func_call}")
-            continue
-
-        try:
-            # OpenAI 需要 arguments 是 JSON 字符串
-            arguments_str = json.dumps(func_args, ensure_ascii=False)
-        except TypeError as e:
-            logger.error(f"序列化工具调用参数失败 (Name: {func_name}): {e}", exc_info=True)
-            continue # 跳过这个调用
-
-        openai_tool_calls.append({
-            "id": f"call_{int(time.time()*1000)}_{i}", # 生成唯一 ID
-            "type": "function",
-            "function": {
-                "name": func_name,
-                "arguments": arguments_str,
-            }
-        })
-
-    return openai_tool_calls if openai_tool_calls else None
+# (process_tool_calls 函数已移至 request_utils.py)

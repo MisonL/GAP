@@ -6,14 +6,11 @@ import json
 import asyncio
 import uvicorn
 from fastapi import FastAPI
-# from starlette.middleware.csrf import CSRFMiddleware # 移除了无效的 CSRF 中间件导入
-# from starlette.middleware.sessions import SessionMiddleware # 移除了 Session 中间件导入
 from dotenv import load_dotenv # 用于加载 .env 文件中的环境变量
 from contextlib import asynccontextmanager # 用于定义异步上下文管理器 (lifespan)
 from typing import AsyncGenerator # 类型提示，用于异步生成器
 from fastapi import Request # 导入 FastAPI Request 对象，用于处理请求上下文
 from fastapi.responses import JSONResponse # 导入 FastAPI JSONResponse 对象，用于返回 JSON 格式的响应
-# CSRF 相关导入已移除
 
 # 本地模块
 from app import config # 首先导入配置模块
@@ -88,25 +85,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # --- 加载模型限制 ---
     # 从 JSON 文件加载模型限制到 config.MODEL_LIMITS
     load_model_limits() # 调用 config 模块中的函数来加载模型限制配置
-    # model_limits_path = "app/data/model_limits.json" # 路径在 load_model_limits 函数内部处理
-    # logger.info(f"从 {model_limits_path} 加载模型限制...") # 日志记录在 load_model_limits 函数内部处理
-    # 下面的 try...except 块不再需要，因为加载逻辑在 config.py 中
-    # try:
-    #     # 如果需要，确保路径相对于工作区根目录，或根据需要进行调整
-    #     # 目前假设 app/ 在根目录下。
-    #     with open(model_limits_path, 'r') as f:
-    #         # config.MODEL_LIMITS = json.load(f) # 不再在此处加载，由 load_model_limits() 处理
-    #     # logger.info(f"成功加载模型限制。找到的模型: {list(config.MODEL_LIMITS.keys())}") # 日志记录移到 load_model_limits()
-    # # except FileNotFoundError: # 异常处理移到 load_model_limits()
-    # #     logger.error(f"模型限制文件未找到: {model_limits_path}。请确保该文件存在于 app/data/ 目录下。将使用空限制。")
-    # #     config.MODEL_LIMITS = {}
-    # # except json.JSONDecodeError as e:
-    # #     logger.error(f"解析模型限制文件 {model_limits_path} 失败: {e}。将使用空限制。")
-    # #     config.MODEL_LIMITS = {}
-    # # except Exception as e:
-    # #     logger.error(f"加载模型限制时发生未知错误: {e}", exc_info=True)
-    #     #     config.MODEL_LIMITS = {}
-    # 确保后续代码正确缩进（此注释无实际作用，可移除）
 
     # 尝试使用有效密钥预取可用模型
     if active_keys_count > 0:
@@ -163,7 +141,6 @@ app = FastAPI( # 创建 FastAPI 应用实例
     # redoc_url="/redoc-docs" # 自定义 ReDoc 文档路径
 )
 
-# --- CSRF 配置和中间件已移除 ---
 
 
 # --- 注册异常处理器 ---
@@ -171,7 +148,6 @@ app = FastAPI( # 创建 FastAPI 应用实例
 app.add_exception_handler(Exception, error_handlers.global_exception_handler) # 注册全局异常处理器，捕获 FastAPI 内部及路由中的异常
 logger.info("已注册全局异常处理器。")
 
-# --- CSRF 保护异常处理器已移除 ---
 
 
 # --- 包含路由器 ---
@@ -182,12 +158,6 @@ logger.info("已包含 API 端点路由器。")
 app.include_router(web_routes.router) # 包含 Web UI 界面的路由
 logger.info("已包含 Web UI 路由器。")
 
-# --- 挂载静态文件 (如果需要) ---
-# 如果需要提供静态文件（如 CSS, JavaScript, 图片），取消注释以下行
-# from fastapi.staticfiles import StaticFiles
-# # 假设静态文件存放在 'app/web/static' 目录下
-# app.mount("/static", StaticFiles(directory="app/web/static"), name="static")
-# logger.info("已挂载静态文件目录 '/static'。")
 
 # --- 使用 Uvicorn 运行（用于直接执行）---
 if __name__ == "__main__": # 当直接运行此脚本时执行

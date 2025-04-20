@@ -5,7 +5,6 @@ from fastapi import HTTPException, Request  # FastAPI 框架的 HTTP 异常和�
 import time      # 用于时间相关操作（例如速率限制、时间戳）
 import re        # 用于正则表达式操作（例如提取 API 密钥）
 from datetime import datetime, timedelta  # 用于日期和时间计算
-# from apscheduler.schedulers.background import BackgroundScheduler # 不再需要，相关功能已移至 reporting.py
 import os        # 用于访问操作系统环境变量
 import httpx     # 用于发送异步 HTTP 请求（例如测试密钥有效性）
 from threading import Lock # 用于线程同步的锁
@@ -16,23 +15,18 @@ from typing import Optional, Dict, Any, Set, List, Tuple # 类型提示，确保
 import json      # 用于处理 JSON 数据
 import copy      # 用于创建对象的深拷贝或浅拷贝
 from collections import defaultdict # 提供默认值的字典子类
-# 注意：调整导入路径
-from ..handlers.log_config import format_log_message # 从 handlers.log_config 模块导入日志格式化函数
+# from ..handlers.log_config import format_log_message # 未在此文件中使用
 # 从 tracking 模块导入共享的数据结构、锁和常量
 from .tracking import ( # 从同级目录导入
     usage_data, usage_lock,
     key_scores_cache, cache_lock, cache_last_updated, update_cache_timestamp,
-    daily_rpd_totals, daily_totals_lock,
-    ip_daily_counts, ip_counts_lock, ip_daily_input_token_counts, ip_input_token_counts_lock, # 确保已导入（更新了 IP token 变量名）
+    # daily_rpd_totals, daily_totals_lock, # 未在此文件中使用
+    # ip_daily_counts, ip_counts_lock, # 未在此文件中使用 (使用本文件的 ip_daily_request_counts)
+    # ip_daily_input_token_counts, ip_input_token_counts_lock, # 未在此文件中使用
     RPM_WINDOW_SECONDS, TPM_WINDOW_SECONDS, CACHE_REFRESH_INTERVAL_SECONDS
 )
 # 获取名为 'my_logger' 的日志记录器实例
 logger = logging.getLogger("my_logger")
-
-# --- 自定义异常 ---
-class StreamProcessingError(Exception):
-    """用于表示流处理中可恢复错误的自定义异常"""
-    pass
 
 # --- API 密钥管理器类 ---
 class APIKeyManager:
@@ -124,7 +118,6 @@ class APIKeyManager:
 
             current_scores = {} # 用于存储本次计算的分数
             limits = model_limits # 直接使用传入的 model_limits
-            # 注意：原代码中 model_limits.get(model_name) 是多余的，因为 select_best_key 已经传入了特定模型的 limits
             if not limits:
                 logger.warning(f"模型 '{model_name}' 的限制信息未提供，无法计算健康度评分。将为所有 Key 设置默认分数 1.0。")
                 # 为所有当前活动的 Key 设置默认分数 1.0
@@ -213,7 +206,6 @@ class APIKeyManager:
             return 1.0
 
         # 返回归一化的加权平均分
-        # 如果没有任何有效指标（active_metrics 为 0），则返回默认值 1.0，表示该 Key 可用
         normalized_score = total_score / active_metrics if active_metrics > 0 else 1.0
         # 确保分数在 0.0 到 1.0 之间（尽管理论上应该如此）
         return max(0.0, min(1.0, normalized_score))
@@ -356,11 +348,10 @@ def handle_gemini_error(e: Exception, api_key: Optional[str], key_manager: APIKe
         error_message = f"网络连接错误 ({key_identifier}): {e}"
         logger.error(error_message) # 记录错误
         # 网络连接问题不移除 Key
-    elif isinstance(e, StreamProcessingError): # 处理自定义的流处理错误
-         error_message = f"流处理错误 ({key_identifier}): {e}"
-         # 注意：此错误通常在 stream_chat 函数内部已被记录，这里再次记录可能重复
-         logger.error(error_message)
-         # 流处理错误通常与响应内容有关，不代表 Key 无效，不移除 Key
+    # elif isinstance(e, StreamProcessingError): # 移除未使用的异常处理
+    #      error_message = f"流处理错误 ({key_identifier}): {e}"
+    #      logger.error(error_message)
+    #      # 流处理错误通常与响应内容有关，不代表 Key 无效，不移除 Key
     else:
         # 处理所有其他类型的 Python 异常
         logger.error(error_message, exc_info=True) # 使用 ERROR 级别记录，并包含异常信息和堆栈跟踪

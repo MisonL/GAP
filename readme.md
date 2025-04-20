@@ -2,7 +2,7 @@
 
 <!-- 在这里添加徽章 (Badges) -->
 <!-- 例如: [![项目状态](https://img.shields.io/badge/status-active-success.svg)](...) -->
-<!-- [![许可证](https://img.shields.io/badge/license-TBD-lightgrey.svg)](LICENSE.md) -->
+[![许可证: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
 本项目 fork 自 [Mrjwj34](https://github.com/Mrjwj34/Hagemi) 的项目进行二次开发（全程使用 AI 编码，模型主要是 Gemini-2.5-pro-exp-03-25）。
 
@@ -18,6 +18,7 @@
 - [API 接口说明](#-api-接口说明)
 - [⚠️ 注意事项](#️-注意事项)
 - [🤝 贡献](#-贡献)
+- [📜 许可证](#-许可证)
 - [📜 版本历史](#-版本历史)
 
 ## ✨ 主要功能
@@ -279,11 +280,48 @@ POST /v1/chat/completions
 *   **功能请求:** 如果你有新的功能想法，也请在 [Issues](https://github.com/MisonL/Hagemi/issues) 中提出。
 *   **代码贡献:** 如果你想贡献代码，请先 Fork 本仓库，在你的分支上进行修改，然后提交 Pull Request。
 
+## 📜 许可证
+
+本项目采用 **知识共享署名-非商业性使用 4.0 国际许可协议 (Creative Commons Attribution-NonCommercial 4.0 International License)** 进行许可。
+
+这意味着您可以自由地：
+*   **共享** — 在任何媒介以任何形式复制、发行本作品
+*   **演绎** — 修改、转换或以本作品为基础进行创作
+
+只要你遵守许可协议条款，许可人就无法收回你的这些权利。
+
+惟须遵守下列条件：
+*   **署名 (BY)** — 您必须给出适当的署名，提供指向本许可协议的链接，同时标明是否（对原始作品）作了修改。您可以用任何合理的方式来署名，但是不得以任何方式暗示许可人为您或您的使用背书。
+*   **非商业性使用 (NC)** — 您不得将本作品用于商业目的。
+
+没有附加限制 — 您不得适用法律术语或者技术措施从而限制其他人做许可协议允许的事情。
+
+**注意:**
+*   您不必因为公共领域的作品要素而遵守许可协议，或者您的使用被可适用的例外或限制所允许。
+*   不提供担保。许可协议可能不会给与您意图使用的所必须的所有许可。例如，其他权利比如形象权、隐私权或人格权可能限制您如何使用作品。
+
+完整的许可证文本可以在 [LICENSE](LICENSE) (英文) 和 [LICENSE.zh-CN](LICENSE.zh-CN) (简体中文) 文件中找到，或者访问 [Creative Commons 网站](https://creativecommons.org/licenses/by-nc/4.0/legalcode.zh-CN)。
+
+作为本项目的原始作者，我保留将此项目用于商业目的或以其他不同许可证授权的权利。
 
 ## 📜 版本历史
 
 <details>
 <summary>点击展开/折叠详细版本历史</summary>
+
+### v1.4.1
+    *   **许可证**: 添加了知识共享署名-非商业性使用 4.0 国际 (CC BY-NC 4.0) 许可证 ([LICENSE](LICENSE), [LICENSE.zh-CN](LICENSE.zh-CN))，并在 README 中添加了说明。
+    *   **新功能：权限管理 (RBAC) 与 Key 有效期** (基于 `rbac_and_key_expiry_plan.md`):
+        *   引入管理员角色 (`ADMIN_API_KEY`)，拥有管理所有上下文和代理 Key (文件模式) 的权限。
+        *   普通用户登录 Web UI 后仅能查看和管理自己的上下文记录。
+        *   管理员可通过 Web UI (`/manage/keys`) 为代理 Key (文件模式) 设置和管理过期时间 (`expires_at`)。
+        *   系统在验证代理 Key 时会检查其是否过期。
+        *   增强了 JWT 认证，包含管理员状态标识。
+
+*   **代码优化**: 重构 `app/api/request_processor.py`，将工具调用处理、速率限制检查和 Token 计数等辅助逻辑移至 `app/api/request_utils.py`，提高代码模块化和可维护性。
+*   **TODO 清理**: 检查并确认 `app/core/reporting.py` 中的 `report_usage` 和 `_refresh_all_key_scores` 函数无需改为异步实现，并移除了项目中所有相关的 `TODO` 注释。
+    *   **代码清理**: 移除了项目中未使用的函数和注释掉的代码块，提高了代码整洁度。
+
 
 ### v1.4.0
 *   **新功能**: 在内存模式下支持通过逗号分隔的 `PASSWORD` 环境变量配置多个中转用户 Key。
