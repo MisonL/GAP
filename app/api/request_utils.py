@@ -5,11 +5,16 @@ API 请求处理相关的辅助函数。
 import pytz
 import json
 import logging
+import time
 from datetime import datetime
-from typing import Tuple, List, Dict, Any
+from collections import Counter
+from collections import defaultdict
+from typing import Tuple, List, Dict, Any, Optional
 from fastapi import Request
 # 导入配置以获取默认值和模型限制
 from .. import config as app_config
+from ..core.tracking import ip_daily_input_token_counts, ip_input_token_counts_lock
+from ..core.tracking import usage_data, usage_lock, RPM_WINDOW_SECONDS, TPM_WINDOW_SECONDS
 
 logger = logging.getLogger('my_logger')
 
@@ -146,3 +151,195 @@ def truncate_context(
     else:
         # Token 未超限，无需截断
         return contents, False # 返回原始列表，标记为未超限
+
+
+
+# --- 速率限制检查与计数更新 ---
+
+def check_rate_limits_and_update_counts(
+    api_key: str,
+    model_name: str,
+    limits: Optional[Dict[str, Any]]
+) -> bool:
+    """
+    检查给定 API Key 和模型的速率限制 (RPD, TPD_Input, RPM, TPM_Input)。
+    如果未达到限制，则更新 RPM 和 RPD 计数，并返回 True。
+    如果达到任何限制，则记录警告并返回 False。
+
+    Args:
+        api_key: 当前尝试使用的 API Key。
+        model_name: 请求的模型名称。
+        limits: 从配置中获取的该模型的限制字典。
+
+    Returns:
+        bool: 如果可以继续进行 API 调用则返回 True，否则返回 False。
+    """
+    if not limits:
+        logger.warning(f"模型 '{model_name}' 不在 model_limits.json 中，跳过本地速率限制检查。")
+        return True # 没有限制信息，允许调用
+
+    now = time.time()
+    perform_api_call = True
+
+    with usage_lock:
+        # 使用 setdefault 确保 key 和 model 的条目存在
+        key_usage = usage_data.setdefault(api_key, defaultdict(lambda: defaultdict(int)))[model_name]
+
+        # 检查 RPD
+        rpd_limit = limits.get("rpd")
+        if rpd_limit is not None and key_usage.get("rpd_count", 0) >= rpd_limit:
+            logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): RPD 达到限制 ({key_usage.get('rpd_count', 0)}/{rpd_limit})。跳过此 Key。")
+            perform_api_call = False
+
+        # 检查 TPD_Input (仅检查，不在此处增加，因为 token 数未知)
+        if perform_api_call:
+            tpd_input_limit = limits.get("tpd_input")
+            if tpd_input_limit is not None and key_usage.get("tpd_input_count", 0) >= tpd_input_limit:
+                logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): TPD_Input 达到限制 ({key_usage.get('tpd_input_count', 0)}/{tpd_input_limit})。跳过此 Key。")
+                perform_api_call = False
+
+        # 检查 RPM
+        if perform_api_call:
+            rpm_limit = limits.get("rpm")
+            if rpm_limit is not None:
+                if now - key_usage.get("rpm_timestamp", 0) < RPM_WINDOW_SECONDS:
+                    if key_usage.get("rpm_count", 0) >= rpm_limit:
+                         logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): RPM 达到限制 ({key_usage.get('rpm_count', 0)}/{rpm_limit})。跳过此 Key。")
+                         perform_api_call = False
+                else:
+                    # 窗口已过期，重置计数和时间戳（将在下面增加）
+                    key_usage["rpm_count"] = 0
+                    key_usage["rpm_timestamp"] = 0
+
+        # 检查 TPM_Input (仅检查，不在此处增加)
+        if perform_api_call:
+            tpm_input_limit = limits.get("tpm_input")
+            if tpm_input_limit is not None:
+                if now - key_usage.get("tpm_input_timestamp", 0) < TPM_WINDOW_SECONDS:
+                     if key_usage.get("tpm_input_count", 0) >= tpm_input_limit:
+                         logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): TPM_Input 达到限制 ({key_usage.get('tpm_input_count', 0)}/{tpm_input_limit})。跳过此 Key。")
+                         perform_api_call = False
+                else:
+                    # 窗口已过期，重置计数和时间戳
+                    key_usage["tpm_input_count"] = 0
+                    key_usage["tpm_input_timestamp"] = 0
+
+        # --- 如果预检查通过，增加计数 ---
+        if perform_api_call:
+            # 再次获取 key_usage 以防 setdefault 创建了新条目
+            key_usage = usage_data[api_key][model_name]
+            # 更新 RPM
+            if now - key_usage.get("rpm_timestamp", 0) >= RPM_WINDOW_SECONDS:
+                key_usage["rpm_count"] = 1
+                key_usage["rpm_timestamp"] = now
+            else:
+                key_usage["rpm_count"] = key_usage.get("rpm_count", 0) + 1
+            # 更新 RPD
+            key_usage["rpd_count"] = key_usage.get("rpd_count", 0) + 1
+            # 更新最后请求时间戳
+            key_usage["last_request_timestamp"] = now
+            logger.debug(f"速率限制计数增加 (Key: {api_key[:8]}, Model: {model_name}): RPM={key_usage['rpm_count']}, RPD={key_usage['rpd_count']}")
+
+    return perform_api_call
+
+
+
+# --- Token 计数更新 ---
+
+def update_token_counts(
+    api_key: str,
+    model_name: str,
+    limits: Optional[Dict[str, Any]],
+    prompt_tokens: Optional[int],
+    client_ip: str,
+    today_date_str_pt: str
+) -> None:
+    """
+    更新给定 API Key 和模型的 TPD_Input 和 TPM_Input 计数。
+    同时记录基于 IP 的每日输入 Token 消耗。
+
+    Args:
+        api_key: 当前使用的 API Key。
+        model_name: 请求的模型名称。
+        limits: 从配置中获取的该模型的限制字典。
+        prompt_tokens: 从 API 响应中获取的输入 Token 数量。
+        client_ip: 客户端 IP 地址。
+        today_date_str_pt: 当前的太平洋时区日期字符串。
+    """
+    if not limits or not prompt_tokens or prompt_tokens <= 0:
+        if limits and (not prompt_tokens or prompt_tokens <= 0):
+             logger.warning(f"Token 计数更新跳过 (Key: {api_key[:8]}, Model: {model_name}): 无效的 prompt_tokens ({prompt_tokens})。")
+        # 如果没有限制信息或 prompt_tokens 无效，则不执行更新
+        return
+
+    with usage_lock:
+        # 确保 key 和 model 的条目存在
+        key_usage = usage_data.setdefault(api_key, defaultdict(lambda: defaultdict(int)))[model_name]
+
+        # 更新 TPD_Input
+        key_usage["tpd_input_count"] = key_usage.get("tpd_input_count", 0) + prompt_tokens
+
+        # 更新 TPM_Input
+        tpm_input_limit = limits.get("tpm_input")
+        if tpm_input_limit is not None:
+            now_tpm = time.time()
+            if now_tpm - key_usage.get("tpm_input_timestamp", 0) >= TPM_WINDOW_SECONDS:
+                key_usage["tpm_input_count"] = prompt_tokens
+                key_usage["tpm_input_timestamp"] = now_tpm
+            else:
+                key_usage["tpm_input_count"] = key_usage.get("tpm_input_count", 0) + prompt_tokens
+            logger.debug(f"输入 Token 计数更新 (Key: {api_key[:8]}, Model: {model_name}): Added TPD_Input={prompt_tokens}, TPM_Input={key_usage['tpm_input_count']}")
+
+    # 记录 IP 输入 Token 消耗
+    with ip_input_token_counts_lock:
+        ip_daily_input_token_counts.setdefault(today_date_str_pt, Counter())[client_ip] += prompt_tokens
+
+
+# --- 辅助函数 (例如处理工具调用) ---
+
+def process_tool_calls(gemini_tool_calls: Any) -> Optional[List[Dict[str, Any]]]:
+    """
+    将 Gemini 返回的 functionCall 列表转换为 OpenAI 兼容的 tool_calls 格式。
+    Gemini: [{'functionCall': {'name': 'func_name', 'args': {...}}}]
+    OpenAI: [{'id': 'call_...', 'type': 'function', 'function': {'name': 'func_name', 'arguments': '{...}'}}]
+    """
+    if not isinstance(gemini_tool_calls, list):
+        logger.warning(f"期望 gemini_tool_calls 是列表，但得到 {type(gemini_tool_calls)}")
+        return None
+
+    openai_tool_calls = []
+    for i, call in enumerate(gemini_tool_calls):
+        if not isinstance(call, dict):
+             logger.warning(f"工具调用列表中的元素不是字典: {call}")
+             continue
+
+        func_call = call # Gemini 直接返回 functionCall 字典
+
+        if not isinstance(func_call, dict):
+             logger.warning(f"functionCall 元素不是字典: {func_call}")
+             continue
+
+        func_name = func_call.get('name')
+        func_args = func_call.get('args')
+
+        if not func_name or not isinstance(func_args, dict):
+            logger.warning(f"functionCall 缺少 name 或 args 不是字典: {func_call}")
+            continue
+
+        try:
+            # OpenAI 需要 arguments 是 JSON 字符串
+            arguments_str = json.dumps(func_args, ensure_ascii=False)
+        except TypeError as e:
+            logger.error(f"序列化工具调用参数失败 (Name: {func_name}): {e}", exc_info=True)
+            continue # 跳过这个调用
+
+        openai_tool_calls.append({
+            "id": f"call_{int(time.time()*1000)}_{i}", # 生成唯一 ID
+            "type": "function",
+            "function": {
+                "name": func_name,
+                "arguments": arguments_str,
+            }
+        })
+
+    return openai_tool_calls if openai_tool_calls else None

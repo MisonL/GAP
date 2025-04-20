@@ -18,11 +18,18 @@
 
     <h4>添加新 Key</h4>
     <form id="add-key-form" class="mb-4">
-        <div class="mb-3">
-            <label for="keyDescription" class="form-label">描述 (可选)</label>
-            <input type="text" class="form-control" id="keyDescription" placeholder="例如：用于测试客户端 A">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="keyDescription" class="form-label">描述 (可选)</label>
+                <input type="text" class="form-control" id="keyDescription" placeholder="例如：用于测试客户端 A">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label for="keyExpiresAt" class="form-label">过期时间 (可选)</label>
+                <input type="text" class="form-control" id="keyExpiresAt" placeholder="YYYY-MM-DDTHH:MM:SSZ 或留空">
+                <small class="form-text text-muted">ISO 8601 格式 (UTC)，例如 2025-12-31T23:59:59Z。留空表示永不过期。</small>
+            </div>
         </div>
-        {# CSRF token input might not be needed if using JWT for API calls #}
+        {# CSRF token input removed #}
         <button type="submit" class="btn btn-primary">生成并添加 Key</button>
         <span id="add-key-status" class="ms-2"></span>
     </form>
@@ -39,6 +46,7 @@
                     <th>代理 Key (点击复制)</th>
                     <th>描述</th>
                     <th>创建时间</th>
+                    <th>过期时间</th> {# 新增列 #}
                     <th>状态</th>
                     <th>操作</th>
                 </tr>
@@ -51,23 +59,36 @@
         <p id="error-keys-msg" class="text-danger" style="display: none;">加载 Key 列表时出错。</p>
     </div>
 
-    <!-- 编辑 Key 模态框 (示例，后续实现) -->
-    <!--
+    <!-- 编辑 Key 模态框 -->
     <div class="modal fade" id="editKeyModal" tabindex="-1" aria-labelledby="editKeyModalLabel" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5 class="modal-title" id="editKeyModalLabel">编辑 Key 描述</h5>
+            <h5 class="modal-title" id="editKeyModalLabel">编辑 Key</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
             <form id="edit-key-form">
-              <input type="hidden" id="editKeyInput">
+              <input type="hidden" id="editKeyInput"> {# 存储要编辑的 Key #}
               <div class="mb-3">
-                <label for="editDescriptionInput" class="form-label">新描述</label>
+                  <label for="editKeyDisplay" class="form-label">Key</label>
+                  <input type="text" class="form-control" id="editKeyDisplay" readonly disabled> {# 显示 Key，但不可编辑 #}
+              </div>
+              <div class="mb-3">
+                <label for="editDescriptionInput" class="form-label">描述</label>
                 <input type="text" class="form-control" id="editDescriptionInput">
               </div>
+              <div class="mb-3">
+                <label for="editExpiresAtInput" class="form-label">过期时间</label>
+                <input type="text" class="form-control" id="editExpiresAtInput" placeholder="YYYY-MM-DDTHH:MM:SSZ 或留空">
+                 <small class="form-text text-muted">ISO 8601 格式 (UTC)。留空表示永不过期。</small>
+              </div>
+               <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="editIsActiveInput">
+                    <label class="form-check-label" for="editIsActiveInput">激活状态</label>
+                </div>
             </form>
+             <div id="edit-key-status" class="mt-2"></div> {# 用于显示错误或成功消息 #}
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
@@ -76,7 +97,6 @@
         </div>
       </div>
     </div>
-    -->
 
     {% endif %} {# End of 'if not is_memory_mode' #}
 </div>
@@ -109,10 +129,14 @@
             keysTableBody.innerHTML = ''; // 清空旧数据
 
             try {
-                // Use fetchWithCsrf which handles Authorization and CSRF
-                const response = await fetchWithCsrf('/api/manage/keys/data');
+                // Use standard fetch with Authorization header
+                const response = await fetch('/api/manage/keys/data', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
 
                 if (response.status === 401 || response.status === 403) {
+                    // 403 might also mean non-admin trying to access
+                    console.error('Manage Keys: Access denied (401/403). Removing token and redirecting.');
                     localStorage.removeItem('access_token');
                     window.location.href = '/';
                     return;
@@ -127,29 +151,75 @@
 
                 const data = await response.json();
 
+                // --- Admin Check ---
+                const isAdmin = data.is_admin === true;
+                const addKeySectionTitle = document.querySelector('#add-key-form').previousElementSibling; // Assuming h4 is directly before form
+                if (!isAdmin) {
+                    if (addKeyForm) addKeyForm.style.display = 'none';
+                    if (addKeySectionTitle && addKeySectionTitle.tagName === 'H4') {
+                         addKeySectionTitle.style.display = 'none';
+                    }
+                    // Also hide the hr separator after the add form
+                    const hrSeparator = document.querySelector('#add-key-form + hr');
+                     if (hrSeparator) hrSeparator.style.display = 'none';
+                } else {
+                     // Ensure they are visible for admins
+                     if (addKeyForm) addKeyForm.style.display = '';
+                     if (addKeySectionTitle && addKeySectionTitle.tagName === 'H4') {
+                          addKeySectionTitle.style.display = '';
+                     }
+                     const hrSeparator = document.querySelector('#add-key-form + hr');
+                     if (hrSeparator) hrSeparator.style.display = '';
+                }
+                // --- End Admin Check ---
+
                 loadingMsg.style.display = 'none';
 
-                if (data.keys && data.keys.length > 0) { // Corrected: Use && instead of &amp;&amp;
+                if (data.keys && data.keys.length > 0) { // Corrected: Use && instead of &&
                     keysTable.style.display = 'table';
                     data.keys.forEach(keyInfo => {
                         const row = keysTableBody.insertRow();
                         // Corrected: Use > and < instead of > and < inside template literal
+                        // Format expires_at
+                        let expiresAtDisplay = '永不';
+                        if (keyInfo.expires_at) {
+                            try {
+                                expiresAtDisplay = new Date(keyInfo.expires_at).toLocaleString('sv-SE'); // YYYY-MM-DD HH:MM:SS
+                            } catch (e) {
+                                console.warn(`无法解析过期日期: ${keyInfo.expires_at}`, e);
+                                expiresAtDisplay = keyInfo.expires_at; // 显示原始字符串
+                            }
+                        }
+
+                        // Conditionally add action buttons based on isAdmin status
+                        let actionButtonsHTML = '';
+                        if (isAdmin) {
+                            actionButtonsHTML = `
+                                <button class="btn btn-sm btn-warning edit-btn"
+                                        data-key="${keyInfo.key}"
+                                        data-description="${keyInfo.description || ''}"
+                                        data-is-active="${keyInfo.is_active}"
+                                        data-expires-at="${keyInfo.expires_at || ''}"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#editKeyModal">编辑</button>
+                                <button class="btn btn-sm btn-danger delete-btn" data-key="${keyInfo.key}">删除</button>
+                            `;
+                        } else {
+                             actionButtonsHTML = '<span>N/A</span>'; // Or just leave it empty: ''
+                        }
+
                         row.innerHTML = `
                             <td><span class="key-value" title="点击复制">${keyInfo.key}</span></td>
                             <td>${keyInfo.description || ''}</td>
-                            <td>${new Date(keyInfo.created_at).toLocaleString()}</td>
+                            <td>${new Date(keyInfo.created_at).toLocaleString('sv-SE')}</td> {# Use consistent format #}
+                            <td>${expiresAtDisplay}</td> {# Add expires_at column #}
                             <td>
                                 <span class="badge ${keyInfo.is_active ? 'bg-success' : 'bg-secondary'}">
                                     ${keyInfo.is_active ? '活动' : '禁用'}
                                 </span>
-                                <button class="btn btn-sm btn-outline-secondary ms-1 toggle-status-btn" data-key="${keyInfo.key}" data-current-status="${keyInfo.is_active}">
-                                    切换
-                                </button>
+                                {# Toggle button removed, handled in Edit modal #}
                             </td>
-                            <td>
-                                <!-- <button class="btn btn-sm btn-warning edit-btn" data-key="${keyInfo.key}" data-description="${keyInfo.description || ''}" data-bs-toggle="modal" data-bs-target="#editKeyModal">编辑</button> -->
-                                <button class="btn btn-sm btn-danger delete-btn" data-key="${keyInfo.key}">删除</button>
-                            </td>
+                            <td>${actionButtonsHTML}</td> {# Insert conditional buttons #}
                         `;
                     });
                     attachEventListeners(); // 绑定事件监听器
@@ -177,33 +247,7 @@
                 });
             });
 
-            // 切换状态
-            document.querySelectorAll('.toggle-status-btn').forEach(button => {
-                button.addEventListener('click', async (event) => {
-                    const key = event.target.dataset.key;
-                    const currentStatus = event.target.dataset.currentStatus === 'true';
-                    const newStatus = !currentStatus;
-                    if (!confirm(`确定要将 Key "${key.substring(0, 8)}..." 的状态切换为 ${newStatus ? '活动' : '禁用'} 吗？`)) {
-                        return;
-                    }
-                    try {
-                        // Use fetchWithCsrf for PUT request
-                        const response = await fetchWithCsrf(`/api/manage/keys/update/${key}`, {
-                            method: 'PUT',
-                            headers: {
-                                // Authorization handled by fetchWithCsrf
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ is_active: newStatus })
-                        });
-                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                        fetchKeys(); // 重新加载列表
-                    } catch (error) {
-                        console.error('Error toggling key status:', error);
-                        alert('切换状态失败');
-                    }
-                });
-            });
+            // 切换状态按钮的逻辑已合并到编辑模态框中
 
             // 删除 Key
             document.querySelectorAll('.delete-btn').forEach(button => {
@@ -213,50 +257,95 @@
                         return;
                     }
                     try {
-                        // Use fetchWithCsrf for DELETE request
-                        const response = await fetchWithCsrf(`/api/manage/keys/delete/${key}`, {
-                            method: 'DELETE'
-                            // Authorization handled by fetchWithCsrf
+                        // Use standard fetch for DELETE request
+                        const response = await fetch(`/api/manage/keys/delete/${key}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}` }
                         });
-                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                        fetchKeys(); // 重新加载列表
+                        if (response.status === 401 || response.status === 403) {
+                             alert('认证失败或无权限删除。');
+                             localStorage.removeItem('access_token');
+                             window.location.href = '/';
+                             return;
+                         }
+                        // Check for 204 No Content specifically for successful delete
+                        if (response.status === 204) {
+                             fetchKeys(); // 重新加载列表
+                        } else if (!response.ok) {
+                             // Try to get error detail
+                             let errorDetail = `HTTP error! status: ${response.status}`;
+                             try {
+                                 const errorData = await response.json();
+                                 if (errorData.detail) errorDetail = errorData.detail;
+                             } catch(e) { /* ignore json parsing error */ }
+                             throw new Error(errorDetail);
+                        } else {
+                             // Handle unexpected success status codes if necessary
+                             console.warn("Delete request returned unexpected success status:", response.status);
+                             fetchKeys(); // Still reload on other success codes
+                        }
                     } catch (error) {
                         console.error('Error deleting key:', error);
-                        alert('删除 Key 失败');
+                        alert(`删除 Key 失败: ${error.message}`);
                     }
                 });
             });
 
-            // 编辑 Key (待实现模态框逻辑)
-            /*
+            // 编辑 Key 按钮点击处理
             document.querySelectorAll('.edit-btn').forEach(button => {
                 button.addEventListener('click', (event) => {
                     const key = event.target.dataset.key;
                     const description = event.target.dataset.description;
-                    document.getElementById('editKeyInput').value = key;
+                    const isActive = event.target.dataset.isActive === 'true';
+                    const expiresAt = event.target.dataset.expiresAt || ''; // Get expires_at, default to empty string
+
+                    // 填充模态框
+                    document.getElementById('editKeyInput').value = key; // Hidden input
+                    document.getElementById('editKeyDisplay').value = key; // Display input
                     document.getElementById('editDescriptionInput').value = description;
+                    document.getElementById('editIsActiveInput').checked = isActive;
+                    document.getElementById('editExpiresAtInput').value = expiresAt; // Populate expires_at input
+                    document.getElementById('edit-key-status').textContent = ''; // Clear previous status
                 });
             });
-            */
         }
 
         // 添加 Key 表单提交
         addKeyForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             const description = keyDescriptionInput.value.trim();
+            const expiresAt = document.getElementById('keyExpiresAt').value.trim(); // 获取过期时间
             addKeyStatus.textContent = '正在添加...';
             addKeyStatus.className = 'ms-2 text-info';
 
+             // Basic ISO format check for expires_at
+            if (expiresAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(expiresAt)) {
+                 addKeyStatus.textContent = '添加失败: 过期时间格式无效。';
+                 addKeyStatus.className = 'ms-2 text-danger';
+                 return;
+            }
+
             try {
-                // Use fetchWithCsrf for POST request
-                const response = await fetchWithCsrf('/api/manage/keys/add', {
+                // Use standard fetch for POST request
+                const response = await fetch('/api/manage/keys/add', {
                     method: 'POST',
                     headers: {
-                        // Authorization handled by fetchWithCsrf
+                        'Authorization': `Bearer ${token}`, // 添加 Authorization 头
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ description: description || null }) // 发送 null 如果为空
+                    body: JSON.stringify({
+                        description: description || null, // 发送 null 如果为空
+                        expires_at: expiresAt || null // 发送 null 如果为空
+                    })
                 });
+
+                if (response.status === 401 || response.status === 403) {
+                     addKeyStatus.textContent = '认证失败或无权限。';
+                     addKeyStatus.className = 'ms-2 text-danger';
+                     localStorage.removeItem('access_token');
+                     window.location.href = '/';
+                     return;
+                 }
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ detail: '添加失败，请检查日志。' }));
@@ -265,11 +354,11 @@
 
                 const result = await response.json();
                 // Corrected access to key based on API response structure in routes.py
-                // Corrected: Use && instead of &amp;&amp;
                 const newKey = result.key && result.key.key ? result.key.key : '未知';
                 addKeyStatus.textContent = `添加成功！新 Key: ${newKey.substring(0, 8)}...`;
                 addKeyStatus.className = 'ms-2 text-success';
-                keyDescriptionInput.value = ''; // 清空输入框
+                keyDescriptionInput.value = ''; // 清空描述输入框
+                document.getElementById('keyExpiresAt').value = ''; // 清空过期时间输入框
                 fetchKeys(); // 重新加载列表
             } catch (error) {
                 console.error('Error adding key:', error);
@@ -284,15 +373,81 @@
         // 初始加载
         fetchKeys();
 
-        // 编辑 Key 模态框保存 (待实现)
-        /*
-        document.getElementById('saveEditKeyBtn').addEventListener('click', async () => {
-            const key = document.getElementById('editKeyInput').value;
-            const newDescription = document.getElementById('editDescriptionInput').value.trim();
-            // ... 调用 PUT /api/manage/keys/update/{key} ...
-            // ... 关闭模态框，刷新列表 ...
-        });
-        */
+        // 编辑 Key 模态框保存
+        const saveEditBtn = document.getElementById('saveEditKeyBtn');
+        const editModalElement = document.getElementById('editKeyModal');
+        const editModal = bootstrap.Modal.getOrCreateInstance(editModalElement); // Get modal instance
+
+        if (saveEditBtn && editModal) {
+            saveEditBtn.addEventListener('click', async () => {
+                const key = document.getElementById('editKeyInput').value;
+                const newDescription = document.getElementById('editDescriptionInput').value.trim();
+                const newIsActive = document.getElementById('editIsActiveInput').checked;
+                const newExpiresAt = document.getElementById('editExpiresAtInput').value.trim();
+                const editStatus = document.getElementById('edit-key-status');
+
+                editStatus.textContent = '正在保存...';
+                editStatus.className = 'mt-2 text-info';
+
+                const payload = {
+                    // Only include fields if they have changed? Or send all?
+                    // Sending all is simpler for now. Backend handles None.
+                    description: newDescription, // Send empty string if needed, or handle null in backend
+                    is_active: newIsActive,
+                    expires_at: newExpiresAt || null // Send null if empty string
+                };
+
+                 // Basic ISO format check for expires_at
+                if (payload.expires_at && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(payload.expires_at)) {
+                     editStatus.textContent = '保存失败: 过期时间格式无效。';
+                     editStatus.className = 'mt-2 text-danger';
+                     return;
+                }
+
+
+                try {
+                    // Use standard fetch for PUT request
+                    const response = await fetch(`/api/manage/keys/update/${key}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 401 || response.status === 403) {
+                         editStatus.textContent = '认证失败或无权限。';
+                         editStatus.className = 'mt-2 text-danger';
+                         localStorage.removeItem('access_token');
+                         // Don't close modal, let user see error, maybe redirect later
+                         // window.location.href = '/';
+                         return;
+                     }
+                    if (!response.ok) {
+                         const errorData = await response.json().catch(() => ({ detail: '保存失败，请检查日志。' }));
+                         throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+                    }
+
+                    editStatus.textContent = '保存成功!';
+                    editStatus.className = 'mt-2 text-success';
+
+                    // Close modal after a short delay and refresh list
+                    setTimeout(() => {
+                        editModal.hide();
+                        fetchKeys();
+                    }, 1000);
+
+                } catch (error) {
+                    console.error('Error updating key:', error);
+                    editStatus.textContent = `保存失败: ${error.message}`;
+                    editStatus.className = 'mt-2 text-danger';
+                }
+            });
+        } else {
+             console.error("Could not find save button or initialize edit modal.");
+        }
+
         } // End of 'if (document.getElementById('add-key-form'))'
     });
 </script>

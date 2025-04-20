@@ -77,11 +77,38 @@
                 } else {
                     console.warn('Manage Context: TTL input element or data not found for update.');
                     if (ttlInput) ttlInput.value = '7'; // 确保有默认值显示
-                }
-                renderContextList(data.contexts_info || []);
-                console.log('Manage Context: Context list rendered.');
-            } else if (response.status === 401 || response.status === 403) {
-                console.error('Manage Context: 认证失败 (401/403)，清除 token 并重定向到登录页。');
+                 }
+
+                 // --- 新增：根据管理员状态禁用 TTL 表单 ---
+                 const isAdmin = data.is_admin === true; // 明确检查布尔值 true
+                 const ttlSubmitButton = ttlForm ? ttlForm.querySelector('button[type="submit"]') : null;
+                 console.log('Manage Context: Is Admin:', isAdmin);
+                 if (!isAdmin) {
+                     if (ttlInput) {
+                         ttlInput.disabled = true;
+                         console.log('Manage Context: TTL input disabled for non-admin.');
+                     }
+                     if (ttlSubmitButton) {
+                         ttlSubmitButton.disabled = true;
+                         console.log('Manage Context: TTL submit button disabled for non-admin.');
+                     }
+                     // 可选：添加提示信息
+                     if (ttlStatusSpan) {
+                         ttlStatusSpan.textContent = '仅管理员可修改 TTL';
+                         ttlStatusSpan.style.color = '#666'; // Use a less prominent color
+                     }
+                 } else {
+                      // 确保管理员是启用的状态 (如果之前被禁用了)
+                      if (ttlInput) ttlInput.disabled = false;
+                      if (ttlSubmitButton) ttlSubmitButton.disabled = false;
+                      if (ttlStatusSpan) ttlStatusSpan.textContent = ''; // 清除可能存在的提示
+                 }
+                 // --- 结束：根据管理员状态禁用 TTL 表单 ---
+
+                 renderContextList(data.contexts_info || []);
+                 console.log('Manage Context: Context list rendered.');
+             } else if (response.status === 401 || response.status === 403) {
+                 console.error('Manage Context: 认证失败 (401/403)，清除 token 并重定向到登录页。');
                 localStorage.removeItem('access_token');
                 window.location.href = '/';
             } else {

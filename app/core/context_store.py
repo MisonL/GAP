@@ -234,23 +234,47 @@ async def get_context_info(proxy_key: str) -> Optional[Dict[str, Any]]:
          return None
 
 # 注意：此函数现在需要是 async
-async def list_all_context_keys_info() -> List[Dict[str, Any]]:
-    """获取所有存储的上下文的 Key 和元信息"""
+async def list_all_context_keys_info(user_key: Optional[str] = None, is_admin: bool = False) -> List[Dict[str, Any]]:
+    """
+    获取存储的上下文的 Key 和元信息。
+    - 如果 is_admin 为 True，返回所有上下文信息。
+    - 如果 is_admin 为 False 且提供了 user_key，仅返回该用户的上下文信息。
+    - 否则返回空列表。
+
+    Args:
+        user_key: 当前用户的 Key。
+        is_admin: 当前用户是否为管理员。
+
+    Returns:
+        包含上下文信息的字典列表。
+    """
     contexts_info = []
     try:
         async with get_db_connection() as conn:
             cursor = conn.cursor()
-            # 获取 key, 长度和最后使用时间
-            logger.info(f"list_all_context_keys_info: Preparing to execute SELECT query on connection {id(conn)}...")
-            await asyncio.to_thread(cursor.execute, "SELECT proxy_key, length(contents) as content_length, last_used FROM contexts ORDER BY last_used DESC")
+            sql = "SELECT proxy_key, length(contents) as content_length, last_used FROM contexts"
+            params: Tuple = ()
+
+            if is_admin:
+                logger.info(f"管理员请求所有上下文信息 (连接 ID: {id(conn)})...")
+                sql += " ORDER BY last_used DESC"
+            elif user_key:
+                logger.info(f"用户 {user_key[:8]}... 请求其上下文信息 (连接 ID: {id(conn)})...")
+                sql += " WHERE proxy_key = ? ORDER BY last_used DESC"
+                params = (user_key,)
+            else:
+                # 非管理员且未提供 user_key，不应查询任何内容
+                logger.warning(f"非管理员尝试列出上下文但未提供 user_key (连接 ID: {id(conn)})。")
+                return [] # 直接返回空列表
+
+            await asyncio.to_thread(cursor.execute, sql, params)
             rows = await asyncio.to_thread(cursor.fetchall)
-            # 以 INFO 级别记录从数据库获取的原始行
-            logger.info(f"list_all_context_keys_info: Fetched {len(rows)} rows from DB. Raw rows: {rows}")
+            logger.info(f"list_all_context_keys_info: Fetched {len(rows)} rows from DB for {'admin' if is_admin else user_key[:8]+'...'}. Raw rows: {rows}")
             contexts_info = [dict(row) for row in rows]
     except sqlite3.Error as e:
-        logger.error(f"列出所有上下文信息失败 ({DATABASE_PATH}): {e}", exc_info=True)
-        # 出错时返回空列表
-        contexts_info = []
+        log_prefix = f"管理员" if is_admin else f"用户 {user_key[:8]}..." if user_key else "未知用户"
+        logger.error(f"{log_prefix} 列出上下文信息失败 ({DATABASE_PATH}): {e}", exc_info=True)
+        contexts_info = [] # 出错时返回空列表
     return contexts_info
 
 # --- 内存数据库清理 ---

@@ -36,12 +36,6 @@ cache_last_updated: Dict[str, float] = defaultdict(float) # 改为字典
 daily_rpd_totals: Dict[str, int] = defaultdict(int)
 daily_totals_lock = threading.Lock() # 保护 daily_rpd_totals 访问的锁
 
-# --- 每日 IP 请求计数 ---
-
-# 存储格式: date_str (太平洋时间 YYYY-MM-DD) -> ip_address -> count (请求次数)
-ip_daily_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
-ip_counts_lock = threading.Lock() # 保护 ip_daily_counts 访问的锁
-
 # --- 每日 IP 输入 Token 消耗计数 ---
 
 # 存储格式: date_str (太平洋时间 YYYY-MM-DD) -> ip_address -> total_input_tokens (总输入 Token 数)

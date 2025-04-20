@@ -15,7 +15,7 @@ load_dotenv()
 logger = logging.getLogger('my_logger') # 获取日志记录器实例
 
 # --- 应用版本 ---
-__version__ = "1.4.0" # 更新版本号，支持内存模式多中转用户 Key
+__version__ = "1.4.1" # 更新版本号，代码结构优化和 TODO 清理
 
 
 # --- 应用配置 ---
@@ -23,6 +23,7 @@ PASSWORD = os.environ.get("PASSWORD") # Web UI 密码 (强制设置)
 WEB_UI_PASSWORDS: List[str] = [p.strip() for p in PASSWORD.split(',') if p.strip()] if PASSWORD else []
 
 SECRET_KEY = os.environ.get("SECRET_KEY") # 用于 Session 中间件，必须设置！
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY") # 管理员 API Key
 MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", "30")) # 每分钟最大请求数 (本地限制)
 MAX_REQUESTS_PER_DAY_PER_IP: int = int(os.environ.get("MAX_REQUESTS_PER_DAY_PER_IP", "600")) # 每个 IP 每天最大请求数
 DISABLE_SAFETY_FILTERING: bool = os.environ.get("DISABLE_SAFETY_FILTERING", "false").lower() == "true" # 是否禁用安全过滤
@@ -32,7 +33,6 @@ PROTECT_STATUS_PAGE: bool = os.environ.get("PROTECT_STATUS_PAGE", "false").lower
 JWT_ALGORITHM: str = os.environ.get("JWT_ALGORITHM", "HS256") # JWT 签名算法
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "30")) # JWT 有效期（分钟）
 
-# PROXY_API_KEYS 相关逻辑已移除，API 认证方式由数据库模式决定
 
 # --- 报告配置 ---
 # 读取使用情况报告间隔，默认30分钟
@@ -129,4 +129,3 @@ def load_model_limits():
 # 注意：加载函数定义好了，但调用将在 main.py 的 lifespan 中进行
 
 # --- 其他全局变量 ---
-# REPORT_LOG_LEVEL_INT 已在上面定义

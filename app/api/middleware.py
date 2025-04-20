@@ -11,34 +11,7 @@ from ..core.db_utils import IS_MEMORY_DB
 # 获取日志记录器实例
 logger = logging.getLogger('my_logger') # 获取日志记录器实例
 
-async def verify_password(request: Request):
-    """
-    FastAPI 依赖项函数，用于验证 Authorization 头中的 Bearer 令牌
-    是否与配置的 API 密钥 (PASSWORD) 匹配。
-    """
-    # 仅当在环境/配置中设置了 PASSWORD 时才强制执行密码检查
-    if app_config.PASSWORD: # 检查是否在配置中设置了全局密码
-        auth_header = request.headers.get("Authorization") # 从请求头获取 Authorization 字段
-        # 检查标头是否存在且以 "Bearer " 开头
-        if not auth_header or not auth_header.startswith("Bearer "):
-            raise HTTPException(
-                status_code=401,
-                detail="未授权：缺少或无效的令牌格式。预期格式：'Bearer <token>'。" # 翻译
-            )
-        # 提取令牌部分
-        try:
-            token = auth_header.split(" ")[1] # 从 "Bearer <token>" 中提取令牌部分
-        except IndexError:
-             raise HTTPException(
-                status_code=401,
-                detail="未授权：'Bearer ' 后的令牌格式无效。" # 翻译
-            )
-        # 将提取的令牌与配置的密码进行比较
-        if token != app_config.PASSWORD: # 将提取的令牌与配置的密码进行比较
-            raise HTTPException(status_code=401, detail="未授权：无效的令牌。")
-
 # 如果需要，以后可以在此处添加其他中间件函数或依赖项。
-
 async def verify_proxy_key(request: Request) -> str:
     """
     FastAPI 依赖项函数，用于验证 API 请求的 Authorization 头。

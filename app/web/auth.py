@@ -61,6 +61,16 @@ async def verify_jwt_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 可以在这里添加基于 payload 内容的额外检查，例如用户角色等
-    # logger.debug(f"JWT token 验证成功. Payload: {payload}")
-    return payload # 返回 payload，路由函数可能需要用到里面的信息
+    # 可以在这里添加基于 payload 内容的额外检查
+    user_key = payload.get("sub")
+    is_admin = payload.get("admin", False) # 从 payload 获取 admin 状态，默认为 False
+    if not user_key:
+        logger.warning(f"JWT token 有效，但缺少 'sub' (用户标识符) 字段。Payload: {payload}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的 token (缺少用户信息)",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    logger.debug(f"JWT token 验证成功. User Key: {user_key[:8]}..., Is Admin: {is_admin}")
+    return payload # 返回完整的 payload，路由函数可以从中提取 'sub' 和 'admin'

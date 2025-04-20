@@ -142,7 +142,6 @@ class ResponseWrapper:
             return tool_calls_list if tool_calls_list else None
         except (KeyError, IndexError, TypeError):
             # 处理数据结构不符合预期的情况
-            # logger.debug("无法提取工具调用，响应结构无效或缺失。", exc_info=True) # Debug 日志可能过于频繁，注释掉
             return None
 
     # 使用 @property 装饰器将内部提取方法的结果暴露为只读属性，方便外部调用者访问

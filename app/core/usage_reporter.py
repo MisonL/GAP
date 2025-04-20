@@ -15,9 +15,11 @@ from .tracking import ( # 同级目录导入
     usage_data, usage_lock, RPM_WINDOW_SECONDS, TPM_WINDOW_SECONDS,
     daily_rpd_totals, daily_totals_lock,
     key_scores_cache, cache_lock,
-    ip_daily_counts, ip_counts_lock,
+    # ip_daily_counts, ip_counts_lock, # 移除 tracking 中的 IP 请求计数
     ip_daily_input_token_counts, ip_input_token_counts_lock
 )
+# 从 utils 导入实际使用的 IP 请求计数变量和锁
+from .utils import ip_daily_request_counts, ip_rate_limit_lock
 from .. import config # 导入 config 模块
 from ..config import REPORT_LOG_LEVEL_INT # 导入日志级别配置
 from .key_management import INITIAL_KEY_COUNT # 同级目录导入
@@ -59,8 +61,14 @@ def report_usage(key_manager: 'APIKeyManager'):
         daily_rpd_totals_copy = daily_rpd_totals.copy()
     with cache_lock:
         key_scores_cache_copy = copy.deepcopy(key_scores_cache)
-    with ip_counts_lock:
-        ip_counts_copy = copy.deepcopy(ip_daily_counts)
+
+    # 复制并转换 IP 请求计数数据格式
+    ip_counts_copy = defaultdict(lambda: defaultdict(int)) # 初始化目标格式字典
+    with ip_rate_limit_lock: # 使用 utils 中的锁
+        ip_daily_request_counts_raw = copy.deepcopy(ip_daily_request_counts) # 复制原始数据
+        for (date_str, ip), count in ip_daily_request_counts_raw.items():
+            ip_counts_copy[date_str][ip] = count # 转换为 get_top_ips 所需格式
+
     with ip_input_token_counts_lock:
         ip_input_token_counts_copy = copy.deepcopy(ip_daily_input_token_counts)
     with key_manager.keys_lock:
