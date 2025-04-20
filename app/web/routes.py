@@ -69,11 +69,13 @@ async def root_get(request: Request): # 移除了 CsrfProtect 依赖
 
     # --- CSRF 相关代码已移除 ---
     # csrf_token, signed_token = csrf_protect.generate_csrf_tokens()
+    admin_key_missing = not config.ADMIN_API_KEY # 检查管理员 Key 是否缺失
     response = templates.TemplateResponse(
         "login.html",
         {
             "request": request,
             "login_required": login_required,
+            "admin_key_missing": admin_key_missing, # 添加到模板上下文
             # "csrf_token": csrf_token # 移除了 CSRF token
         }
     )
@@ -222,18 +224,20 @@ async def manage_keys_page(request: Request):
     is_memory_mode = db_utils.IS_MEMORY_DB
     if is_memory_mode:
         logger.debug("渲染 Key 管理页面骨架 (内存模式提示)")
+        admin_key_missing = not config.ADMIN_API_KEY # 检查管理员 Key 是否缺失
         return templates.TemplateResponse(
             "manage_keys.html",
             # 添加 'now' 到上下文，用于模板中可能的缓存控制或显示
-            {"request": request, "is_memory_mode": True, "now": datetime.now(timezone.utc)}
+            {"request": request, "is_memory_mode": True, "admin_key_missing": admin_key_missing, "now": datetime.now(timezone.utc)}
         )
     else:
         logger.debug("渲染 Key 管理页面骨架 (文件模式)")
+        admin_key_missing = not config.ADMIN_API_KEY # 检查管理员 Key 是否缺失
         # 仅渲染页面骨架，实际的 Key 数据将由前端通过 API 请求获取并填充
         return templates.TemplateResponse(
             "manage_keys.html",
             # 添加 'now' 到上下文
-            {"request": request, "is_memory_mode": False, "now": datetime.now(timezone.utc)}
+            {"request": request, "is_memory_mode": False, "admin_key_missing": admin_key_missing, "now": datetime.now(timezone.utc)}
         )
 
 # 获取 Key 数据的 API 端点
@@ -472,10 +476,12 @@ async def manage_context_page(request: Request): # 移除 CsrfProtect 依赖
     # current_ttl_days = await context_store.get_ttl_days() # 改为 await
     # contexts_info = await context_store.list_all_context_keys_info() # 改为 await
     # # 转换 datetime 对象 ... (移除)
+    admin_key_missing = not config.ADMIN_API_KEY # 检查管理员 Key 是否缺失
     context = {
         "request": request,
         # "current_ttl_days": current_ttl_days, # 数据由 API 提供
         # "contexts_info": contexts_info,      # 数据由 API 提供
+        "admin_key_missing": admin_key_missing, # 添加到模板上下文
         "now": datetime.now(timezone.utc) # 确保时区一致 (UTC) 且键名为 'now'
     }
     # CSRF 相关代码已移除

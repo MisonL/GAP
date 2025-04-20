@@ -49,6 +49,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # 记录部分关键配置值（可选，注意不要记录敏感信息如 SECRET_KEY）
     # SECRET_KEY 的检查已移除，JWT 认证会在需要时检查其是否存在
+    # 定义 ANSI 红色代码
+    RED = '\033[91m'
+    RESET = '\033[0m'
+    if not config.ADMIN_API_KEY:
+        logger.warning(f"{RED}****************************************************************{RESET}")
+        logger.warning(f"{RED}警告: 管理员 API Key (ADMIN_API_KEY) 未设置！{RESET}")
+        logger.warning(f"{RED}部分管理功能（如代理 Key 管理）将不可用。{RESET}")
+        logger.warning(f"{RED}强烈建议在环境变量中配置 ADMIN_API_KEY 以启用全部功能。{RESET}")
+        logger.warning(f"{RED}****************************************************************{RESET}")
+    else:
+        logger.info("管理员 API Key (ADMIN_API_KEY) 已配置。")
+
     logger.info(f"Web UI 密码保护已启用: {'是' if config.PASSWORD else '否'}")
     logger.info(f"本地 IP 速率限制: 每分钟最大请求数={config.MAX_REQUESTS_PER_MINUTE}, 每 IP 每日最大请求数={config.MAX_REQUESTS_PER_DAY_PER_IP}")
     logger.info(f"全局禁用 Gemini 安全过滤: {config.DISABLE_SAFETY_FILTERING}")
@@ -80,7 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if active_keys_count > 0:
         logger.info(f"最大重试次数设置为 (基于有效密钥): {active_keys_count}")
     else:
-        logger.error("没有有效的 API 密钥，服务可能无法正常运行！")
+        logger.error(f"{RED}没有有效的 API 密钥，服务可能无法正常运行！{RESET}")
 
     # --- 加载模型限制 ---
     # 从 JSON 文件加载模型限制到 config.MODEL_LIMITS
