@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {# CSRF meta tag removed #}
+    <!-- 页面标题，子模板可以覆盖此块 -->
     <title>{% block title %}Gemini API 代理{% endblock %} - 管理界面</title>
+    <!-- 基础样式 -->
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -171,20 +173,26 @@
     </style>
 </head>
 <body>
+    <!-- 页面头部 -->
     <header>
         <h1>代理管理界面</h1>
+        <!-- 导航菜单 -->
         <nav>
             {# <a href="/">状态页</a> #} {# 移除状态页链接 #}
             {# <a href="/manage">管理首页</a> #} {# 移除管理首页链接 #}
             {# <a href="/manage/keys">代理 Key 管理</a> #} {# 移除 Key 管理链接 #}
+            <!-- 上下文管理链接 -->
             <a href="/manage/context">上下文管理</a>
+            <!-- 仅在文件模式下显示 Key 管理链接 -->
             {% if not is_memory_db %} {# 仅在文件模式下显示 Key 管理 #}
             <a href="/manage/keys">代理 Key 管理</a>
             {% endif %}
+            <!-- 登出按钮 -->
             <a href="#" id="logout-button" style="margin-left: 2rem; color: #ffc107;">登出</a> {# 添加登出按钮 #}
         </nav>
     </header>
 
+    <!-- 主内容容器 -->
     <div class="container">
         {# {% with messages = get_flashed_messages(with_categories=true) %} #}
         {#     {% if messages %} #}
@@ -194,20 +202,24 @@
         {#     {% endif %} #}
         {# {% endwith %} #}
 
+        <!-- 管理员 Key 缺失警告 -->
         {% if admin_key_missing %}
         <div class="alert alert-error" role="alert">
             <strong>警告：</strong> 管理员 API Key (ADMIN_API_KEY) 未设置！部分管理功能（如代理 Key 管理）将不可用。请在环境变量中配置 ADMIN_API_KEY 以启用全部功能。
         </div>
         {% endif %}
 
+        <!-- 子模板内容块 -->
         {% block content %}{% endblock %}
     </div>
 
+    <!-- 页面底部 -->
     <footer>
         Gemini API Proxy - &copy; {{ now.year }}
     </footer>
 
     {# 基础登出逻辑，子模板可以添加更多脚本 #}
+    <!-- Base logout logic, child templates can add more scripts -->
     <script>
         // --- CSRF Token Helper Functions Removed ---
         // function getCookie(name) { ... } // Keep getCookie if needed elsewhere, otherwise remove
@@ -232,22 +244,26 @@
 
 
         // 登出逻辑
+        // Logout logic
         const logoutButton = document.getElementById('logout-button');
         if (logoutButton) {
             logoutButton.addEventListener('click', function(event) {
-                event.preventDefault(); // 阻止默认的链接跳转行为
-                console.log('执行登出操作...');
+                event.preventDefault(); // 阻止默认的链接跳转行为 (Prevent default link behavior)
+                console.log('执行登出操作...'); // Log logout action
                 // 从 localStorage 清除 token
-                localStorage.removeItem('access_token');
-                console.log('Access token 已从 localStorage 移除。');
+                // Clear token from localStorage
+                localStorage.removeItem('access_token'); // 移除 access_token (Remove access_token)
+                console.log('Access token 已从 localStorage 移除。'); // Log token removal
                 // 重定向到登录页面
-                window.location.href = '/';
+                // Redirect to login page
+                window.location.href = '/'; // 重定向 (Redirect)
             });
         } else {
-            console.error('未找到 ID 为 logout-button 的元素。');
+            console.error('未找到 ID 为 logout-button 的元素。'); // Log error if logout button not found
         }
     </script>
     {# 允许子模板添加自己的脚本 #}
+    <!-- Allow child templates to add their own scripts -->
     {% block scripts %}{% endblock %}
 </body>
 </html>

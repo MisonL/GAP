@@ -311,11 +311,14 @@ POST /v1/chat/completions
 <summary>点击展开/折叠详细版本历史</summary>
 
 ### v1.4.2
+    *   **本地化**: 为项目中的主要代码文件补全了中文注释。
     *   **配置与提示**: 
         *   将 `ADMIN_API_KEY` 环境变量标记为 **必需** (`readme.md`)。
         *   在 Web UI (登录页及管理页) 顶部添加横幅警告，提示用户 `ADMIN_API_KEY` 未设置 (`app/web/routes.py`, `app/web/templates/_base.html`, `app/web/templates/login.html`)。
         *   在应用程序启动时，如果 `ADMIN_API_KEY` 未设置或无有效 `GEMINI_API_KEYS`，在终端日志中添加 **红色** 警告/错误信息 (`app/main.py`)。
-
+    *   **修复**: 修复了 API 使用情况报告中“启动时无效 Key 数量”显示为负数的问题。
+    *   **修复**: 解决了 `app/core/usage_reporter.py` 中 Pylance 报告的 `report_lines` 和 `model_total_rpd` 未定义错误。
+    *   **修复**: 纠正了 `app/core/usage_reporter.py` 中 `TPM_WINDOW_WINDOW_SECONDS` 的拼写错误为 `TPM_WINDOW_SECONDS`。
 
 ### v1.4.1
     *   **许可证**: 添加了知识共享署名-非商业性使用 4.0 国际 (CC BY-NC 4.0) 许可证 ([LICENSE](LICENSE), [LICENSE.zh-CN](LICENSE.zh-CN))，并在 README 中添加了说明。
@@ -422,4 +425,3 @@ POST /v1/chat/completions
 *   初始版本发布。
 
 </details>
-

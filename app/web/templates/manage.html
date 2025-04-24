@@ -1,21 +1,22 @@
-{% extends "_base.html" %}
+{% extends "_base.html" %} {# 继承基础模板 #}
 
-{% block title %}管理首页{% endblock %}
+{% block title %}管理首页{% endblock %} {# 设置页面标题 #}
 
 {% block content %}
-<h2>管理首页</h2>
+<h2>管理首页</h2> {# 页面主标题 #}
 
-<p>欢迎来到 Gemini API 代理管理界面。</p>
-<p>请使用上方导航链接管理代理 Key 和对话上下文。</p>
+<p>欢迎来到 Gemini API 代理管理界面。</p> {# 欢迎信息 #}
+<p>请使用上方导航链接管理代理 Key 和对话上下文。</p> {# 指导信息 #}
 
 {# 可以添加一些概览信息，例如 Key 总数、上下文记录总数等 #}
+{# Optional: Add some overview information, such as total number of keys, total number of context records, etc. #}
 {#
-<h2>概览</h2>
+<h2>概览</h2> {# 概览副标题 #}
 <ul>
-    <li>代理 Key 总数: {{ key_count }}</li>
-    <li>活动上下文记录数: {{ context_count }}</li>
-    <li>当前上下文 TTL: {{ current_ttl }} 天</li>
+    <li>代理 Key 总数: {{ key_count }}</li> {# 显示代理 Key 总数 #}
+    <li>活动上下文记录数: {{ context_count }}</li> {# 显示活动上下文记录数 #}
+    <li>当前上下文 TTL: {{ current_ttl }} 天</li> {# 显示当前上下文 TTL #}
 </ul>
 #}
 
-{% endblock %}
+{% endblock %} {# 内容块结束 #}
