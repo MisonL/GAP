@@ -7,7 +7,7 @@ import time
 import logging
 import pytz
 import copy
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from collections import Counter, defaultdict
 from typing import List, Tuple, Dict, Any, TYPE_CHECKING
 
@@ -413,3 +413,265 @@ def report_usage(key_manager: 'APIKeyManager'):
     # 使用配置的日志级别记录报告
     # Log the report using the configured log level
     logger.log(REPORT_LOG_LEVEL_INT, full_report)
+
+
+# --- 新增：获取结构化报告数据的函数 ---
+# --- New: Function to Get Structured Report Data ---
+async def get_structured_report_data(key_manager: 'APIKeyManager') -> Dict[str, Any]:
+    """
+    获取用于 API 的结构化使用情况报告数据。
+    Gets structured usage report data for API use.
+
+    Args:
+        key_manager: APIKeyManager 实例。An instance of APIKeyManager.
+
+    Returns:
+        包含报告数据的字典。A dictionary containing the report data.
+    """
+    logger.debug("开始获取结构化报告数据...") # Log start of structured data retrieval
+    now = time.time()
+    utc_now = datetime.now(timezone.utc) # 获取 UTC 当前时间 (Get current UTC time)
+    pt_timezone = pytz.timezone('America/Los_Angeles') # 设置太平洋时间区 (Set Pacific Timezone)
+    today_pt = datetime.now(pt_timezone) # 获取太平洋时间区的当前时间 (Get current time in PT)
+    today_date_str = today_pt.strftime('%Y-%m-%d') # 格式化今日日期字符串 (Format today's date string)
+    start_of_week_pt = today_pt - timedelta(days=today_pt.weekday()) # 计算本周开始日期 (Calculate the start date of the week)
+    start_of_month_pt = today_pt.replace(day=1) # 计算本月开始日期 (Calculate the start date of the month)
+
+    # --- 安全地获取数据副本 ---
+    # --- Safely Get Data Copies ---
+    with usage_lock:
+        usage_data_copy = copy.deepcopy(usage_data)
+    with daily_totals_lock:
+        daily_rpd_totals_copy = daily_rpd_totals.copy()
+    with cache_lock:
+        key_scores_cache_copy = copy.deepcopy(key_scores_cache)
+    ip_counts_copy = defaultdict(lambda: defaultdict(int))
+    with ip_rate_limit_lock:
+        ip_daily_request_counts_raw = copy.deepcopy(ip_daily_request_counts)
+        for (date_str, ip), count in ip_daily_request_counts_raw.items():
+            ip_counts_copy[date_str][ip] = count
+    with ip_input_token_counts_lock:
+        ip_input_token_counts_copy = copy.deepcopy(ip_daily_input_token_counts)
+    with key_manager.keys_lock:
+        active_keys = key_manager.api_keys[:]
+        active_keys_count = len(active_keys)
+
+    # --- 初始化结果字典 ---
+    # --- Initialize Result Dictionary ---
+    report_data = {
+        "report_time_utc": utc_now.isoformat(), # 报告时间 (Report time)
+        "key_status_summary": {}, # Key 状态汇总 (Key status summary)
+        "overall_stats": { # 总体统计 (Overall stats)
+            "active_keys_count": active_keys_count, # 活跃 Key 数量 (Active key count)
+            "invalid_keys_startup": INVALID_KEY_COUNT_AT_STARTUP, # 启动时无效 Key 数量 (Invalid keys at startup)
+            "rpd": { # RPD 相关统计 (RPD related stats)
+                "capacity_target_model": None, # 目标模型容量信息 (Target model capacity info)
+                "capacity_other_models": [], # 其他模型容量信息 (Other models capacity info)
+                "used_today": 0, # 今日已用 RPD (RPD used today)
+                "estimated_today": None, # 今日预估 RPD (Estimated RPD today)
+            },
+            "tpd_input": { # TPD 输入相关统计 (TPD input related stats)
+                 "capacity_target_model": None, # 目标模型容量信息 (Target model capacity info)
+                 "used_today": 0, # 今日已用 TPD 输入 (TPD input used today)
+                 "estimated_today": None, # 今日预估 TPD 输入 (Estimated TPD input today)
+            },
+            "avg_daily_rpd_past_7_days": None, # 过去7天平均日 RPD (Average daily RPD past 7 days)
+        },
+        "key_suggestion": "无法生成建议。", # Key 数量建议 (Key count suggestion)
+        "top_ips": { # Top IP 统计 (Top IP stats)
+            "requests": {"today": [], "week": [], "month": []}, # 请求次数 (Request counts)
+            "tokens": {"today": [], "week": [], "month": []} # 输入 Token 数 (Input token counts)
+        }
+    }
+
+    # --- Key 使用情况聚合 ---
+    # --- Key Usage Aggregation ---
+    key_status_summary_internal = defaultdict(lambda: defaultdict(int)) # 内部汇总 (Internal summary)
+    model_total_rpd = defaultdict(int) # 模型总 RPD (Model total RPD)
+    model_total_tpd_input = defaultdict(int) # 模型总 TPD 输入 (Model total TPD input)
+
+    if usage_data_copy:
+        for key, models_usage in usage_data_copy.items():
+            if not models_usage: continue
+            for model_name, usage in models_usage.items():
+                limits = config.MODEL_LIMITS.get(model_name)
+                if not limits: continue
+
+                rpd_limit = limits.get("rpd")
+                rpm_limit = limits.get("rpm")
+                tpm_input_limit = limits.get("tpm_input")
+                tpd_input_limit = limits.get("tpd_input")
+
+                rpd_count = usage.get("rpd_count", 0)
+                rpm_count = usage.get("rpm_count", 0)
+                tpm_input_count = usage.get("tpm_input_count", 0)
+                tpd_input_count = usage.get("tpd_input_count", 0)
+                rpm_ts = usage.get("rpm_timestamp", 0)
+                tpm_input_ts = usage.get("tpm_input_timestamp", 0)
+
+                model_total_rpd[model_name] += rpd_count
+                model_total_tpd_input[model_name] += tpd_input_count
+
+                rpm_in_window = 0
+                rpm_remaining_pct = 1.0
+                if rpm_limit is not None:
+                    if now - rpm_ts < RPM_WINDOW_SECONDS:
+                        rpm_in_window = rpm_count
+                        rpm_remaining_pct = max(0, (rpm_limit - rpm_in_window) / rpm_limit) if rpm_limit > 0 else 0
+
+                tpm_input_in_window = 0
+                tpm_input_remaining_pct = 1.0
+                if tpm_input_limit is not None:
+                    if now - tpm_input_ts < TPM_WINDOW_SECONDS:
+                        tpm_input_in_window = tpm_input_count
+                        tpm_input_remaining_pct = max(0, (tpm_input_limit - tpm_input_in_window) / tpm_input_limit) if tpm_input_limit > 0 else 0
+
+                rpd_remaining_pct = max(0, (rpd_limit - rpd_count) / rpd_limit) if rpd_limit is not None and rpd_limit > 0 else 1.0
+                tpd_input_remaining_pct = max(0, (tpd_input_limit - tpd_input_count) / tpd_input_limit) if tpd_input_limit is not None and tpd_input_limit > 0 else 1.0
+                score = key_scores_cache_copy.get(key, {}).get(model_name, -1.0)
+
+                status_parts = [
+                    f"RPD={rpd_count}/{rpd_limit or 'N/A'} ({rpd_remaining_pct:.0%})",
+                    f"RPM={rpm_in_window}/{rpm_limit or 'N/A'} ({rpm_remaining_pct:.0%})",
+                    f"TPD_In={tpd_input_count:,}/{tpd_input_limit or 'N/A'} ({tpd_input_remaining_pct:.0%})",
+                    f"TPM_In={tpm_input_in_window:,}/{tpm_input_limit or 'N/A'} ({tpm_input_remaining_pct:.0%})",
+                    f"Score={score:.2f}"
+                ]
+                status_str = " | ".join(status_parts)
+                key_status_summary_internal[model_name][status_str] += 1
+
+        # 格式化 Key 状态汇总结果
+        # Format key status summary result
+        for model_name, statuses in sorted(key_status_summary_internal.items()):
+            total_keys_for_model = sum(statuses.values())
+            report_data["key_status_summary"][model_name] = {
+                "total_keys": total_keys_for_model,
+                "statuses": dict(sorted(statuses.items(), key=lambda item: item[1], reverse=True)) # 按数量排序 (Sort by count)
+            }
+
+    # --- 总体统计与预测 ---
+    # --- Overall Statistics and Prediction ---
+    rpd_groups = defaultdict(list)
+    model_rpd_usage_count = defaultdict(int)
+    for model, limits in config.MODEL_LIMITS.items():
+        if limits and limits.get("rpd") is not None:
+            rpd_groups[limits["rpd"]].append(model)
+    for key, models_usage in usage_data_copy.items():
+        for model_name in models_usage:
+             if model_name in config.MODEL_LIMITS:
+                 model_rpd_usage_count[model_name] += 1
+
+    target_model = "gemini-2.5-pro-exp-03-25"
+    target_model_limits = config.MODEL_LIMITS.get(target_model, {})
+    target_model_rpd_limit = target_model_limits.get("rpd")
+    target_model_tpd_input_limit = target_model_limits.get("tpd_input")
+
+    target_rpd_capacity = 0
+    if target_model_rpd_limit:
+        target_rpd_capacity = active_keys_count * target_model_rpd_limit
+        report_data["overall_stats"]["rpd"]["capacity_target_model"] = {
+            "limit": target_model_rpd_limit,
+            "capacity": target_rpd_capacity,
+            "model": target_model
+        }
+
+    for rpd_limit, models in sorted(rpd_groups.items()):
+        if rpd_limit != target_model_rpd_limit:
+             group_capacity = active_keys_count * rpd_limit
+             used_models_in_group = [m for m in models if model_rpd_usage_count.get(m, 0) > 0]
+             if used_models_in_group:
+                 report_data["overall_stats"]["rpd"]["capacity_other_models"].append({
+                     "limit": rpd_limit,
+                     "capacity": group_capacity,
+                     "models": used_models_in_group
+                 })
+
+    target_tpd_input_capacity = 0
+    if target_model_tpd_input_limit:
+        target_tpd_input_capacity = active_keys_count * target_model_tpd_input_limit
+        report_data["overall_stats"]["tpd_input"]["capacity_target_model"] = {
+            "limit": target_model_tpd_input_limit,
+            "capacity": target_tpd_input_capacity,
+            "model": target_model
+        }
+
+    current_total_rpd = sum(model_total_rpd.values())
+    current_total_tpd_input = sum(model_total_tpd_input.values())
+    report_data["overall_stats"]["rpd"]["used_today"] = current_total_rpd
+    report_data["overall_stats"]["tpd_input"]["used_today"] = current_total_tpd_input
+
+    seconds_since_pt_midnight = (today_pt - today_pt.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
+    fraction_of_day_passed = seconds_since_pt_midnight / (24 * 3600) if seconds_since_pt_midnight > 0 else 0
+    estimated_total_rpd_today = 0
+    estimated_total_tpd_input_today = 0
+
+    if fraction_of_day_passed > 0.01:
+        estimated_total_rpd_today = int(current_total_rpd / fraction_of_day_passed)
+        estimated_total_tpd_input_today = int(current_total_tpd_input / fraction_of_day_passed) # 虽然报告为 N/A，但计算出来 (Although reported as N/A, calculate it)
+        report_data["overall_stats"]["rpd"]["estimated_today"] = estimated_total_rpd_today
+        # TPD 输入预估通常意义不大，保持 None 或标记为 N/A
+        # TPD input estimation is usually not meaningful, keep as None or mark as N/A
+        report_data["overall_stats"]["tpd_input"]["estimated_today"] = None # 或者 "N/A" (or "N/A")
+
+    N = 7
+    last_n_days_rpd = []
+    for i in range(1, N + 1):
+        day_str = (today_pt - timedelta(days=i)).strftime('%Y-%m-%d')
+        rpd = daily_rpd_totals_copy.get(day_str)
+        if rpd is not None:
+            last_n_days_rpd.append(rpd)
+
+    avg_daily_rpd = 0
+    if last_n_days_rpd:
+        avg_daily_rpd = sum(last_n_days_rpd) / len(last_n_days_rpd)
+        report_data["overall_stats"]["avg_daily_rpd_past_7_days"] = round(avg_daily_rpd, 2)
+
+    # --- Key 数量建议 ---
+    # --- Key Count Suggestion ---
+    suggestion = "保持当前 Key 数量。"
+    rpd_usage_indicator = max(estimated_total_rpd_today, avg_daily_rpd)
+    tpd_input_usage_indicator = estimated_total_tpd_input_today # 使用计算值 (Use calculated value)
+
+    rpd_usage_ratio = 0
+    if target_rpd_capacity > 0:
+        rpd_usage_ratio = rpd_usage_indicator / target_rpd_capacity
+
+    tpd_input_usage_ratio = 0
+    if target_tpd_input_capacity > 0 and tpd_input_usage_indicator > 0: # 仅当有 TPD 输入时计算比率 (Calculate ratio only if there is TPD input)
+        tpd_input_usage_ratio = tpd_input_usage_indicator / target_tpd_input_capacity
+
+    if active_keys_count == 0:
+        suggestion = "错误: 未找到有效的 API Key！"
+    elif target_rpd_capacity <= 0:
+        suggestion = "无法生成建议 (目标模型 RPD 限制未定义)。"
+    elif rpd_usage_ratio > 0.85:
+        needed_keys = int(rpd_usage_indicator / (target_model_rpd_limit * 0.7))
+        suggestion = f"警告: 预估/平均 RPD ({rpd_usage_indicator:,.0f}) 已达目标容量 ({target_rpd_capacity:,}) 的 {rpd_usage_ratio:.1%}。建议增加 Key 数量至约 {max(needed_keys, active_keys_count + 1)} 个。"
+    elif target_tpd_input_capacity > 0 and tpd_input_usage_ratio > 0.85:
+         needed_keys = int(tpd_input_usage_indicator / (target_model_tpd_input_limit * 0.7))
+         suggestion = f"警告: 预估 TPD 输入 ({tpd_input_usage_indicator:,.0f}) 已达目标容量 ({target_tpd_input_capacity:,}) 的 {tpd_input_usage_ratio:.1%}。建议增加 Key 数量至约 {max(needed_keys, active_keys_count + 1)} 个。"
+    elif rpd_usage_ratio < 0.3 and tpd_input_usage_ratio < 0.3 and active_keys_count > 1:
+        if rpd_usage_ratio >= tpd_input_usage_ratio and target_model_rpd_limit:
+             ideal_keys = int(rpd_usage_indicator / (target_model_rpd_limit * 0.5)) + 1
+             suggestion = f"提示: 预估/平均 RPD ({rpd_usage_indicator:,.0f}) 较低 ({rpd_usage_ratio:.1%})。可考虑减少 Key 数量至约 {max(1, ideal_keys)} 个。"
+        elif target_model_tpd_input_limit:
+             ideal_keys = int(tpd_input_usage_indicator / (target_model_tpd_input_limit * 0.5)) + 1
+             suggestion = f"提示: 预估 TPD 输入 ({tpd_input_usage_indicator:,.0f}) 较低 ({tpd_input_usage_ratio:.1%})。可考虑减少 Key 数量至约 {max(1, ideal_keys)} 个。"
+    report_data["key_suggestion"] = suggestion
+
+    # --- Top 5 IP 地址统计 ---
+    # --- Top 5 IP Address Statistics ---
+    def format_top_ips(raw_data: List[Tuple[str, int]], key_name: str) -> List[Dict[str, Any]]:
+        """将 get_top_ips 返回的元组列表格式化为字典列表。"""
+        """Formats the list of tuples returned by get_top_ips into a list of dictionaries."""
+        return [{"ip": ip, key_name: count} for ip, count in raw_data]
+
+    report_data["top_ips"]["requests"]["today"] = format_top_ips(get_top_ips(ip_counts_copy, today_pt.date(), today_pt.date()), "count")
+    report_data["top_ips"]["tokens"]["today"] = format_top_ips(get_top_ips(ip_input_token_counts_copy, today_pt.date(), today_pt.date()), "tokens")
+    report_data["top_ips"]["requests"]["week"] = format_top_ips(get_top_ips(ip_counts_copy, start_of_week_pt.date(), today_pt.date()), "count")
+    report_data["top_ips"]["tokens"]["week"] = format_top_ips(get_top_ips(ip_input_token_counts_copy, start_of_week_pt.date(), today_pt.date()), "tokens")
+    report_data["top_ips"]["requests"]["month"] = format_top_ips(get_top_ips(ip_counts_copy, start_of_month_pt.date(), today_pt.date()), "count")
+    report_data["top_ips"]["tokens"]["month"] = format_top_ips(get_top_ips(ip_input_token_counts_copy, start_of_month_pt.date(), today_pt.date()), "tokens")
+
+    logger.debug("结构化报告数据获取完成。") # Log completion of structured data retrieval
+    return report_data

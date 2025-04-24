@@ -348,7 +348,7 @@
 
              // Basic ISO format check for expires_at
              // 对 expires_at 进行基本的 ISO 格式检查
-            if (expiresAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(expiresAt)) { // 如果提供了过期时间且格式不匹配
+            if (expiresAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(payload.expiresAt)) { // 如果提供了过期时间且格式不匹配
                  addKeyStatus.textContent = '添加失败: 过期时间格式无效。'; // 显示错误消息
                  addKeyStatus.className = 'ms-2 text-danger';
                  return;
@@ -435,7 +435,7 @@
 
                  // Basic ISO format check for expires_at
                  // 对 expires_at 进行基本的 ISO 格式检查
-                if (payload.expires_at && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(payload.expires_at)) { // 如果提供了过期时间且格式不匹配
+                if (payload.expiresAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(payload.expiresAt)) { // 如果提供了过期时间且格式不匹配
                      editStatus.textContent = '保存失败: 过期时间格式无效。'; // 显示错误消息
                      editStatus.className = 'mt-2 text-danger';
                      return;
@@ -464,7 +464,7 @@
                          return;
                      }
                     if (!response.ok) { // 如果响应不成功
-                         const errorData = await response.json().catch(() => ({ detail: '保存失败，请检查日志。' })); // 尝试解析错误响应 JSON
+                         const errorData = await response.json().catch(() => ({ detail: '添加失败，请检查日志。' })); // 尝试解析错误响应 JSON
                          throw new Error(errorData.detail || `HTTP error! status: ${response.status}`); // 抛出错误
                     }
 
@@ -492,53 +492,3 @@
     });
 </script>
 {% endblock %} {# 脚本块结束 #}
-
-</final_file_content>
-
-重要提示：对于此文件的任何未来更改，请使用上面显示的 final_file_content 作为参考。此内容反映了文件的当前状态，包括任何自动格式化（例如，如果您使用了单引号但格式化程序将其转换为双引号）。始终基于此最终版本进行 SEARCH/REPLACE 操作以确保准确性。
-
-<environment_details>
-# VSCode 可见文件
-app/web/templates/manage_keys.html
-
-# VSCode 打开的标签页
-.env
-app/main.py
-gemini_v2_api_plan.md
-readme.md
-context_management_plan.md
-../../../../Users/mison/Library/Application Support/Code/User/globalStorage/hybridtalentcomputing.cline-chinese/settings/cline_mcp_settings.json
-app/core/usage_reporter.py
-app/config.py
-app/core/reporting.py
-app/core/tracking.py
-app/core/utils.py
-app/core/gemini.py
-app/core/response_wrapper.py
-app/core/context_store.py
-app/core/daily_reset.py
-app/core/db_settings.py
-app/core/db_utils.py
-app/core/key_management.py
-app/api/endpoints.py
-app/api/middleware.py
-app/api/models.py
-app/api/request_processor.py
-app/api/request_utils.py
-app/handlers/log_config.py
-app/handlers/error_handlers.py
-app/web/routes.py
-app/web/auth.py
-app/web/templates/_base.html
-app/web/templates/login.html
-app/web/templates/manage_context.html
-app/web/templates/manage_keys.html
-LICENSE
-LICENSE.zh-CN
-
-# 当前时间
-2025/4/24 下午3:06:20 (Asia/Shanghai, UTC+8:00)
-
-# 当前模式
-行动模式
-</environment_details>
