@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {# CSRF meta tag removed #}
+    <!-- 页面标题 -->
     <title>登录 - Gemini API 代理</title>
+    <!-- 基础样式 -->
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -104,6 +106,7 @@
 </head>
 <body>
     {# Add the warning message at the very top #}
+    <!-- 管理员 Key 缺失警告，显示在页面顶部 -->
     {% if admin_key_missing %}
     <div class="alert alert-error" role="alert">
         <strong>警告：</strong> 管理员 API Key (ADMIN_API_KEY) 未设置！部分管理功能（如代理 Key 管理）将不可用。请在环境变量中配置 ADMIN_API_KEY 以启用全部功能。
@@ -111,28 +114,36 @@
     {% endif %}
 
     {# Keep the login container centered using flexbox alignment on body #}
+    <!-- 登录容器，居中显示 -->
     <div class="login-container">
         <h1>🚀 登录</h1>
+        <!-- 如果需要登录 -->
         {% if not login_required %}
         <p style="color: #6c757d;">Web UI 密码未设置，无需登录。</p>
         {% else %}
         {# The admin_key_missing check was already added in the previous step, ensure it's outside the login-container #}
+        <!-- 登录表单 -->
         <form id="login-form" class="login-form">
             <label for="password">请输入访问密码:</label>
             <input type="password" id="password" name="password" required>
             {# Remove incorrect helper: {{ csrf_token_input }} #}
+            <!-- 登录按钮 -->
             <button type="submit">登录</button>
         </form>
+        <!-- 错误消息显示区域 -->
         <div id="error-message" class="error-message"></div>
         {% endif %}
+        <!-- API 文档链接 -->
         <div class="api-links">
              <a href="/docs">API 文档 (Swagger)</a> |
              <a href="/redoc">API 文档 (ReDoc)</a>
         </div>
     </div>
     {# Ensure the script tag is at the end of the body #}
+    <!-- 页面底部的脚本 -->
     <script>
         // --- Helper Functions (Copied from _base.html as login.html doesn't extend it) ---
+        // 获取 Cookie 的辅助函数
         function getCookie(name) {
             let cookieValue = null;
             if (document.cookie && document.cookie !== '') {
@@ -154,71 +165,81 @@
         // async function fetchWithCsrf(url, options = {}) { ... }
         // --- End CSRF Helper Functions ---
 
+        // 获取登录表单和错误消息元素
         const loginForm = document.getElementById('login-form');
         const errorMessageDiv = document.getElementById('error-message');
 
+        // 如果登录表单存在 (即需要登录)
         if (loginForm) {
+            // 监听表单提交事件
             loginForm.addEventListener('submit', async function(event) {
-                event.preventDefault(); // 阻止表单的默认提交行为
-                errorMessageDiv.textContent = ''; // 清除之前的错误信息
+                event.preventDefault(); // 阻止表单的默认提交行为 (Prevent default form submission behavior)
+                errorMessageDiv.textContent = ''; // 清除之前的错误信息 (Clear previous error message)
 
                 const passwordInput = document.getElementById('password');
                 const password = passwordInput.value;
 
                 if (!password) {
-                    errorMessageDiv.textContent = '请输入密码。';
+                    errorMessageDiv.textContent = '请输入密码。'; // 显示错误消息 (Display error message)
                     return;
                 }
 
                 try {
-                    const formData = new FormData();
-                    formData.append('password', password);
+                    const formData = new FormData(); // 创建 FormData 对象 (Create FormData object)
+                    formData.append('password', password); // 添加密码到 FormData (Append password to FormData)
 
                     // Use standard fetch, as CSRF is no longer needed for login
-                    const response = await fetch('/login', {
+                    // 使用标准 fetch，因为登录不再需要 CSRF
+                    const response = await fetch('/login', { // 发送 POST 请求到 /login (Send POST request to /login)
                         method: 'POST',
-                        body: formData // 发送表单数据
+                        body: formData // 发送表单数据 (Send form data)
                         // No need for credentials: 'include' as CSRF cookie is gone
+                        // 不需要 credentials: 'include' 因为 CSRF cookie 已移除
                     });
 
                     if (response.ok) {
                         // 登录成功
-                        const data = await response.json();
-                        if (data.access_token) {
-                            console.log('登录成功，收到 access_token。');
+                        // Login successful
+                        const data = await response.json(); // 解析 JSON 响应 (Parse JSON response)
+                        if (data.access_token) { // 如果响应中包含 access_token (If response contains access_token)
+                            console.log('登录成功，收到 access_token。'); // Log success
                             // 将 token 存储到 localStorage
-                            localStorage.setItem('access_token', data.access_token);
-                            console.log('Access token 已存储到 localStorage。');
+                            // Store token in localStorage
+                            localStorage.setItem('access_token', data.access_token); // 存储 access_token (Store access_token)
+                            console.log('Access token 已存储到 localStorage。'); // Log token stored
                             // 跳转到管理页面
-                            window.location.href = '/manage/context';
+                            // Redirect to management page
+                            window.location.href = '/manage/context'; // 跳转 (Redirect)
                         } else {
-                            console.error('登录成功，但响应中缺少 access_token。');
-                            errorMessageDiv.textContent = '登录响应无效，请稍后重试。';
+                            console.error('登录成功，但响应中缺少 access_token。'); // Log error
+                            errorMessageDiv.textContent = '登录响应无效，请稍后重试。'; // 显示错误消息 (Display error message)
                         }
                     } else {
                         // 登录失败
-                        let errorDetail = '登录失败，请检查密码或联系管理员。';
+                        // Login failed
+                        let errorDetail = '登录失败，请检查密码或联系管理员。'; // 默认错误详情 (Default error detail)
                         try {
-                            const errorData = await response.json();
+                            const errorData = await response.json(); // 尝试解析错误响应 JSON (Attempt to parse error response JSON)
                             if (errorData.detail) {
-                                errorDetail = errorData.detail; // 使用后端返回的错误信息
+                                errorDetail = errorData.detail; // 使用后端返回的错误信息 (Use error message from backend)
                             }
                         } catch (e) {
-                            console.error('无法解析错误响应:', e);
+                            console.error('无法解析错误响应:', e); // Log error parsing response
                         }
-                        console.warn(`登录失败: ${response.status} - ${errorDetail}`);
-                        errorMessageDiv.textContent = errorDetail;
-                        passwordInput.focus(); // 让用户重新输入密码
-                        passwordInput.select();
+                        console.warn(`登录失败: ${response.status} - ${errorDetail}`); // Log warning
+                        errorMessageDiv.textContent = errorDetail; // 显示错误消息 (Display error message)
+                        passwordInput.focus(); // 让用户重新输入密码 (Focus password input)
+                        passwordInput.select(); // 选中密码输入框内容 (Select password input content)
                     }
                 } catch (error) {
-                    console.error('登录请求时发生网络错误:', error);
-                    errorMessageDiv.textContent = '登录请求失败，请检查网络连接。';
+                    console.error('登录请求时发生网络错误:', error); // Log network error
+                    errorMessageDiv.textContent = '登录请求失败，请检查网络连接。'; // 显示错误消息 (Display error message)
                 }
             });
         } else {
              // 如果 login_required 为 false，表单不存在，无需添加监听器
-             console.log('登录表单未找到 (可能因为无需登录)。');
+             // If login_required is false, the form does not exist, no need to add listener
+             console.log('登录表单未找到 (可能因为无需登录)。'); // Log message
         }
     </script>
 </body>

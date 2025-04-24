@@ -112,7 +112,6 @@
 *   **技术栈:** FastAPI, Jinja2 模板引擎, JavaScript (`fetch` API)。
 *   **安全:**
     *   服务端对表单输入进行验证。
-    *   **已实现 CSRF 防护 (v1.3.0):** 使用 `fastapi-csrf-protect` 库为所有 Web UI 表单和需要修改状态的 AJAX 请求添加了 CSRF 保护。
 
 ## 7. JWT 认证流程示意图 (Mermaid)
 
@@ -197,7 +196,7 @@ sequenceDiagram
 
 ## 9. 部署
 
-*   **依赖 (`requirements.txt`):** 需要添加/确认 `fastapi`, `uvicorn[standard]`, `python-dotenv`, `httpx`, `starlette`, `jinja2`, `python-multipart`, **`python-jose[cryptography]`**, **`fastapi-csrf-protect`**。
+*   **依赖 (`requirements.txt`):** 需要添加/确认 `fastapi`, `uvicorn[standard]`, `python-dotenv`, `httpx`, `starlette`, `jinja2`, `python-multipart`, **`python-jose[cryptography]`**。
 *   **Docker:** 确保应用有权限写入数据库文件所在的目录 (如果使用文件模式)。
 *   **Hugging Face Space:** 配置所需的环境变量 (Secrets)。**注意内存模式的非持久性**。**建议配置 `--workers 1` 以确保内存数据库一致性**。
 *   **单 Worker 建议:** 在使用内存数据库时，强烈建议配置 Uvicorn 或 Gunicorn 只使用单个工作进程 (`--workers 1`)，以避免多进程访问共享内存数据库可能导致的状态不一致问题。
