@@ -4,7 +4,7 @@
 <!-- 例如: [![项目状态](https://img.shields.io/badge/status-active-success.svg)](...) -->
 [![许可证: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
-本项目 fork 自 [Mrjwj34](https://github.com/Mrjwj34/Hagemi) 的项目进行二次开发（全程使用 AI 编码，模型主要是 Gemini-2.5-pro-exp-03-25）。
+本项目 fork 自 [Mrjwj34](https://github.com/Mrjwj34/Hagemi) 的项目进行二次开发（全程使用 AI 编码，模型主要是 Gemini-2.5-pro-exp-03-25、gemini-2.5-flash-preview-04-17、gemini-2.0-flash-thinking-exp-01-21）。
 
 这是一个基于 FastAPI 构建的 Gemini API 代理，旨在提供一个简单、安全且可配置的方式来访问 Google 的 Gemini 模型。适用于在 Hugging Face Spaces 上部署，并支持 OpenAI API 格式的工具集成。
 
@@ -19,7 +19,6 @@
 - [⚠️ 注意事项](#️-注意事项)
 - [🤝 贡献](#-贡献)
 - [📜 许可证](#-许可证)
-- [📜 版本历史](#-版本历史)
 
 ## ✨ 主要功能
 
@@ -304,124 +303,3 @@ POST /v1/chat/completions
 完整的许可证文本可以在 [LICENSE](LICENSE) (英文) 和 [LICENSE.zh-CN](LICENSE.zh-CN) (简体中文) 文件中找到，或者访问 [Creative Commons 网站](https://creativecommons.org/licenses/by-nc/4.0/legalcode.zh-CN)。
 
 作为本项目的原始作者，我保留将此项目用于商业目的或以其他不同许可证授权的权利。
-
-## 📜 版本历史
-
-<details>
-<summary>点击展开/折叠详细版本历史</summary>
-
-### v1.4.2
-    *   **本地化**: 为项目中的主要代码文件补全了中文注释。
-    *   **配置与提示**: 
-        *   将 `ADMIN_API_KEY` 环境变量标记为 **必需** (`readme.md`)。
-        *   在 Web UI (登录页及管理页) 顶部添加横幅警告，提示用户 `ADMIN_API_KEY` 未设置 (`app/web/routes.py`, `app/web/templates/_base.html`, `app/web/templates/login.html`)。
-        *   在应用程序启动时，如果 `ADMIN_API_KEY` 未设置或无有效 `GEMINI_API_KEYS`，在终端日志中添加 **红色** 警告/错误信息 (`app/main.py`)。
-    *   **修复**: 修复了 API 使用情况报告中“启动时无效 Key 数量”显示为负数的问题。
-    *   **修复**: 解决了 `app/core/usage_reporter.py` 中 Pylance 报告的 `report_lines` 和 `model_total_rpd` 未定义错误。
-    *   **修复**: 纠正了 `app/core/usage_reporter.py` 中 `TPM_WINDOW_WINDOW_SECONDS` 的拼写错误为 `TPM_WINDOW_SECONDS`。
-
-### v1.4.1
-    *   **许可证**: 添加了知识共享署名-非商业性使用 4.0 国际 (CC BY-NC 4.0) 许可证 ([LICENSE](LICENSE), [LICENSE.zh-CN](LICENSE.zh-CN))，并在 README 中添加了说明。
-    *   **新功能：权限管理 (RBAC) 与 Key 有效期** (基于 `rbac_and_key_expiry_plan.md`):
-        *   引入管理员角色 (`ADMIN_API_KEY`)，拥有管理所有上下文和代理 Key (文件模式) 的权限。
-        *   普通用户登录 Web UI 后仅能查看和管理自己的上下文记录。
-        *   管理员可通过 Web UI (`/manage/keys`) 为代理 Key (文件模式) 设置和管理过期时间 (`expires_at`)。
-        *   系统在验证代理 Key 时会检查其是否过期。
-        *   增强了 JWT 认证，包含管理员状态标识。
-
-*   **代码优化**: 重构 `app/api/request_processor.py`，将工具调用处理、速率限制检查和 Token 计数等辅助逻辑移至 `app/api/request_utils.py`，提高代码模块化和可维护性。
-*   **TODO 清理**: 检查并确认 `app/core/reporting.py` 中的 `report_usage` 和 `_refresh_all_key_scores` 函数无需改为异步实现，并移除了项目中所有相关的 `TODO` 注释。
-    *   **代码清理**: 移除了项目中未使用的函数和注释掉的代码块，提高了代码整洁度。
-
-
-### v1.4.0
-*   **新功能**: 在内存模式下支持通过逗号分隔的 `PASSWORD` 环境变量配置多个中转用户 Key。
-    *   每个配置的密码/Key都作为一个独立的用户标识符，拥有独立的上下文。
-    *   更新了 Web UI 登录和 API 认证逻辑，以验证用户提供的凭证是否在配置的 `PASSWORD` 列表中。
-    *   上下文管理现在在内存模式下与用户提供的密码/Key关联。
-*   **文档更新**: 更新了 `readme.md`，说明了内存模式下多中转用户 Key 的配置和使用方法。
-
-
-### v1.3.1
-*   **修复**: 解决了在内存数据库模式下，Web UI 删除上下文后应用可能意外关闭的问题。通过为共享内存数据库连接引入 `asyncio.Lock`，并更新相关数据库操作函数为异步，避免了并发访问冲突。
-
-### v1.3.0
-*   **Web UI 认证重构**: 使用 JWT (JSON Web Token) 替代 Session Cookie 进行 Web UI 认证，解决登录持久性问题，特别是 Hugging Face Spaces 环境。
-    *   新增 `/login` API 端点处理密码验证和 JWT 签发。
-    *   新增 `login.html` 模板及前端 JavaScript 实现异步登录和 Token 存储 (`localStorage`)。
-    *   更新 `/manage/context` 等受保护路由，使用新的 JWT 依赖项 (`verify_jwt_token`) 进行验证。
-    *   基础模板 (`_base.html`) 添加登出按钮和逻辑。
-*   **功能调整**: 添加了 `/manage/keys` Web UI 用于在**文件存储模式**下管理代理 Key。API 客户端认证方式保持不变（内存模式使用 `PASSWORD`，文件模式使用数据库 `proxy_keys`）。
-    *   **核心上下文管理功能实现**: 完善并最终确定了基于认证凭证的上下文管理机制，包括：SQLite 存储（支持内存/文件模式切换）、基于模型 Token 限制的自动截断、TTL 自动清理、内存模式记录数限制、以及通过 `STREAM_SAVE_REPLY` 控制流式响应保存行为。
-*   **代码结构优化**:
-    *   将认证逻辑拆分到 `app/core/security.py` 和 `app/web/auth.py`。
-    *   将数据库设置管理从 `context_store.py` 拆分到 `app/core/db_settings.py`。
-    *   将报告和后台任务逻辑从 `reporting.py` 拆分到 `app/core/daily_reset.py`, `app/core/usage_reporter.py`, 并将 Key 分数刷新移至 `app/core/key_management.py`。
-    *   确保核心 Python 文件行数大致控制在 300 行以内。
-*   **本地化**: 将核心 Python 代码中剩余的英文注释和日志消息更新为简体中文。
-*   **依赖更新**: 添加 `python-jose[cryptography]` 依赖；移除 `SessionMiddleware` 和 `fastapi-csrf-protect`。
-*   **安全增强**: (CSRF 防护已移除)。
-*   **模型限制更新**: 更新 `app/data/model_limits.json` 以符合最新的 Google Gemini API 速率限制政策 (Free Tier)，包括调整现有模型 (`gemini-2.5-pro-exp-03-25`) 限制和添加新模型 (`gemini-2.5-flash-preview-04-17`)。
-*   **(旧版本信息更新)**: 更新了 README 中关于上下文管理和 API 认证的说明，以反映 JWT 认证的变化（例如，Web UI 不再需要代理 Key，API 认证方式不变）。
-*   **修复**: 修复了状态页面“启动时无效密钥数”显示不正确的问题 (此问题在 v1.3.0 重构前已修复，此处保留记录)。
-
-### v1.2.2
-*   **修复**: 增加对 Gemini API 请求的读超时时间至 120 秒 (原 `httpx` 默认为 5 秒)，尝试解决处理大型文档或长时生成任务时流式响应可能提前中断的问题 (`app/core/gemini.py`)。
-
-### v1.2.1
-*   **优化**: 根据 Gemini API 免费层级限制 (RPD, RPM, TPD_Input, TPM_Input) 优化 Key 选择、评分、跟踪和报告逻辑。
-*   **翻译**: 将项目代码中的英文注释和日志信息翻译为中文（简体）。
-*   **修复**: 修复了 `gemini.py` 中流式处理 `finish_reason` 的传递问题，以提高 Roo Code 兼容性。
-*   **修复**: 修复了 `models.py` 中 `Choice` 模型的类型提示错误。
-*   **修复**: 修复了 `endpoints.py` 中多个缺失的导入错误 (`daily_rpd_totals`, `daily_totals_lock`, `ip_daily_counts`, `ip_counts_lock`, `random`, `config`)。
-*   **修复**: 修复了 `gemini.py` 中缺失的 `StreamProcessingError` 导入错误。
-*   **优化**: 优化了 `Dockerfile`，移除了冗余指令。
-*   **现代化**: 将 `main.py` 中的启动/关闭事件处理从弃用的 `@app.on_event` 迁移到推荐的 `lifespan` 上下文管理器。
-*   **安全**: 添加 `PROTECT_STATUS_PAGE` 环境变量，允许为根路径 `/` 的状态页面启用密码保护。
-*   **美化**: 优化了根路径 `/` 状态页面的 HTML 和 CSS，改善视觉效果。
-
-### v1.2.0
-*   **代码重构**:
-    *   将 `app/main.py` 按功能拆分为多个模块 (`config`, `key_management`, `reporting`, `error_handlers`, `middleware`, `endpoints`)。
-    *   引入新的子目录结构 (`api/`, `core/`, `handlers/`, `data/`) 以更好地组织代码。
-    *   更新了所有受影响文件中的导入语句以适应新结构。
-*   **Roo Code 兼容性增强**:
-    *   修复了 Gemini API 响应缺少助手消息时可能导致 Roo Code 报错的问题（自动补充空助手消息）。
-    *   修复了 Gemini 调用 `write_to_file` 工具时缺少 `line_count` 参数可能导致 Roo Code 报错的问题（自动计算并补充）。
-    *   增强了 `ResponseWrapper` 以提取工具调用信息。
-*   **性能优化**:
-    *   将 `app/core/gemini.py` 中的 `complete_chat` 函数改为异步 `httpx` 调用，提高非流式请求效率。
-    *   优化了 `app/core/reporting.py` 中 `report_usage` 函数的深拷贝逻辑，减少内存占用。
-*   **文档与注释**:
-    *   在 `readme.md` 中添加了 RPD, RPM, TPM 的术语解释。
-    *   将所有新增和修改的代码文件及计划文件中的注释翻译为简体中文。
-    *   术语统一：为减少混淆，文档和代码注释中原先指代服务访问凭证的“密码” (Password) 已统一更名为“API 密钥” (API Key)。相关环境变量名 `PASSWORD` 保持不变，但其作用是设置服务的 API 密钥。
-*   **其他**:
-    *   API 使用情况跟踪 (RPM, RPD, TPM) 与智能 Key 选择功能。
-    *   修复流式请求 TPM 计数不准确的问题。
-    *   修复 `APIKeyManager` 中移除无效 Key 时的线程安全问题。
-    *   修复 `protect_from_abuse` 函数中的缩进错误。
-    *   优化图片处理逻辑。
-    *   其他原有修复和改进。
-
-### v1.1.2
-*   添加 `DISABLE_SAFETY_FILTERING` 环境变量，允许全局禁用安全过滤。
-*   修复流式响应中因安全过滤提前中断导致无助手消息的问题。
-
-### v1.1.1
-*   添加日志轮转和清理机制，防止日志文件过大并自动清理过期日志。
-*   增强API密钥管理功能，启动时显示所有密钥状态。
-*   改进日志系统，提供更详细的API请求和错误信息记录。
-*   添加环境变量 `DEBUG` 用于启用详细日志记录。
-
-### v1.1.0
-*   增强客户端兼容性：
-    *   添加空messages检查，防止422错误。
-    *   扩展Message模型支持多模态内容。
-    *   增强日志记录，便于调试客户端请求。
-    *   启动时记录可用模型列表，确保模型名称兼容性。
-
-### v1.0.0
-*   初始版本发布。
-
-</details>

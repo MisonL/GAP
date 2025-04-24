@@ -55,6 +55,11 @@ from .auth import verify_jwt_token # 导入新的 JWT 验证依赖 (Import new J
 # CSRF 保护相关导入已移除
 # CSRF protection related imports removed
 
+# 导入报告相关的函数和 Key Manager 实例
+# Import report related function and Key Manager instance
+from ..core.usage_reporter import get_structured_report_data # 导入获取结构化报告数据的函数 (Import function to get structured report data)
+from ..core.utils import key_manager_instance # 导入 Key Manager 实例 (Import Key Manager instance)
+
 
 logger = logging.getLogger('my_logger') # 获取日志记录器实例 (Get logger instance)
 router = APIRouter(tags=["Web UI"]) # 创建 APIRouter 实例并添加标签 (Create APIRouter instance and add tag)
@@ -210,7 +215,7 @@ async def manage_redirect():
 # @router.get("/manage/keys", ...) ... (代码已删除) (code deleted)
 # @router.post("/manage/keys/add", ...) ... (代码已删除) (code deleted)
 # @router.post("/manage/keys/toggle/{key}", ...) ... (代码已删除) (code deleted)
-# @router.post("/manage/keys/delete/{key}", ...) ... (代码已删除) (code deleted)
+# @router.post("/manage/keys/delete/{key}", ...) ... (code deleted)
 
 
 # --- Pydantic Models for Key Management API ---
@@ -540,7 +545,7 @@ async def delete_existing_key(
 ):
     """
     删除指定的代理 Key (及其关联的上下文) (仅管理员)。
-    Deletes the specified proxy key (and its associated context) (admin only).
+    Deletes the context record associated with the specified proxy key (admin or key owner).
     """
     admin_key = token_payload.get('sub', '未知管理员') # 获取管理员 Key (Get admin key)
     logger.debug(f"管理员 {admin_key[:8]}... 请求删除 Key: {proxy_key[:8]}...") # Log admin requesting to delete key
@@ -573,7 +578,7 @@ async def manage_context_page(request: Request): # 移除 CsrfProtect 依赖 (Re
     需要 JWT 认证。
     Displays the HTML skeleton of the context management page.
     Actual data will be fetched by frontend JavaScript via /api/manage/context/data.
-    Requires JWT authentication.
+    Requires valid JWT authentication.
     """
     # 不再需要在这里获取数据，只渲染模板
     # No longer need to fetch data here, just render the template
@@ -600,7 +605,7 @@ async def manage_context_page(request: Request): # 移除 CsrfProtect 依赖 (Re
 
 # --- 新增：获取上下文数据的 API 端点 ---
 # --- New: API Endpoint for Getting Context Data ---
-@router.get("/api/manage/context/data", dependencies=[Depends(verify_jwt_token)]) # 定义 GET /api/manage/context/data 端点，依赖 JWT 验证 (Define GET /api/manage/context/data endpoint, depends on JWT verification)
+@router.get("/api/manage/context/data", dependencies=[Depends(verify_jwt_token)]) # 定义 GET /api/manage/context/data 端点，依赖 JWT 验证 (Define GET /api/manage/context/data endpoint，depends on JWT verification)
 async def get_manage_context_data(token_payload: Dict[str, Any] = Depends(verify_jwt_token)): # 依赖 JWT 验证并获取 payload (Depends on JWT verification and gets payload)
     """
     获取上下文管理页面所需的数据。
@@ -718,3 +723,47 @@ async def delete_single_context(request: Request, proxy_key: str, token_payload:
     # 操作完成后重定向回上下文管理页面
     # Redirect back to the context management page after the operation is complete
     return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER) # 重定向 (Redirect)
+
+# --- 新增：获取报告数据的 API 端点 ---
+# --- New: API Endpoint for Getting Report Data ---
+@router.get("/api/report/data", dependencies=[Depends(verify_jwt_token)]) # 定义 GET /api/report/data 端点，依赖 JWT 验证 (Define GET /api/report/data endpoint, depends on JWT verification)
+async def get_report_data(token_payload: Dict[str, Any] = Depends(verify_jwt_token)): # 依赖 JWT 验证并获取 payload (Depends on JWT verification and gets payload)
+    """
+    获取使用情况报告所需的数据。
+    需要有效的 JWT Bearer Token 认证。
+    Gets the data required for the usage report.
+    Requires valid JWT Bearer Token authentication.
+    """
+    user_key = token_payload.get("sub") # 获取用户 Key (Get user key)
+    is_admin = token_payload.get("admin", False) # 获取管理员状态 (Get admin status)
+    logger.debug(f"用户 {user_key[:8]}... (Admin: {is_admin}) 请求报告数据") # Log user requesting report data
+
+    # 调用 usage_reporter 中的函数获取结构化数据
+    # Call the function in usage_reporter to get structured data
+    try:
+        report_data = await get_structured_report_data(key_manager_instance) # 获取报告数据 (Get report data)
+        return JSONResponse(content=report_data) # 返回 JSON 响应 (Return JSON response)
+    except Exception as e:
+        logger.error(f"获取报告数据时出错: {e}", exc_info=True) # 记录错误 (Log error)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="获取报告数据失败") # 引发 500 异常 (Raise 500 exception)
+
+# --- 新增：报告页面路由 ---
+# --- New: Report Page Route ---
+@router.get("/report", response_class=HTMLResponse, include_in_schema=False) # 定义 GET /report 端点 (Define GET /report endpoint)
+async def report_page(request: Request): # 依赖 JWT 验证 (Depends on JWT verification)
+    """
+    显示使用情况报告页面。
+    需要有效的 JWT Bearer Token 认证。
+    Displays the usage report page.
+    Requires valid JWT Bearer Token authentication.
+    """
+    # 仅渲染模板，数据由前端 JS 通过 API 获取
+    # Only render the template, data is fetched by frontend JS via API
+    logger.debug("渲染报告页面") # Log rendering report page
+    admin_key_missing = not config.ADMIN_API_KEY # 检查管理员 Key 是否缺失 (Check if admin key is missing)
+    context = { # 模板上下文 (Template context)
+        "request": request,
+        "admin_key_missing": admin_key_missing, # 添加到模板上下文 (Add to template context)
+        "now": datetime.now(timezone.utc) # 确保时区一致 (UTC) 且键名为 'now' (Ensure timezone consistency (UTC) and key name is 'now')
+    }
+    return templates.TemplateResponse("report.html", context) # 返回模板响应 (Return template response)
