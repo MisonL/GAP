@@ -115,14 +115,15 @@ def report_usage(key_manager: 'APIKeyManager'):
     # Use the correctly calculated invalid key count from key_management
     # invalid_keys_count = INITIAL_KEY_COUNT - active_keys_count # Removed incorrect calculation
 
-    report_lines = [f"--- API 使用情况报告 ({today_pt.strftime('%Y-%m-%d %H:%M:%S %Z')}) ---"] # Moved initialization here
+    report_lines = [f"--- API 使用情况报告 ({today_pt.strftime('%Y-%m-%d %H:%M:%S %Z')}) ---"] # 报告标题 (Report title)
+    separator = "=" * 20 # 定义分隔符 (Define separator)
 
     # --- Key 使用情况聚合 ---
     # --- Key Usage Aggregation ---
-    report_lines.append("\n[Key 使用情况聚合]")
+    report_lines.append(f"\n{separator} Key 使用情况聚合 {separator}") # 添加分隔符和标题 (Add separator and title)
 
     if not usage_data_copy:
-        report_lines.append("  暂无 Key 使用数据。") # Report if no key usage data
+        report_lines.append("  暂无 Key 使用数据。") # 如果没有 Key 使用数据则报告 (Report if no key usage data)
     else:
         # 遍历每个 Key 的使用数据
         # Iterate through usage data for each key
@@ -208,22 +209,33 @@ def report_usage(key_manager: 'APIKeyManager'):
             # Iterate and report key usage for each model
             for model_name, statuses in sorted(key_status_summary.items()):
                 total_keys_for_model = sum(statuses.values()) # 计算使用该模型的 Key 总数 (Calculate total keys using this model)
-                report_lines.append(f"  模型: {model_name} (今日 RPD: {model_total_rpd[model_name]:,}, 今日 TPD_In: {model_total_tpd_input[model_name]:,}, 使用 Keys: {total_keys_for_model})")
+                report_lines.append(f"\n  模型: {model_name}") # 报告模型名称 (Report model name)
+                report_lines.append(f"    今日总 RPD: {model_total_rpd[model_name]:,}") # 报告模型今日总 RPD (Report model's total RPD today)
+                report_lines.append(f"    今日总 TPD_In: {model_total_tpd_input[model_name]:,}") # 报告模型今日总 TPD 输入 (Report model's total TPD input today)
+                report_lines.append(f"    使用此模型的 Key 数量: {total_keys_for_model}") # 报告使用此模型的 Key 数量 (Report number of keys using this model)
+                report_lines.append("    状态分布:") # 报告状态分布标题 (Report status distribution title)
                 # 按数量降序排序状态并报告
                 # Sort statuses by count in descending order and report
                 for status, count in sorted(statuses.items(), key=lambda item: item[1], reverse=True):
-                    report_lines.append(f"    - 数量: {count}, 状态: {status}")
+                    report_lines.append(f"      - 数量: {count}") # 报告数量 (Report count)
+                    # 解析状态字符串并格式化输出
+                    # Parse the status string and format the output
+                    parts = status.split(' | ')
+                    for part in parts:
+                        # 使用 f-string 进行左对齐，分配足够宽度
+                        # Use f-string for left alignment, allocating sufficient width
+                        report_lines.append(f"        {part:<45}") # 左对齐，宽度 45 (Left align, width 45)
 
 
     # --- 总体统计与预测 ---
     # --- Overall Statistics and Prediction ---
-    report_lines.append("\n[总体统计与预测]")
+    report_lines.append(f"\n{separator} 总体统计与预测 {separator}") # 添加分隔符和标题 (Add separator and title)
     report_lines.append(f"  活跃 Key 数量: {active_keys_count}") # 报告活跃 Key 数量 (Report active key count)
     report_lines.append(f"  启动时无效 Key 数量: {INVALID_KEY_COUNT_AT_STARTUP}") # 报告启动时无效 Key 数量 (Report invalid key count at startup)
 
     # RPD 容量
     # RPD Capacity
-    report_lines.append("  RPD 容量估算:") # Report RPD capacity estimation
+    report_lines.append("\n  RPD 容量估算:") # 报告 RPD 容量估算标题 (Report RPD capacity estimation title)
     rpd_groups = defaultdict(list) # 按 RPD 限制分组模型 (Group models by RPD limit)
     model_rpd_usage_count = defaultdict(int) # 统计使用每个模型的 Key 数量 (Count keys using each model)
     for model, limits in config.MODEL_LIMITS.items():
@@ -259,20 +271,21 @@ def report_usage(key_manager: 'APIKeyManager'):
 
     # TPD 输入容量
     # TPD Input Capacity
-    report_lines.append("  TPD 输入容量估算:") # Report TPD input capacity estimation
+    report_lines.append("\n  TPD 输入容量估算:") # 报告 TPD 输入容量估算标题 (Report TPD input capacity estimation title)
     target_tpd_input_capacity = 0
     if target_model_tpd_input_limit:
         target_tpd_input_capacity = active_keys_count * target_model_tpd_input_limit # 计算目标模型的总 TPD 输入容量 (Calculate total TPD input capacity for the target model)
         report_lines.append(f"    - 基于 {target_model} (TPD_In={target_model_tpd_input_limit:,}): {target_tpd_input_capacity:,}/天")
     else:
-        report_lines.append(f"    - 基于 {target_model}: TPD_Input 限制未定义。") # Report if TPD input limit is not defined
+        report_lines.append(f"    - 基于 {target_model}: TPD_Input 限制未定义。") # 如果 TPD 输入限制未定义则报告 (Report if TPD input limit is not defined)
 
     # 今日用量与估算
     # Today's Usage and Estimation
+    report_lines.append("\n  今日用量与估算 (PT 时间):") # 报告今日用量与估算标题 (Report today's usage and estimation title)
     current_total_rpd = sum(model_total_rpd.values()) # 计算今日总 RPD (Calculate total RPD for today)
     current_total_tpd_input = sum(model_total_tpd_input.values()) # 计算今日总 TPD 输入 (Calculate total TPD input for today)
-    report_lines.append(f"  今日已用 RPD (PT): {current_total_rpd:,}") # Report today's used RPD
-    report_lines.append(f"  今日已用 TPD 输入 (PT): {current_total_tpd_input:,}") # Report today's used TPD input
+    report_lines.append(f"    - 今日已用 RPD: {current_total_rpd:,}") # 报告今日已用 RPD (Report RPD used today)
+    report_lines.append(f"    - 今日已用 TPD 输入: {current_total_tpd_input:,}") # 报告今日已用 TPD 输入 (Report TPD input used today)
 
     # 计算今天已经过去的时间占全天的比例
     # Calculate the fraction of the day that has passed
@@ -292,6 +305,7 @@ def report_usage(key_manager: 'APIKeyManager'):
 
     # 平均 RPD
     # Average RPD
+    report_lines.append("\n  历史平均用量:") # 报告历史平均用量标题 (Report historical average usage title)
     N = 7 # 统计过去 N 天 (Count last N days)
     last_n_days_rpd = [] # 存储过去 N 天的 RPD (Store RPD for last N days)
     # 遍历过去 N 天
@@ -311,7 +325,7 @@ def report_usage(key_manager: 'APIKeyManager'):
 
     # --- Key 数量建议 ---
     # --- Key Count Suggestion ---
-    report_lines.append("\n[Key 数量建议]")
+    report_lines.append(f"\n{separator} Key 数量建议 {separator}") # 添加分隔符和标题 (Add separator and title)
     suggestion = "保持当前 Key 数量。" # 默认建议 (Default suggestion)
     # 使用预估今日 RPD 和平均 RPD 中的较大值作为 RPD 使用指标
     # Use the larger of estimated today's RPD and average RPD as the RPD usage indicator
@@ -356,59 +370,59 @@ def report_usage(key_manager: 'APIKeyManager'):
 
     # --- Top 5 IP 地址统计 ---
     # --- Top 5 IP Address Statistics ---
-    report_lines.append("\n[Top 5 IP 地址统计 (PT 时间)]") # Report Top 5 IP statistics
+    report_lines.append(f"\n{separator} Top 5 IP 地址统计 (PT 时间) {separator}") # 添加分隔符和标题 (Add separator and title)
 
     # 今日 Top 5 请求
     # Top 5 Requests Today
     top_ips_today_req = get_top_ips(ip_counts_copy, today_pt.date(), today_pt.date()) # 获取今日 Top 5 请求 IP (Get Top 5 request IPs for today)
-    report_lines.append("  今日请求次数 Top 5:") # Report Top 5 requests today
+    report_lines.append("\n  今日请求次数 Top 5:") # 报告今日 Top 5 请求标题 (Report Top 5 requests today title)
     if top_ips_today_req:
-        for ip, count in top_ips_today_req: report_lines.append(f"    - {ip}: {count}") # Report each IP and count
-    else: report_lines.append("    - 暂无记录") # Report if no records
+        for ip, count in top_ips_today_req: report_lines.append(f"    - {ip}: {count}") # 报告每个 IP 和计数 (Report each IP and count)
+    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告 (Report if no records)
 
     # 今日 Top 5 输入 Token
     # Top 5 Input Tokens Today
     top_ips_today_input_token = get_top_ips(ip_input_token_counts_copy, today_pt.date(), today_pt.date()) # 获取今日 Top 5 输入 Token IP (Get Top 5 input token IPs for today)
-    report_lines.append("  今日输入 Token Top 5:") # Report Top 5 input tokens today
+    report_lines.append("  今日输入 Token Top 5:") # 报告今日 Top 5 输入 Token 标题 (Report Top 5 input tokens today title)
     if top_ips_today_input_token:
-        for ip, tokens in top_ips_today_input_token: report_lines.append(f"    - {ip}: {tokens:,}") # Report each IP and token count
-    else: report_lines.append("    - 暂无记录") # Report if no records
+        for ip, tokens in top_ips_today_input_token: report_lines.append(f"    - {ip}: {tokens:,}") # 报告每个 IP 和 Token 计数 (Report each IP and token count)
+    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告 (Report if no records)
 
     # 本周 Top 5 请求
     # Top 5 Requests This Week
     top_ips_week_req = get_top_ips(ip_counts_copy, start_of_week_pt.date(), today_pt.date()) # 获取本周 Top 5 请求 IP (Get Top 5 request IPs for this week)
-    report_lines.append("  本周请求次数 Top 5:") # Report Top 5 requests this week
+    report_lines.append("\n  本周请求次数 Top 5:") # 报告本周 Top 5 请求标题 (Report Top 5 requests this week title)
     if top_ips_week_req:
-        for ip, count in top_ips_week_req: report_lines.append(f"    - {ip}: {count}") # Report each IP and count
-    else: report_lines.append("    - 暂无记录") # Report if no records
+        for ip, count in top_ips_week_req: report_lines.append(f"    - {ip}: {count}") # 报告每个 IP 和计数 (Report each IP and count)
+    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告 (Report if no records)
 
     # 本周 Top 5 输入 Token
     # Top 5 Input Tokens This Week
     top_ips_week_input_token = get_top_ips(ip_input_token_counts_copy, start_of_week_pt.date(), today_pt.date()) # 获取本周 Top 5 输入 Token IP (Get Top 5 input token IPs for this week)
-    report_lines.append("  本周输入 Token Top 5:") # Report Top 5 input tokens this week
+    report_lines.append("  本周输入 Token Top 5:") # 报告本周 Top 5 输入 Token 标题 (Report Top 5 input tokens this week title)
     if top_ips_week_input_token:
-        for ip, tokens in top_ips_week_input_token: report_lines.append(f"    - {ip}: {tokens:,}") # Report each IP and token count
-    else: report_lines.append("    - 暂无记录") # Report if no records
+        for ip, tokens in top_ips_week_input_token: report_lines.append(f"    - {ip}: {tokens:,}") # 报告每个 IP 和 Token 计数 (Report each IP and token count)
+    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告 (Report if no records)
 
     # 本月 Top 5 请求
     # Top 5 Requests This Month
     top_ips_month_req = get_top_ips(ip_counts_copy, start_of_month_pt.date(), today_pt.date()) # 获取本月 Top 5 请求 IP (Get Top 5 request IPs for this month)
-    report_lines.append("  本月请求次数 Top 5:") # Report Top 5 requests this month
+    report_lines.append("\n  本月请求次数 Top 5:") # 报告本月 Top 5 请求标题 (Report Top 5 requests this month title)
     if top_ips_month_req:
-        for ip, count in top_ips_month_req: report_lines.append(f"    - {ip}: {count}") # Report each IP and count
-    else: report_lines.append("    - 暂无记录") # Report if no records
+        for ip, count in top_ips_month_req: report_lines.append(f"    - {ip}: {count}") # 报告每个 IP 和计数 (Report each IP and count)
+    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告 (Report if no records)
 
     # 本月 Top 5 输入 Token
     # Top 5 Input Tokens This Month
     top_ips_month_input_token = get_top_ips(ip_input_token_counts_copy, start_of_month_pt.date(), today_pt.date()) # 获取本月 Top 5 输入 Token IP (Get Top 5 input token IPs for this month)
-    report_lines.append("  本月输入 Token Top 5:") # Report Top 5 input tokens this month
+    report_lines.append("  本月输入 Token Top 5:") # 报告本月 Top 5 输入 Token 标题 (Report Top 5 input tokens this month title)
     if top_ips_month_input_token:
-        for ip, tokens in top_ips_month_input_token: report_lines.append(f"    - {ip}: {tokens:,}") # Report each IP and token count
-    else: report_lines.append("    - 暂无记录") # Report if no records
+        for ip, tokens in top_ips_month_input_token: report_lines.append(f"    - {ip}: {tokens:,}") # 报告每个 IP 和 Token 计数 (Report each IP and token count)
+    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告 (Report if no records)
 
 
-    report_lines.append("--- 报告结束 ---") # End of report marker
-    full_report = "\n".join(report_lines) # Join all report lines into a single string
+    report_lines.append(f"\n{separator} 报告结束 {separator}") # 添加结束分隔符 (Add end separator)
+    full_report = "\n".join(report_lines) # 将所有报告行连接成单个字符串 (Join all report lines into a single string)
 
     # 使用配置的日志级别记录报告
     # Log the report using the configured log level
