@@ -52,7 +52,7 @@ async def process_request(
     chat_request: ChatCompletionRequest,
     http_request: Request,
     request_type: Literal['stream', 'non-stream'],
-    proxy_key: str # 新增参数，由认证依赖注入 (New parameter, injected by authentication dependency)
+    auth_data: Dict[str, Any] # 认证数据，包含 Key 和配置 (Authentication data, includes Key and config)
 ) -> Optional[Union[StreamingResponse, ChatCompletionResponse]]:
     """
     聊天补全（流式和非流式）的核心请求处理函数。
@@ -66,13 +66,13 @@ async def process_request(
         chat_request: 包含聊天请求数据的 Pydantic 模型。Pydantic model containing chat request data.
         http_request: FastAPI Request 对象，用于获取 IP 和检查断开连接。FastAPI Request object, used to get IP and check for disconnects.
         request_type: 'stream' 或 'non-stream'。'stream' or 'non-stream'.
-        proxy_key: 验证通过的代理 Key。The validated proxy key.
+        auth_data: 验证通过的认证数据，包含代理 Key 和配置。The validated authentication data, including proxy key and configuration.
 
     Returns:
         流式请求返回 StreamingResponse，
-        Streaming requests return StreamingResponse,
+        Streaming requests return StreamingResponse，
         非流式请求返回 ChatCompletionResponse，
-        non-streaming requests return ChatCompletionResponse,
+        non-streaming requests return ChatCompletionResponse，
         如果客户端断开连接或早期发生不可重试的错误，则返回 None。
         returns None if the client disconnects or an early non-retryable error occurs.
 
@@ -80,18 +80,25 @@ async def process_request(
         HTTPException: For user errors (e.g., bad input) or final processing errors.
     """
     # --- 获取客户端 IP 和时间戳 ---
-    # --- Get Client IP and Timestamps ---
+    # --- Get Client IP 和时间戳 ---
     client_ip = get_client_ip(http_request) # 获取客户端 IP (Get client IP)
     cst_time_str, today_date_str_pt = get_current_timestamps() # 获取当前时间戳 (Get current timestamps)
 
+    # 从认证数据中提取代理 Key 和配置
+    # Extract proxy key and configuration from authentication data
+    proxy_key = auth_data.get("key") # 获取代理 Key (Get proxy key)
+    key_config = auth_data.get("config", {}) # 获取 Key 配置，默认为空字典 (Get Key config, default to empty dictionary)
+    enable_context = key_config.get('enable_context_completion', config.ENABLE_CONTEXT_COMPLETION) # 获取 Key 的上下文补全配置，如果 Key 配置中没有则使用全局配置 (Get Key's context completion config, use global config if not in Key config)
+
+
     # --- 记录请求入口日志 ---
     # --- Log Request Entry ---
-    logger.info(f"处理来自 IP: {client_ip} 的请求 ({request_type})，模型: {chat_request.model}，时间: {cst_time_str}") # Log request entry
+    logger.info(f"处理来自 IP: {client_ip} 的请求 ({request_type})，模型: {chat_request.model}，时间: {cst_time_str}，Key: {proxy_key[:8]}..., 上下文补全: {enable_context}") # 记录收到的请求信息 (Log received request information)
 
     # --- 防滥用保护 ---
     # --- Abuse Protection ---
     try:
-        protect_from_abuse(http_request, MAX_REQUESTS_PER_MINUTE, MAX_REQUESTS_PER_DAY_PER_IP) # 执行防滥用检查 (Perform abuse protection check)
+        protect_from_abuse(http_request, config.MAX_REQUESTS_PER_MINUTE, config.MAX_REQUESTS_PER_DAY_PER_IP) # 执行防滥用检查 (Perform abuse protection check)
     except HTTPException as e:
         logger.warning(f"IP {client_ip} 的请求被阻止 (防滥用): {e.detail}") # Log blocked request
         raise e # 重新抛出防滥用异常 (Re-raise abuse protection exception)
@@ -109,10 +116,14 @@ async def process_request(
 
     # --- 上下文管理 ---
     # --- Context Management ---
-    # 1. 加载历史上下文
-    # 1. Load historical context
-    history_contents: Optional[List[Dict[str, Any]]] = await context_store.load_context(proxy_key) # 添加 await (Added await) # 加载历史上下文 (Load historical context)
-    logger.info(f"Loaded {len(history_contents) if history_contents else 0} historical messages for Key {proxy_key[:8]}...") # Log number of historical messages loaded
+    history_contents: Optional[List[Dict[str, Any]]] = None # 初始化历史上下文 (Initialize historical context)
+    if enable_context: # 如果启用了上下文补全 (If context completion is enabled)
+        # 1. 加载历史上下文
+        # 1. Load historical context
+        history_contents = await context_store.load_context(proxy_key) # 添加 await (Added await) # 加载历史上下文 (Load historical context)
+        logger.info(f"Loaded {len(history_contents) if history_contents else 0} historical messages for Key {proxy_key[:8]}...") # Log number of historical messages loaded
+    else:
+        logger.debug(f"Key {proxy_key[:8]}... 的上下文补全已禁用，跳过加载历史上下文。") # Log that context completion is disabled
 
     # 2. 转换当前请求中的新消息
     # 2. Convert new messages in the current request
@@ -125,7 +136,10 @@ async def process_request(
 
     # 3. 合并历史记录和新消息
     # 3. Merge history and new messages
+    # 仅在加载了历史上下文时合并
+    # Merge only if historical context was loaded
     merged_contents = (history_contents or []) + new_contents # 合并历史和新内容 (Merge history and new contents)
+
     if not merged_contents: # 如果合并后内容为空 (If merged content is empty)
          logger.error(f"Merged message list is empty (Key: {proxy_key[:8]}...)") # Log empty merged list
          raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot process empty message list") # 引发 400 异常 (Raise 400 exception)
@@ -183,14 +197,14 @@ async def process_request(
         # 调用新的检查函数
         # Call the new check function
         if not check_rate_limits_and_update_counts(current_api_key, model_name, limits): # 检查并更新速率限制计数 (Check and update rate limit counts)
-            continue # 如果检查失败 (达到限制)，跳过此 Key，尝试下一个 (If check fails (limit reached), skip this key and try the next one)
+            continue # 如果检查失败 (达到限制)，跳过此 Key，尝试下一个 (If check fails (limit reached)，跳过此 Key，尝试下一个)
 
         # --- API 调用尝试 ---
         # --- API Call Attempt ---
         try:
             # 确定安全设置
             # Determine safety settings
-            current_safety_settings = safety_settings_g2 if DISABLE_SAFETY_FILTERING or 'gemini-2.0-flash-exp' in chat_request.model else safety_settings # 根据配置和模型选择安全设置 (Select safety settings based on config and model)
+            current_safety_settings = safety_settings_g2 if config.DISABLE_SAFETY_FILTERING or 'gemini-2.0-flash-exp' in chat_request.model else safety_settings # 根据配置和模型选择安全设置 (Select safety settings based on config and model)
             # 创建 GeminiClient 实例
             # Create GeminiClient instance
             gemini_client_instance = GeminiClient(current_api_key) # 创建 GeminiClient 实例 (Create GeminiClient instance)
@@ -201,7 +215,7 @@ async def process_request(
                 # --- 流式处理 ---
                 # --- Streaming Handling ---
                 async def stream_generator(): # 定义流式生成器 (Define streaming generator)
-                    nonlocal last_error, current_api_key, model_name, client_ip, today_date_str_pt, limits # 引用外部变量 (Reference outer variables)
+                    nonlocal last_error, current_api_key, model_name, client_ip, today_date_str_pt, limits, proxy_key, enable_context # 引用外部变量 (Reference outer variables)
                     stream_error_occurred = False # 标记流错误是否发生 (Flag indicating if a stream error occurred)
                     assistant_message_yielded = False # 标记是否已产生助手消息 (Flag indicating if an assistant message has been yielded)
                     full_reply_content = "" # 新增：用于累积回复内容 (New: Used to accumulate reply content)
@@ -288,46 +302,48 @@ async def process_request(
 
                             # --- 成功流式传输后保存上下文（可配置）---
                             # --- Save Context After Successful Streaming (Configurable) ---
-                            if not config.STREAM_SAVE_REPLY: # 如果配置为不保存流式回复 (If configured not to save streaming reply)
-                                # 默认行为：只保存到用户最后输入（更稳健，流中断也能保存）
-                                # Default behavior: Save only up to the user's last input (more robust, saves even if stream is interrupted)
-                                logger.info(f"Stream finished successfully for Key {proxy_key[:8]}.... Saving context up to user's last input (STREAM_SAVE_REPLY=false).") # Log saving context up to user input
-                                logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存流式上下文 (不含回复) (内存模式: {db_utils.IS_MEMORY_DB})") # Log preparing to save context without reply (DEBUG level)
-                                try:
-                                    await context_store.save_context(proxy_key, contents_to_send) # 添加 await (Added await) # 保存上下文 (Save context)
-                                except Exception as e:
-                                    logger.error(f"保存流式上下文 (不含回复) 失败 (Key: {proxy_key[:8]}...): {str(e)}") # 记录保存失败错误 (Log save failure error)
-                            else:
-                                # 配置为保存回复：在流结束后保存完整对话（流中断则不保存）
-                                # Configured to save reply: Save the complete conversation after the stream ends (not saved if stream is interrupted)
-                                if assistant_message_yielded: # 仅在有回复时保存 (Save only if there was a reply)
-                                    logger.info(f"Stream finished successfully for Key {proxy_key[:8]}.... Saving context including model reply (STREAM_SAVE_REPLY=true).") # Log saving context including reply
-                                    # 1. 构建模型回复部分
-                                    # 1. Build model reply part
-                                    model_reply_part = {"role": "model", "parts": [{"text": full_reply_content}]} # 构建模型回复部分 (Build model reply part)
-                                    # 2. 合并上下文
-                                    # 2. Merge context
-                                    final_contents_to_save = contents_to_send + [model_reply_part] # 合并内容 (Merge contents)
-                                    # 3. 再次截断
-                                    # 3. Truncate again
-                                    truncated_contents_to_save, still_over_limit_final = truncate_context(final_contents_to_save, chat_request.model) # 再次截断 (Truncate again)
-                                    # 4. 保存 (如果不超限)
-                                    # 4. Save (only if not over limit)
-                                    if not still_over_limit_final: # 如果最终未超限 (If not over limit finally)
-                                        # 使用原始的 proxy_key 保存上下文
-                                        # Use the original proxy_key to save context
-                                        logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存流式上下文 (含回复) (内存模式: {db_utils.IS_MEMORY_DB})") # Log preparing to save context with reply (DEBUG level)
-                                        try:
-                                            await context_store.save_context(proxy_key, truncated_contents_to_save) # 添加 await (Added await) # 保存上下文 (Save context)
-                                            logger.info(f"流式上下文 (含回复) 保存成功 for Key {proxy_key[:8]}...") # Log successful save
-                                        except Exception as e:
-                                            logger.error(f"保存流式上下文 (含回复) 失败 (Key: {proxy_key[:8]}...): {str(e)}") # 记录保存失败错误 (Log save failure error)
-                                    else:
-                                        # 这种情况应该很少见，如果初始截断正确的话
-                                        # This case should be rare if initial truncation was correct
-                                        logger.error(f"流式上下文在添加回复并再次截断后仍然超限 (Key: {proxy_key[:8]}...). 上下文未保存。") # Log context still over limit after truncation
+                            if enable_context: # 仅在启用了上下文补全时保存 (Save only if context completion is enabled)
+                                if not config.STREAM_SAVE_REPLY: # 如果配置为不保存流式回复 (If configured not to save streaming reply)
+                                    # 默认行为：只保存到用户最后输入（更稳健，流中断也能保存）
+                                    # Default behavior: Save only up to the user's last input (more robust, saves even if stream is interrupted)
+                                    logger.info(f"Stream finished successfully for Key {proxy_key[:8]}.... Saving context up to user's last input (STREAM_SAVE_REPLY=false).") # Log saving context up to user input
+                                    logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存流式上下文 (不含回复) (内存模式: {db_utils.IS_MEMORY_DB})") # Log preparing to save context without reply (DEBUG level)
+                                    try:
+                                        await context_store.save_context(proxy_key, contents_to_send) # 添加 await (Added await) # 保存上下文 (Save context)
+                                    except Exception as e:
+                                        logger.error(f"保存流式上下文 (不含回复) 失败 (Key: {proxy_key[:8]}...): {str(e)}") # 记录保存失败错误 (Log save failure error)
                                 else:
-                                     logger.warning(f"Stream finished successfully but no assistant message was yielded (Key: {proxy_key[:8]}...). No context saved for this interaction (STREAM_SAVE_REPLY=true).") # Log warning if no assistant message yielded
+                                    # 配置为保存回复：在流结束后保存完整对话（流中断则不保存）
+                                    # Configured to save reply: Save the complete conversation after the stream ends (not saved if stream is interrupted)
+                                    if assistant_message_yielded: # 仅在有回复时保存 (Save only if there was a reply)
+                                        logger.info(f"Stream finished successfully for Key {proxy_key[:8]}.... Saving context including model reply (STREAM_SAVE_REPLY=true).") # Log saving context including reply
+                                        # 1. 构建模型回复部分
+                                        # 1. Build model reply part
+                                        model_reply_part = {"role": "model", "parts": [{"text": full_reply_content}]} # 构建模型回复部分 (Build model reply part)
+                                        # 2. 合并上下文
+                                        # 2. Merge context
+                                        final_contents_to_save = contents_to_send + [model_reply_part] # 合并内容 (Merge contents)
+                                        # 3. 再次截断
+                                        # 3. Truncate again
+                                        truncated_contents_to_save, still_over_limit_final = truncate_context(final_contents_to_save, chat_request.model) # 再次截断 (Truncate again)
+                                        # 4. 保存 (如果不超限)
+                                        # 4. Save (only if not over limit)
+                                        if not still_over_limit_final: # 如果最终未超限 (If not over limit finally)
+                                            # 使用原始的 proxy_key 保存上下文
+                                            # Use the original proxy_key to save context
+                                            logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存流式上下文 (含回复) (内存模式: {db_utils.IS_MEMORY_DB})") # Log preparing to save context with reply (DEBUG level)
+                                            try:
+                                                await context_store.save_context(proxy_key, truncated_contents_to_save) # 添加 await (Added await) # 保存上下文 (Save context)
+                                                logger.info(f"流式上下文 (含回复) 保存成功 for Key {proxy_key[:8]}...") # Log successful save
+                                            except Exception as e:
+                                                logger.error(f"保存流式上下文 (含回复) 失败 (Key: {proxy_key[:8]}...): {str(e)}") # 记录保存失败错误 (Log save failure error)
+                                        else:
+                                            # 这种情况应该很少见，如果初始截断正确的话
+                                            # This case should be rare if initial truncation was correct
+                                            logger.error(f"流式上下文在添加回复并再次截断后仍然超限 (Key: {proxy_key[:8]}...). 上下文未保存。") # Log context still over limit after truncation
+                            # Removed the inner else: pass block for assistant_message_yielded=false when STREAM_SAVE_REPLY=true, as no action is needed.
+                            else: # enable_context is false (Reverted from elif)
+                                logger.debug(f"Key {proxy_key[:8]}... 的上下文补全已禁用，跳过流式上下文保存。") # Log that context completion is disabled
 
                     except asyncio.CancelledError: # 捕获 asyncio.CancelledError (Catch asyncio.CancelledError)
                         logger.info(f"客户端连接已中断 (IP: {client_ip})") # Log client disconnect
@@ -490,33 +506,37 @@ async def process_request(
 
                 # --- 成功非流式响应后保存上下文（包括模型回复）---
                 # --- Save Context After Successful Non-streaming Response (Including Model Reply) ---
-                if assistant_content is not None: # 确保有模型内容（即使是空字符串） (Ensure there is model content (even if it's an empty string))
-                    # 1. 构建模型回复部分
-                    # 1. Build model reply part
-                    model_reply_part = {"role": "model", "parts": [{"text": assistant_content}]} # 构建模型回复部分 (Build model reply part)
-                    # 2. 合并：将模型回复附加到发送给 API 的上下文中
-                    # 2. Merge: Append the model reply to the context sent to the API
-                    final_contents_to_save = contents_to_send + [model_reply_part] # 合并内容 (Merge contents)
-                    # 3. 再次截断（以防添加回复后超限，尽管如果初始截断有效则不太可能）
-                    # 3. Truncate again (in case it goes over limit after adding reply, although unlikely if initial truncation was effective)
-                    truncated_contents_to_save, still_over_limit_final = truncate_context(final_contents_to_save, chat_request.model) # 再次截断 (Truncate again)
-                    # 4. 保存（仅当未超限时）
-                    # 4. Save (only if not over limit)
-                    if not still_over_limit_final: # 如果最终未超限 (If not over limit finally)
-                        # 使用原始的 proxy_key 保存上下文
-                        # Use the original proxy_key to save context
-                        logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存非流式上下文 (内存模式: {db_utils.IS_MEMORY_DB})") # Log preparing to save context (DEBUG level)
-                        try:
-                            await context_store.save_context(proxy_key, truncated_contents_to_save) # 添加 await (Added await) # 保存上下文 (Save context)
-                        except Exception as e:
-                            logger.error(f"保存上下文失败 (Key: {proxy_key[:8]}...): {str(e)}") # 记录保存失败错误 (Log save failure error)
-                        logger.info(f"上下文成功保存 for Key {proxy_key[:8]}...") # 记录实际使用的 Key (Log the key actually used)
+                if enable_context: # 仅在启用了上下文补全时保存 (Save only if context completion is enabled)
+                    if assistant_content is not None: # 确保有模型内容（即使是空字符串） (Ensure there is model content (even if it's an empty string))
+                        # 1. 构建模型回复部分
+                        # 1. Build model reply part
+                        model_reply_part = {"role": "model", "parts": [{"text": assistant_content}]} # 构建模型回复部分 (Build model reply part)
+                        # 2. 合并：将模型回复附加到发送给 API 的上下文中
+                        # 2. Merge: Append the model reply to the context sent to the API
+                        final_contents_to_save = contents_to_send + [model_reply_part] # 合并内容 (Merge contents)
+                        # 3. 再次截断（以防添加回复后超限，尽管如果初始截断有效则不太可能）
+                        # 3. Truncate again (in case it goes over limit after adding reply, although unlikely if initial truncation was effective)
+                        truncated_contents_to_save, still_over_limit_final = truncate_context(final_contents_to_save, chat_request.model) # 再次截断 (Truncate again)
+                        # 4. 保存（仅当未超限时）
+                        # 4. Save (only if not over limit)
+                        if not still_over_limit_final: # 如果最终未超限 (If not over limit finally)
+                            # 使用原始的 proxy_key 保存上下文
+                            # Use the original proxy_key to save context
+                            logger.debug(f"准备为 Key '{proxy_key[:8]}...' 保存非流式上下文 (内存模式: {db_utils.IS_MEMORY_DB})") # Log preparing to save context (DEBUG level)
+                            try:
+                                await context_store.save_context(proxy_key, truncated_contents_to_save) # 添加 await (Added await) # 保存上下文 (Save context)
+                            except Exception as e:
+                                logger.error(f"保存上下文失败 (Key: {proxy_key[:8]}...): {str(e)}") # 记录保存失败错误 (Log save failure error)
+                            logger.info(f"上下文成功保存 for Key {proxy_key[:8]}...") # 记录实际使用的 Key (Log the key actually used)
+                        else:
+                            # 这种情况应该很少见，如果初始截断正确的话
+                            # This case should be rare if initial truncation was correct
+                            logger.error(f"添加模型回复并最终截断后上下文仍然超限 (Key: {proxy_key[:8]}...). 上下文未保存。") # Log context still over limit after truncation
                     else:
-                        # 这种情况应该很少见，如果初始截断正确的话
-                        # This case should be rare if initial truncation was correct
-                        logger.error(f"添加模型回复并最终截断后上下文仍然超限 (Key: {proxy_key[:8]}...). 上下文未保存。") # Log context still over limit after truncation
+                         logger.warning(f"非流式响应成功，但 assistant_content 为 None。无法将模型回复保存到上下文 (Key: {proxy_key[:8]}...).") # Log warning if assistant_content is None
                 else:
-                     logger.warning(f"非流式响应成功，但 assistant_content 为 None。无法将模型回复保存到上下文 (Key: {proxy_key[:8]}...).") # Log warning if assistant_content is None
+                    logger.debug(f"Key {proxy_key[:8]}... 的上下文补全已禁用，跳过非流式上下文保存。") # Log that context completion is disabled
+
 
                 return response # 成功，跳出重试循环 (Success, break the retry loop)
 
@@ -585,7 +605,7 @@ async def process_request(
         logger.log(log_level, f"请求处理最终失败 ({status_code}): {final_error_msg}", extra={**extra_log_fail, 'status_code': status_code}) # 记录最终错误 (Log final error)
 
         # 抛出最终的 HTTPException
-        # Raise the final HTTPException
+        # Throw the final HTTPException
         raise HTTPException(status_code=status_code, detail=detail_msg) # 抛出 HTTPException (Raise HTTPException)
 
 

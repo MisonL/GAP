@@ -52,6 +52,7 @@
                     <th>描述</th> <!-- 表头：描述 -->
                     <th>创建时间</th> <!-- 表头：创建时间 -->
                     <th>过期时间</th> {# 新增列 #} <!-- 表头：过期时间 -->
+                    <th>上下文补全</th> {# 新增列 #} <!-- 表头：上下文补全 -->
                     <th>状态</th> <!-- 表头：状态 -->
                     <th>操作</th> <!-- 表头：操作 -->
                 </tr>
@@ -91,6 +92,10 @@
                <div class="mb-3 form-check">
                     <input type="checkbox" class="form-check-input" id="editIsActiveInput"> {# 激活状态复选框 #}
                     <label class="form-check-label" for="editIsActiveInput">激活状态</label> {# 激活状态标签 #}
+                </div>
+                <div class="mb-3 form-check"> {# 新增上下文补全复选框 #}
+                    <input type="checkbox" class="form-check-input" id="editEnableContextCompletionInput">
+                    <label class="form-check-label" for="editEnableContextCompletionInput">启用上下文补全</label>
                 </div>
             </form>
              <div id="edit-key-status" class="mt-2"></div> {# 用于显示错误或成功消息 #} {# 编辑 Key 状态显示区域 #}
@@ -215,6 +220,7 @@
                                         data-description="${keyInfo.description || ''}"
                                         data-is-active="${keyInfo.is_active}"
                                         data-expires-at="${keyInfo.expires_at || ''}"
+                                        data-enable-context="${keyInfo.enable_context_completion === true}" {# 传递上下文补全状态 #}
                                         data-bs-toggle="modal"
                                         data-bs-target="#editKeyModal">编辑</button>
                                 <button class="btn btn-sm btn-danger delete-btn" data-key="${keyInfo.key}">删除</button>
@@ -229,6 +235,11 @@
                             <td>${keyInfo.description || ''}</td> <!-- 描述 -->
                             <td>${new Date(keyInfo.created_at).toLocaleString('sv-SE')}</td> {# Use consistent format #} <!-- 创建时间 -->
                             <td>${expiresAtDisplay}</td> {# Add expires_at column #} <!-- 过期时间 -->
+                            <td> {# 新增上下文补全状态显示 #}
+                                <span class="badge ${keyInfo.enable_context_completion === true ? 'bg-info' : 'bg-light text-dark'}">
+                                    ${keyInfo.enable_context_completion === true ? '启用' : '禁用'}
+                                </span>
+                            </td>
                             <td>
                                 <span class="badge ${keyInfo.is_active ? 'bg-success' : 'bg-secondary'}">
                                     ${keyInfo.is_active ? '活动' : '禁用'}
@@ -324,6 +335,7 @@
                     const description = event.target.dataset.description; // 获取描述
                     const isActive = event.target.dataset.isActive === 'true'; // 获取激活状态
                     const expiresAt = event.target.dataset.expiresAt || ''; // Get expires_at, default to empty string (获取过期时间，默认为空字符串)
+                    const enableContext = event.target.dataset.enableContext === 'true'; // 获取上下文补全状态
 
                     // 填充模态框
                     // Populate modal
@@ -332,6 +344,7 @@
                     document.getElementById('editDescriptionInput').value = description; // 填充描述
                     document.getElementById('editIsActiveInput').checked = isActive; // 填充激活状态
                     document.getElementById('editExpiresAtInput').value = expiresAt; // Populate expires_at input (填充过期时间输入框)
+                    document.getElementById('editEnableContextCompletionInput').checked = enableContext; // 填充上下文补全复选框
                     document.getElementById('edit-key-status').textContent = ''; // Clear previous status (清除之前的状态)
                 });
             });
@@ -418,6 +431,7 @@
                 const newDescription = document.getElementById('editDescriptionInput').value.trim(); // 获取新描述
                 const newIsActive = document.getElementById('editIsActiveInput').checked; // 获取新激活状态
                 const newExpiresAt = document.getElementById('editExpiresAtInput').value.trim(); // 获取新过期时间
+                const newEnableContext = document.getElementById('editEnableContextCompletionInput').checked; // 获取新的上下文补全状态
                 const editStatus = document.getElementById('edit-key-status'); // 获取编辑状态显示区域
 
                 editStatus.textContent = '正在保存...'; // 显示保存状态
@@ -430,7 +444,8 @@
                     // 目前发送所有更简单。后端处理 None。
                     description: newDescription, // Send empty string if needed, or handle null in backend (描述)
                     is_active: newIsActive, // 激活状态
-                    expires_at: newExpiresAt || null // Send null if empty string (过期时间，如果为空字符串则发送 null)
+                    expires_at: newExpiresAt || null, // Send null if empty string (过期时间，如果为空字符串则发送 null)
+                    enable_context_completion: newEnableContext // 发送新的上下文补全状态
                 };
 
                  // Basic ISO format check for expires_at

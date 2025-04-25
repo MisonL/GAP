@@ -343,6 +343,97 @@ async def list_all_context_keys_info(user_key: Optional[str] = None, is_admin: b
         contexts_info = [] # 出错时返回空列表 (Return empty list on error)
     return contexts_info # 返回上下文信息列表 (Return list of context info)
 
+# --- 上下文格式转换函数 ---
+# --- Context Format Conversion Functions ---
+
+def convert_openai_to_gemini_contents(history: List[Dict]) -> List[Dict]:
+    """
+    将 OpenAI 格式的对话历史转换为 Gemini 的 contents 格式。
+    Converts OpenAI format conversation history to Gemini's contents format.
+
+    Args:
+        history: OpenAI 格式的对话历史列表 (e.g., [{'role': 'user', 'content': '...'}, {'role': 'assistant', 'content': '...'}])。
+                 List of conversation history in OpenAI format.
+
+    Returns:
+        Gemini 格式的 contents 列表 (e.g., [{'role': 'user', 'parts': [{'text': '...'}]}, {'role': 'model', 'parts': [{'text': '...'}]}]).
+        List of contents in Gemini format.
+    """
+    gemini_contents = [] # 初始化 Gemini 格式的 contents 列表 (Initialize list for Gemini format contents)
+    for message in history: # 遍历 OpenAI 格式的历史记录 (Iterate through OpenAI format history)
+        openai_role = message.get('role') # 获取 OpenAI 角色 (Get OpenAI role)
+        openai_content = message.get('content') # 获取 OpenAI 内容 (Get OpenAI content)
+
+        if openai_role and openai_content is not None: # 确保角色和内容存在 (Ensure role and content exist)
+            # 映射角色：'user' -> 'user', 'assistant' -> 'model'
+            # Map roles: 'user' -> 'user', 'assistant' -> 'model'
+            gemini_role = 'user' if openai_role == 'user' else 'model' if openai_role == 'assistant' else openai_role # 映射角色 (Map role)
+
+            # 将内容字符串转换为 Gemini 的 parts 格式
+            # Convert content string to Gemini's parts format
+            gemini_parts = [{'text': str(openai_content)}] # 假设内容是文本 (Assume content is text)
+
+            gemini_contents.append({'role': gemini_role, 'parts': gemini_parts}) # 添加到 Gemini contents 列表 (Append to Gemini contents list)
+        else:
+            logger.warning(f"跳过无效的 OpenAI 历史消息: {message}") # 记录无效消息警告 (Log warning for invalid message)
+
+    return gemini_contents # 返回转换后的 Gemini contents (Return converted Gemini contents)
+
+def convert_gemini_to_storage_format(request_content: Dict, response_content: Dict) -> List[Dict]:
+    """
+    将 Gemini 的请求内容 (用户) 和响应内容 (模型) 转换为内部存储格式 (OpenAI 格式)。
+    Converts Gemini's request content (user) and response content (model) to internal storage format (OpenAI format).
+
+    Args:
+        request_content: Gemini 格式的用户请求内容 (e.g., {'role': 'user', 'parts': [{'text': '...'}]})。
+                         Gemini format user request content.
+        response_content: Gemini 格式的模型响应内容 (e.g., {'role': 'model', 'parts': [{'text': '...'}]})。
+                          Gemini format model response content.
+
+    Returns:
+        包含用户和模型消息的 OpenAI 格式列表 (e.g., [{'role': 'user', 'content': '...'}, {'role': 'assistant', 'content': '...'}]).
+        List in OpenAI format containing user and model messages.
+    """
+    storage_format = [] # 初始化存储格式列表 (Initialize list for storage format)
+
+    # 处理用户请求内容
+    # Process user request content
+    user_role = request_content.get('role') # 获取用户角色 (Get user role)
+    user_parts = request_content.get('parts', []) # 获取用户 parts (Get user parts)
+    user_text = "" # 初始化用户文本 (Initialize user text)
+    if user_role == 'user' and user_parts: # 如果是用户角色且有 parts (If it's user role and has parts)
+        # 提取文本内容 (假设第一个 part 是文本)
+        # Extract text content (assuming the first part is text)
+        first_part = user_parts[0] # 获取第一个 part (Get the first part)
+        if 'text' in first_part: # 如果 part 中有文本 (If there is text in the part)
+            user_text = first_part['text'] # 获取文本内容 (Get text content)
+        # TODO: 未来可能需要处理其他类型的 parts (e.g., images)
+        # TODO: May need to handle other types of parts in the future (e.g., images)
+        storage_format.append({'role': 'user', 'content': user_text}) # 添加到存储格式列表 (Append to storage format list)
+    else:
+        logger.warning(f"转换 Gemini 用户请求内容时发现无效格式: {request_content}") # Log warning for invalid Gemini user request format
+
+    # 处理模型响应内容
+    # Process model response content
+    model_role = response_content.get('role') # 获取模型角色 (Get model role)
+    model_parts = response_content.get('parts', []) # 获取模型 parts (Get model parts)
+    model_text = "" # 初始化模型文本 (Initialize model text)
+    if model_role == 'model' and model_parts: # 如果是模型角色且有 parts (If it's model role and has parts)
+         # 提取文本内容 (假设第一个 part 是文本)
+         # Extract text content (assuming the first part is text)
+        first_part = model_parts[0] # 获取第一个 part (Get the first part)
+        if 'text' in first_part: # 如果 part 中有文本 (If there is text in the part)
+            model_text = first_part['text'] # 获取文本内容 (Get text content)
+        # TODO: 未来可能需要处理其他类型的 parts
+        # TODO: May need to handle other types of parts in the future
+        storage_format.append({'role': 'assistant', 'content': model_text}) # 添加到存储格式列表 (Append to storage format list)
+    else:
+        logger.warning(f"转换 Gemini 模型响应内容时发现无效格式: {response_content}") # Log warning for invalid Gemini model response format
+
+
+    return storage_format # 返回转换后的存储格式列表 (Return converted storage format list)
+
+
 # --- 内存数据库清理 ---
 # --- Memory Database Cleanup ---
 # 注意：此函数现在需要是 async
