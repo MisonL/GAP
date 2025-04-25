@@ -12,15 +12,15 @@
 
 <!-- TOC start -->
 
-- [主要功能](#%E2%9C%A8-%E4%B8%BB%E8%A6%81%E5%8A%9F%E8%83%BD)
-- [使用方式](#%F0%9F%9B%A0%EF%B8%8F-%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)
-  - [部署到 Hugging Face Spaces](#%F0%9F%9A%80-%E9%83%A8%E7%BD%B2%E5%88%B0-hugging-face-spaces)
-  - [本地运行](#%F0%9F%92%BB-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C)
+- [主要功能](#-主要功能)
+- [使用方式](#%EF%B8%8F-使用方式)
+  - [部署到 Hugging Face Spaces](#-部署到-hugging-face-spaces)
+  - [本地运行](#-本地运行)
   - [接入其他服务](#接入其他服务)
   - [API Endpoints](#api-endpoints)
-- [注意事项](#注意事项)
-- [贡献](#%F0%9F%A4%9D-%E8%B4%A1%E7%8C%AE)
-- [许可证](#%F0%9F%93%9C-%E8%AE%B8%E5%8F%AF%E8%AF%81)
+- [注意事项](#%EF%B8%8F-注意事项)
+- [贡献](#-贡献)
+- [许可证](#-许可证)
 
 <!-- TOC end -->
 
