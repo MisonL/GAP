@@ -11,10 +11,12 @@ from typing import Dict, Any # 导入类型提示 (Import type hints)
 # 导入自定义模块
 # Import custom modules
 from ..core.gemini import GeminiClient # 导入 GeminiClient (Import GeminiClient)
-from ..core.response_wrapper import wrap_gemini_response # 导入响应包装函数 (Import response wrapping function)
+from ..core.response_wrapper import ResponseWrapper # 导入响应包装类 (Import response wrapper class)
 from ..core.context_store import load_context, save_context, convert_openai_to_gemini_contents, convert_gemini_to_storage_format # 导入上下文管理函数和转换函数 (Import context management functions and conversion functions)
 from ..core.utils import key_manager_instance # 导入 Key Manager 实例 (Import Key Manager instance)
-from ..core.tracking import track_usage # 导入使用情况跟踪函数 (Import usage tracking function)
+# from ..core.tracking import track_usage # 移除错误的导入 (Removed incorrect import)
+from .request_utils import check_rate_limits_and_update_counts, update_token_counts, get_client_ip, get_current_timestamps # 导入请求工具函数 (Import request utility functions)
+from .. import config as app_config # 导入应用配置 (Import application config)
 from ..core.db_utils import IS_MEMORY_DB # 导入数据库模式标志 (Import database mode flag)
 from ..config import ENABLE_CONTEXT_COMPLETION # 导入全局上下文补全配置 (Import global context completion configuration)
 
@@ -71,6 +73,22 @@ async def generate_content_v2(
         else:
             logger.debug(f"Key {proxy_key[:8]}... 没有找到上下文，跳过注入。") # Log that no context was found
 
+    # --- 获取客户端 IP 和时间戳 ---
+    # --- Get Client IP and Timestamps ---
+    client_ip = get_client_ip(request) # 获取客户端 IP (Get client IP)
+    _, today_date_str_pt = get_current_timestamps() # 获取 PT 日期字符串 (Get PT date string)
+
+    # --- 速率限制检查 ---
+    # --- Rate Limit Check ---
+    limits = app_config.MODEL_LIMITS.get(model) # 获取模型限制 (Get model limits)
+    if not check_rate_limits_and_update_counts(proxy_key, model, limits): # 检查并更新速率限制计数 (Check and update rate limit counts)
+        # 如果达到限制，check_rate_limits_and_update_counts 会记录警告
+        # If limit is reached, check_rate_limits_and_update_counts logs a warning
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, # 429 状态码 (429 status code)
+            detail=f"API Key for model '{model}' has reached rate limits. Please try again later." # 错误详情 (Error detail)
+        )
+
     # 调用 Gemini API
     # Call Gemini API
     try:
@@ -83,9 +101,12 @@ async def generate_content_v2(
         gemini_response = await client.generate_content(model_name=model, request_payload=request_payload) # 调用 Gemini API (Call Gemini API)
         logger.debug(f"收到 Gemini API 响应: {gemini_response}") # 记录收到的 API 响应 (Log received API response)
 
-        # 跟踪使用情况
-        # Track usage
-        await track_usage(proxy_key, model, request_payload, gemini_response) # 跟踪使用情况 (Track usage)
+        # --- 更新 Token 计数 ---
+        # --- Update Token Counts ---
+        prompt_tokens = None # 初始化 prompt_tokens (Initialize prompt_tokens)
+        if isinstance(gemini_response, dict) and 'usageMetadata' in gemini_response: # 检查响应是否为字典且包含 usageMetadata (Check if response is a dict and contains usageMetadata)
+            prompt_tokens = gemini_response['usageMetadata'].get('promptTokenCount') # 获取 promptTokenCount (Get promptTokenCount)
+        update_token_counts(proxy_key, model, limits, prompt_tokens, client_ip, today_date_str_pt) # 更新 token 计数 (Update token counts)
 
         # 存储上下文 (如果启用)
         # Store context (if enabled)
