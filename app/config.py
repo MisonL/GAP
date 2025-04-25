@@ -112,6 +112,7 @@ MEMORY_CONTEXT_CLEANUP_INTERVAL_SECONDS = int(os.environ.get('MEMORY_CONTEXT_CLE
 # 新增：内存模式下最大上下文记录数，默认 5000
 # New: Maximum context records in memory mode, default 5000
 MAX_CONTEXT_RECORDS_MEMORY = int(os.environ.get('MAX_CONTEXT_RECORDS_MEMORY', "5000")) # 内存模式下最大上下文记录数 (Maximum context records in memory mode)
+ENABLE_CONTEXT_COMPLETION: bool = os.environ.get("ENABLE_CONTEXT_COMPLETION", "true").lower() == "true" # 全局默认是否启用上下文补全 (Global default for enabling context completion)
 
 # 新增：是否在流式响应结束后保存模型回复 (默认 false，保存回复会增加流中断时丢失上下文的风险)
 # New: Whether to save model replies after streaming response ends (default false, saving replies increases the risk of losing context if the stream is interrupted)
