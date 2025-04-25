@@ -11,6 +11,7 @@ import httpx     # 用于发送异步 HTTP 请求（例如测试密钥有效性�
 from threading import Lock # 用于线程同步的锁 (Used for thread synchronization locks)
 import logging   # 用于应用程序的日志记录 (Used for application logging)
 import sys       # 用于访问系统特定的参数和函数 (Used for accessing system-specific parameters and functions)
+from typing import Dict, Any, Optional, List, Tuple, Set # 确保导入了 Dict, Any, Optional, List, Tuple, Set (Ensure Dict, Any, Optional, List, Tuple, Set are imported)
 import pytz      # 用于处理不同的时区（例如太平洋时间） (Used for handling different time zones (e.g., Pacific Time))
 from typing import Optional, Dict, Any, Set, List, Tuple # 类型提示，确保导入 List 和 Tuple (Type hints, ensure List and Tuple are imported)
 import json      # 用于处理 JSON 数据 (Used for handling JSON data)
@@ -46,9 +47,47 @@ class APIKeyManager:
         raw_keys = os.environ.get('GEMINI_API_KEYS', "") # 从环境变量获取原始 Key 字符串 (Get raw key string from environment variable)
         # 使用正则表达式查找并提取有效的 API Key
         # Use regular expression to find and extract valid API keys
-        self.api_keys = re.findall(r"AIzaSy[a-zA-Z0-9_-]{33}", raw_keys)
-        self.keys_lock = Lock() # 用于保护 api_keys 列表访问的线程锁 (Thread lock to protect access to the api_keys list)
+        self.api_keys: List[str] = re.findall(r"AIzaSy[a-zA-Z0-9_-]{33}", raw_keys)
+        # 初始化 Key 配置字典
+        # Initialize the key configuration dictionary
+        self.key_configs: Dict[str, Dict[str, Any]] = {}
+        # 为每个加载的 Key 设置默认配置
+        # Set default configuration for each loaded key
+        for key in self.api_keys:
+            self.key_configs[key] = {'enable_context_completion': True} # 默认启用上下文补全 (Enable context completion by default)
+
+        self.keys_lock = Lock() # 用于保护 api_keys 和 key_configs 访问的线程锁 (Thread lock to protect access to api_keys and key_configs)
         self.tried_keys_for_request: Set[str] = set() # 存储当前 API 请求已尝试过的 Key 集合 (Set to store keys already attempted for the current API request)
+
+    def get_key_config(self, api_key: str) -> Optional[Dict[str, Any]]:
+        """
+        获取指定 API Key 的配置。
+        Gets the configuration for the specified API key.
+
+        Args:
+            api_key: 要获取配置的 API Key。The API key to get the configuration for.
+
+        Returns:
+            包含配置的字典，如果 Key 不存在则返回 None。A dictionary containing the configuration, or None if the key does not exist.
+        """
+        with self.keys_lock: # 获取锁以安全访问配置 (Acquire lock for safe access to configuration)
+            return self.key_configs.get(api_key) # 返回配置，不存在则为 None (Return config, None if not exists)
+
+    def update_key_config(self, api_key: str, config_update: Dict[str, Any]):
+        """
+        更新指定 API Key 的配置。
+        Updates the configuration for the specified API key.
+
+        Args:
+            api_key: 要更新配置的 API Key。The API key to update the configuration for.
+            config_update: 包含要更新的配置项的字典。A dictionary containing the configuration items to update.
+        """
+        with self.keys_lock: # 获取锁以安全修改配置 (Acquire lock for safe modification of configuration)
+            if api_key in self.key_configs:
+                self.key_configs[api_key].update(config_update) # 更新现有配置 (Update existing configuration)
+                logger.info(f"API Key {api_key[:10]}... 的配置已更新: {config_update}") # 记录配置更新日志 (Log configuration update)
+            else:
+                logger.warning(f"尝试更新不存在的 API Key 的配置: {api_key[:10]}...") # 记录警告日志 (Log warning)
 
     # Removed get_initial_key_count as it's no longer needed here
     # def get_initial_key_count(self) -> int:
@@ -265,10 +304,15 @@ class APIKeyManager:
         从管理器中移除指定的 API 密钥。
         Removes the specified API key from the manager.
         """
-        with self.keys_lock: # 获取 Key 列表锁 (Acquire the key list lock)
+        with self.keys_lock: # 获取 Key 列表和配置锁 (Acquire the key list and config lock)
             if key_to_remove in self.api_keys:
                 self.api_keys.remove(key_to_remove) # 从列表中移除 Key (Remove the key from the list)
-                logger.info(f"API Key {key_to_remove[:10]}... 已从活动池中移除。") # Log key removal
+                # 同时从配置字典中移除
+                # Also remove from the configuration dictionary
+                if key_to_remove in self.key_configs:
+                    del self.key_configs[key_to_remove] # 删除 Key 配置 (Delete key configuration)
+
+                logger.info(f"API Key {key_to_remove[:10]}... 已从活动池和配置中移除。") # Log key removal from pool and config
                 # 同时从所有模型的缓存中移除该 Key 的分数记录
                 # Also remove the score record for this key from the cache for all models
                 with cache_lock: # 获取缓存锁 (Acquire the cache lock)

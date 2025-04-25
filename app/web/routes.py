@@ -229,6 +229,7 @@ class UpdateKeyRequest(BaseModel):
     description: Optional[str] = Field(None, description="新的描述 (可选)") # 新的描述 (New description)
     is_active: Optional[bool] = Field(None, description="新的激活状态 (可选)") # 新的激活状态 (New active status)
     expires_at: Optional[str] = Field(None, description="新的 Key 过期时间 (ISO 格式)，留空或 null 表示永不过期") # 新的 Key 过期时间 (New key expiration time)
+    enable_context_completion: Optional[bool] = Field(None, description="是否启用上下文补全 (可选)") # 是否启用上下文补全 (Whether to enable context completion)
 
 
 # --- 代理 Key 管理 (仅文件模式) ---
@@ -313,6 +314,8 @@ async def get_manage_keys_data(token_payload: Dict[str, Any] = Depends(verify_jw
     admin_key = token_payload.get('sub', '未知管理员') # 获取管理员 Key (Get admin key)
     logger.debug(f"管理员 {admin_key[:8]}... 请求 Key 管理数据") # Log admin requesting data
     try:
+        # 确保 db_utils.get_all_proxy_keys 返回包含 enable_context_completion 字段的数据
+        # Ensure db_utils.get_all_proxy_keys returns data including the enable_context_completion field
         keys_data = await db_utils.get_all_proxy_keys() # 添加 await (Added await) # 获取所有代理 Key 数据 (Get all proxy key data)
         # 转换 Row 对象为字典列表，并格式化日期
         # Convert Row objects to a list of dictionaries and format dates
@@ -457,17 +460,17 @@ async def update_existing_key(
     token_payload: Dict[str, Any] = Depends(verify_jwt_token) # 仍然需要 token_payload 来记录日志 (Still need token_payload for logging)
 ):
     """
-    更新指定代理 Key 的描述、状态或过期时间 (仅管理员)。
-    Updates the description, status, or expiration time of a specified proxy key (admin only).
+    更新指定代理 Key 的描述、状态、过期时间或上下文补全状态 (仅管理员)。
+    Updates the description, status, expiration time, or context completion status of a specified proxy key (admin only).
     """
     admin_key = token_payload.get('sub', '未知管理员') # 获取管理员 Key (Get admin key)
     logger.debug(f"管理员 {admin_key[:8]}... 请求更新 Key: {proxy_key[:8]}...") # Log admin requesting to update key
 
     # 检查是否提供了至少一个要更新的字段
     # Check if at least one field to update is provided
-    if update_data.description is None and update_data.is_active is None and update_data.expires_at is None:
+    if update_data.description is None and update_data.is_active is None and update_data.expires_at is None and update_data.enable_context_completion is None:
          logger.warning(f"管理员 {admin_key[:8]}... 更新 Key {proxy_key[:8]}... 的请求未提供任何更新字段。") # Log warning
-         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="必须提供 description, is_active 或 expires_at 进行更新") # 引发 400 异常 (Raise 400 exception)
+         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="必须提供 description, is_active, expires_at 或 enable_context_completion 进行更新") # 引发 400 异常 (Raise 400 exception)
 
     # 验证 expires_at 格式 (如果提供)
     # Validate expires_at format (if provided)
@@ -486,7 +489,8 @@ async def update_existing_key(
         key=proxy_key,
         description=update_data.description,
         is_active=update_data.is_active,
-        expires_at=expires_at_to_update # 传递处理过的 expires_at (Pass the processed expires_at)
+        expires_at=expires_at_to_update, # 传递处理过的 expires_at (Pass the processed expires_at)
+        enable_context_completion=update_data.enable_context_completion # 传递 enable_context_completion (Pass enable_context_completion)
     )
 
     if success: # 如果更新成功 (If update is successful)

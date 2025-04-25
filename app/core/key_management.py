@@ -1,6 +1,10 @@
 import asyncio # 导入 asyncio 模块 (Import asyncio module)
 import logging # 导入 logging 模块 (Import logging module)
 from typing import List, Tuple, TYPE_CHECKING # 导入类型提示 (Import type hints)
+from typing import Dict, Any
+import os
+import re
+from . import db_utils
 
 # 从其他模块导入必要的组件
 # Import necessary components from other modules
@@ -29,72 +33,103 @@ async def check_keys(key_manager: APIKeyManager) -> Tuple[int, List[str], List[s
     """
     在应用启动时检查所有已配置 API 密钥的有效性。
     使用有效的密钥更新 key_manager。
-    Checks the validity of all configured API keys at application startup.
-    Updates the key_manager with valid keys.
-
-    Args:
-        key_manager (APIKeyManager): 包含待检查密钥的 APIKeyManager 实例。APIKeyManager instance containing the keys to be checked.
-
-    Returns:
-        Tuple[int, List[str], List[str]]: 一个包含以下内容的元组：A tuple containing:
-            - initial_key_count (int): 初始配置的密钥总数。Total number of initially configured keys.
-            - available_keys (List[str]): 检测到的有效 API 密钥列表。List of detected valid API keys.
-            - invalid_keys_list (List[str]): 检测到的无效 API 密钥列表。List of detected invalid API keys.
+    在文件模式下，从数据库加载 Key 及其配置。
     """
-    global INITIAL_KEY_COUNT, INVALID_KEYS, INVALID_KEY_COUNT_AT_STARTUP # 声明将要修改模块级别的全局变量 (Declare that module-level global variables will be modified)
-    initial_key_count_local = 0 # 本地变量：初始 Key 数量 (Local variable: initial key count)
-    available_keys_local = [] # 本地变量：有效 Key 列表 (Local variable: list of valid keys)
-    invalid_keys_local = [] # 本地变量：无效 Key 列表 (Local variable: list of invalid keys)
-    keys_to_check = [] # 本地变量：待检查的 Key 列表 (Local variable: list of keys to check)
+    global INITIAL_KEY_COUNT, INVALID_KEYS, INVALID_KEY_COUNT_AT_STARTUP
+    initial_key_count_local = 0
+    available_keys_local = []
+    invalid_keys_local = []
+    keys_to_check_with_config: Dict[str, Dict[str, Any]] = {} # 用于存储待检查的 Key 及其配置
 
-    with key_manager.keys_lock: # 获取锁以安全地访问 key_manager 中的密钥列表 (Acquire lock for safe access to the key list in key_manager)
-        keys_to_check = key_manager.api_keys[:] # 创建密钥列表的副本以供迭代 (Create a copy of the key list for iteration)
-        initial_key_count_local = len(keys_to_check) # 记录初始配置的密钥数量 (Record the number of initially configured keys)
+    if db_utils.IS_MEMORY_DB:
+        # 内存模式：从环境变量加载 Key，使用默认配置
+        raw_keys = os.environ.get('GEMINI_API_KEYS', "")
+        env_keys = re.findall(r"AIzaSy[a-zA-Z0-9_-]{33}", raw_keys)
+        initial_key_count_local = len(env_keys)
+        logger.info(f"内存模式：开始检查 {initial_key_count_local} 个配置的 API 密钥...")
 
-    logger.info(f"开始检查 {initial_key_count_local} 个配置的 API 密钥...") # Log the start of key checking
-    for key in keys_to_check: # 遍历待检查的 Key 列表 (Iterate through the list of keys to check)
-        is_valid = await test_api_key(key) # 调用异步函数测试单个 Key 的有效性 (Call the asynchronous function to test the validity of a single key)
-        status_msg = "有效" if is_valid else "无效" # 根据测试结果设置状态消息 (Set status message based on test result)
-        # 使用格式化函数生成日志消息
-        # Use formatting function to generate log message
-        log_msg = format_log_message('INFO', f"  - API Key {key[:10]}... {status_msg}.") # 格式化日志消息 (Format the log message)
-        logger.info(log_msg) # 记录每个 Key 的检查结果 (Log the result of checking each key)
-        if is_valid:
-            available_keys_local.append(key) # 如果有效，添加到有效 Key 列表 (If valid, add to the list of valid keys)
+        for key in env_keys:
+            keys_to_check_with_config[key] = {'enable_context_completion': True} # 内存模式默认启用上下文补全
+
+    else:
+        # 文件模式：从数据库加载 Key 及其配置
+        logger.info("文件模式：从数据库加载代理 Key 及其配置...")
+        try:
+            db_keys_data = await db_utils.get_all_proxy_keys()
+            initial_key_count_local = len(db_keys_data)
+            logger.info(f"从数据库加载了 {initial_key_count_local} 个代理 Key。开始检查有效性...")
+
+            for key_info in db_keys_data:
+                key_str = key_info['key']
+                # 从数据库加载配置
+                config_data = {
+                    'description': key_info.get('description'),
+                    'is_active': key_info.get('is_active', True), # 默认 True
+                    'expires_at': key_info.get('expires_at'),
+                    'enable_context_completion': key_info.get('enable_context_completion', True) # 默认 True
+                }
+                keys_to_check_with_config[key_str] = config_data
+
+        except Exception as e:
+            logger.error(f"从数据库加载代理 Key 失败: {e}", exc_info=True)
+            # 如果从数据库加载失败，回退到环境变量加载（但会丢失配置）
+            logger.warning("从数据库加载 Key 失败，回退到从环境变量加载（将丢失数据库中的配置）。")
+            raw_keys = os.environ.get('GEMINI_API_KEYS', "")
+            env_keys = re.findall(r"AIzaSy[a-zA-Z0-9_-]{33}", raw_keys)
+            initial_key_count_local = len(env_keys)
+            for key in env_keys:
+                 keys_to_check_with_config[key] = {'enable_context_completion': True} # 回退时使用默认配置
+
+
+    # 检查 Key 的有效性 (Google API) 并更新管理器
+    valid_keys_with_config: Dict[str, Dict[str, Any]] = {}
+    for key, config_data in keys_to_check_with_config.items():
+        # 在文件模式下，先检查数据库层面的有效性 (is_active, expires_at)
+        is_db_valid = True
+        if not db_utils.IS_MEMORY_DB:
+             # is_valid_proxy_key 已经检查了 is_active 和 expires_at
+             is_db_valid = await db_utils.is_valid_proxy_key(key)
+
+        if is_db_valid:
+            is_api_valid = await test_api_key(key)
+            status_msg = "有效" if is_api_valid else "无效 (API 测试失败)"
+            log_msg = format_log_message('INFO', f"  - API Key {key[:10]}... {status_msg}.")
+            logger.info(log_msg)
+
+            if is_api_valid:
+                available_keys_local.append(key)
+                valid_keys_with_config[key] = config_data # 保留从数据库或默认加载的配置
+            else:
+                invalid_keys_local.append(key)
         else:
-            invalid_keys_local.append(key) # 如果无效，添加到无效 Key 列表 (If invalid, add to the list of invalid keys)
+            # 数据库层面无效 (不活动或过期)
+            status_msg = "无效 (数据库状态或已过期)"
+            log_msg = format_log_message('INFO', f"  - API Key {key[:10]}... {status_msg}.")
+            logger.info(log_msg)
+            invalid_keys_local.append(key)
+
 
     # 检查完所有密钥后报告无效密钥
-    # Report invalid keys after checking all keys
-    # 如果在检查过程中发现了无效密钥
-    # If invalid keys were found during the check
     if invalid_keys_local:
-        logger.warning(f"检测到 {len(invalid_keys_local)} 个无效的 API 密钥:") # 记录警告信息 (Log warning message)
-        for invalid_key in invalid_keys_local: # 遍历并记录每个无效 Key（部分显示） (Iterate and log each invalid key (partially displayed))
+        logger.warning(f"检测到 {len(invalid_keys_local)} 个无效的 API 密钥:")
+        for invalid_key in invalid_keys_local:
             logger.warning(f"  - {invalid_key[:10]}...")
 
     if not available_keys_local:
-        # 如果检查后发现没有任何有效的 Key
-        # If no valid keys are found after checking
-        logger.error("严重错误：没有找到任何有效的 API 密钥！应用程序可能无法正常处理请求。", extra={'key': 'N/A', 'request_type': 'startup'}) # Log critical error if no valid keys are found
+        logger.error("严重错误：没有找到任何有效的 API 密钥！应用程序可能无法正常处理请求。", extra={'key': 'N/A', 'request_type': 'startup'})
 
-    # 更新 key_manager 的列表，使其仅包含有效密钥
-    # Update the key_manager's list to include only valid keys
-    # 更新 key_manager 实例中的密钥列表，使其只包含检查后有效的密钥
-    # Update the key list in the key_manager instance to include only the keys that were found to be valid after checking
-    with key_manager.keys_lock: # 获取锁以安全地修改列表 (Acquire lock for safe modification of the list)
-        key_manager.api_keys = available_keys_local # 更新 Key 列表 (Update the key list)
+    # 更新 key_manager 的列表和配置
+    with key_manager.keys_lock:
+        key_manager.api_keys = available_keys_local
+        key_manager.key_configs = valid_keys_with_config # 更新配置字典
 
-    logger.info("API 密钥检查完成。") # Log that API key checking is complete
+    logger.info("API 密钥检查和管理器更新完成。")
 
-    # 更新模块级别的全局变量以供其他模块（如报告）使用
-    # Update module-level global variables for use by other modules (e.g., reporting)
-    INITIAL_KEY_COUNT = initial_key_count_local # 更新初始总数 (Update initial total count)
-    INVALID_KEYS = invalid_keys_local # 更新无效 Key 列表 (Update the list of invalid keys)
-    INVALID_KEY_COUNT_AT_STARTUP = len(invalid_keys_local) # 更新启动时无效 Key 的数量 (Update the number of invalid keys at startup)
-    
-    # 返回初始数量、有效列表和无效列表
-    # Return initial count, list of valid keys, and list of invalid keys
+    # 更新模块级别的全局变量
+    INITIAL_KEY_COUNT = initial_key_count_local
+    INVALID_KEYS = invalid_keys_local
+    INVALID_KEY_COUNT_AT_STARTUP = len(invalid_keys_local)
+
     return initial_key_count_local, available_keys_local, invalid_keys_local
 
 

@@ -88,11 +88,21 @@ def _create_tables_if_not_exist(conn: sqlite3.Connection):
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_active BOOLEAN DEFAULT TRUE,
-                expires_at DATETIME NULL -- 新增：Key 的过期时间，NULL 表示永不过期 (New: Expiration time of the key, NULL means never expires)
+                expires_at DATETIME NULL, -- Key 的过期时间，NULL 表示永不过期
+                enable_context_completion BOOLEAN DEFAULT TRUE -- 是否启用上下文补全
             )
         """)
+
+        # 检查并添加 enable_context_completion 列（如果不存在）
+        try:
+            cursor.execute("SELECT enable_context_completion FROM proxy_keys LIMIT 0") # Use LIMIT 0 to check column existence without fetching data
+        except sqlite3.OperationalError:
+            logger.info("Adding 'enable_context_completion' column to proxy_keys table...")
+            cursor.execute("ALTER TABLE proxy_keys ADD COLUMN enable_context_completion BOOLEAN DEFAULT TRUE")
+            conn.commit() # Commit the ALTER TABLE
+            logger.info("'enable_context_completion' column added.")
+
         # 创建 contexts 表
-        # Create contexts table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS contexts (
                 proxy_key TEXT PRIMARY KEY,
@@ -102,7 +112,6 @@ def _create_tables_if_not_exist(conn: sqlite3.Connection):
             )
         """)
         # 创建 settings 表
-        # Create settings table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -110,17 +119,13 @@ def _create_tables_if_not_exist(conn: sqlite3.Connection):
             )
         """)
         # 为 last_used 添加索引
-        # Add index for last_used
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_context_last_used ON contexts(last_used)")
         # 设置默认 TTL (使用 INSERT OR IGNORE 避免查询)
-        # Set default TTL (use INSERT OR IGNORE to avoid querying)
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
                        ('context_ttl_days', str(DEFAULT_CONTEXT_TTL_DAYS)))
 
         # 不再需要在这里插入固定的 memory_mode_context key，
-        # No longer need to insert a fixed memory_mode_context key here,
         # 因为 save_context 会处理实际使用的 key
-        # because save_context will handle the keys that are actually used
 
         conn.commit() # 提交事务 (Commit transaction)
         # logger.info(f"在连接 {id(conn)} 上调用了 conn.commit() (表创建)。")
@@ -243,13 +248,13 @@ async def get_all_proxy_keys() -> list[sqlite3.Row]:
             # It is recommended to use libraries like databases or aiosqlite, but to minimize changes,
             # 我们将使用 conn.execute 在默认的执行器中运行同步操作
             # we will use conn.execute to run synchronous operations in the default executor
-            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active, expires_at FROM proxy_keys ORDER BY created_at DESC") # 添加 expires_at (Added expires_at)
-            keys = await asyncio.to_thread(cursor.fetchall) # 在线程中获取所有结果 (Fetch all results in a thread)
-            logger.debug(f"成功获取 {len(keys)} 个 proxy keys。") # Log successful retrieval and count (DEBUG level)
-            return keys # 返回 Key 列表 (Return the list of keys)
+            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active, expires_at, enable_context_completion FROM proxy_keys ORDER BY created_at DESC") # 添加 expires_at, enable_context_completion
+            keys = await asyncio.to_thread(cursor.fetchall)
+            logger.debug(f"成功获取 {len(keys)} 个 proxy keys。")
+            return keys
     except sqlite3.Error as e:
-        logger.error(f"获取所有 proxy keys 时出错: {e}", exc_info=True) # 记录获取所有 Key 错误 (Log error getting all keys)
-        return [] # 出错时返回空列表 (Return empty list on error)
+        logger.error(f"获取所有 proxy keys 时出错: {e}", exc_info=True)
+        return []
 
 async def get_proxy_key(key: str) -> Optional[sqlite3.Row]:
     """
@@ -261,8 +266,8 @@ async def get_proxy_key(key: str) -> Optional[sqlite3.Row]:
     try:
         async with get_db_connection() as conn: # 获取异步数据库连接 (Get asynchronous database connection)
             cursor = conn.cursor() # 获取游标 (Get cursor)
-            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active, expires_at FROM proxy_keys WHERE key = ?", (key,)) # 添加 expires_at (Added expires_at)
-            row = await asyncio.to_thread(cursor.fetchone) # 在线程中获取单行结果 (Fetch single row result in a thread)
+            await asyncio.to_thread(cursor.execute, "SELECT key, description, created_at, is_active, expires_at, enable_context_completion FROM proxy_keys WHERE key = ?", (key,)) # 添加 expires_at, enable_context_completion
+            row = await asyncio.to_thread(cursor.fetchone)
             # if row:
             #     logger.debug(f"成功获取 proxy key: {key}。")
             # else:
@@ -308,115 +313,109 @@ async def is_valid_proxy_key(key: str) -> bool:
     return True # 返回 True (Return True)
 
 
-async def add_proxy_key(key: str, description: str = "", expires_at: Optional[str] = None) -> bool:
+async def add_proxy_key(key: str, description: str = "", expires_at: Optional[str] = None, enable_context_completion: bool = True) -> bool:
     """
     添加一个新的代理 Key。
     如果 Key 已存在，则不执行任何操作并返回 False。
 
     Args:
-        key: 要添加的 Key。The key to add.
-        description: Key 的描述。The description of the key.
-        expires_at: Key 的过期时间 (ISO 格式字符串)，None 表示永不过期。The expiration time of the key (ISO format string), None means never expires.
+        key: 要添加的 Key。
+        description: Key 的描述。
+        expires_at: Key 的过期时间 (ISO 格式字符串)，None 表示永不过期。
+        enable_context_completion: 是否启用上下文补全。
     """
-    logger.info(f"尝试添加 proxy key: {key} (Expires: {expires_at})...") # Log attempt to add proxy key
+    logger.info(f"尝试添加 proxy key: {key} (Expires: {expires_at}, EnableContext: {enable_context_completion})...")
     try:
-        async with get_db_connection() as conn: # 获取异步数据库连接 (Get asynchronous database connection)
-            cursor = conn.cursor() # 获取游标 (Get cursor)
+        async with get_db_connection() as conn:
+            cursor = conn.cursor()
             # 使用 INSERT OR IGNORE 避免因 Key 已存在而出错
-            # Use INSERT OR IGNORE to avoid errors if the key already exists
             await asyncio.to_thread(
                 cursor.execute,
-                "INSERT OR IGNORE INTO proxy_keys (key, description, is_active, expires_at) VALUES (?, ?, ?, ?)",
-                (key, description, True, expires_at) # 添加 expires_at (Added expires_at)
-            ) # 在线程中执行插入或忽略操作 (Execute INSERT or IGNORE operation in a thread)
-            await asyncio.to_thread(conn.commit) # 在线程中提交事务 (Commit transaction in a thread)
-            # rowcount 在 to_thread 中可能不直接可用，需要检查
-            # rowcount might not be directly available in to_thread, needs checking
-            # 暂时假设成功，除非有异常
-            # Temporarily assume success unless there is an exception
-            # 更好的方法是检查 key 是否存在
-            # A better approach is to check if the key exists
-            key_exists_after = await get_proxy_key(key) # 检查是否真的添加了 (Check if it was actually added)
+                "INSERT OR IGNORE INTO proxy_keys (key, description, is_active, expires_at, enable_context_completion) VALUES (?, ?, ?, ?, ?)",
+                (key, description, True, expires_at, enable_context_completion)
+            )
+            await asyncio.to_thread(conn.commit)
+            # 检查是否真的添加了
+            key_exists_after = await get_proxy_key(key)
             if key_exists_after:
-                 logger.info(f"成功添加或已存在 proxy key: {key}。") # Log success or existence
-                 return True # 认为成功，即使是已存在 (Consider it successful, even if it already exists)
+                 logger.info(f"成功添加或已存在 proxy key: {key}。")
+                 return True
             else:
                  # 理论上不应发生，除非 commit 失败
-                 # Theoretically should not happen unless commit fails
-                 logger.error(f"添加 proxy key '{key}' 后未能找到，可能提交失败。") # Log error if key not found after adding
-                 return False # 返回 False (Return False)
+                 logger.error(f"添加 proxy key '{key}' 后未能找到，可能提交失败。")
+                 return False
 
     except sqlite3.Error as e:
-        logger.error(f"添加 proxy key '{key}' 时出错: {e}", exc_info=True) # 记录添加 Key 错误 (Log error adding key)
-        return False # 出错时返回 False (Return False on error)
+        logger.error(f"添加 proxy key '{key}' 时出错: {e}", exc_info=True)
+        return False
 
 async def update_proxy_key(
     key: str,
     description: Optional[str] = None,
     is_active: Optional[bool] = None,
-    expires_at: Optional[str] = None # 添加 expires_at 参数 (Added expires_at parameter)
+    expires_at: Optional[str] = None,
+    enable_context_completion: Optional[bool] = None # Add enable_context_completion parameter
 ) -> bool:
     """
-    更新代理 Key 的描述、激活状态或过期时间。
-    至少需要提供 description, is_active 或 expires_at 中的一个。
-    Updates the description, active status, or expiration time of a proxy key.
-    At least one of description, is_active, or expires_at must be provided.
+    更新代理 Key 的描述、激活状态、过期时间或上下文补全状态。
+    至少需要提供 description, is_active, expires_at 或 enable_context_completion 中的一个。
 
     Args:
-        key: 要更新的 Key。The key to update.
-        description: 新的描述 (可选)。New description (optional).
-        is_active: 新的激活状态 (可选)。New active status (optional).
-        expires_at: 新的过期时间 (ISO 格式字符串)，None 表示清除过期时间 (可选)。New expiration time (ISO format string), None means clear expiration time (optional).
+        key: 要更新的 Key。
+        description: 新的描述 (可选)。
+        is_active: 新的激活状态 (可选)。
+        expires_at: 新的过期时间 (ISO 格式字符串)，None 表示清除过期时间 (可选)。
+        enable_context_completion: 是否启用上下文补全 (可选)。
     """
-    if description is None and is_active is None and expires_at is None: # 检查是否提供了任何更新字段 (Check if any update fields are provided)
-        logger.warning(f"更新 proxy key '{key}' 失败：未提供要更新的字段 (description, is_active, 或 expires_at)。") # Log warning if no fields to update
-        return False # 返回 False (Return False)
+    if description is None and is_active is None and expires_at is None and enable_context_completion is None:
+        logger.warning(f"更新 proxy key '{key}' 失败：未提供要更新的字段。")
+        return False
 
-    logger.info(f"尝试更新 proxy key: {key} (Description: {description}, Active: {is_active}, Expires: {expires_at})...") # Log attempt to update proxy key
-    updates = [] # 初始化更新字段列表 (Initialize list of update fields)
-    params = [] # 初始化参数列表 (Initialize list of parameters)
+    logger.info(f"尝试更新 proxy key: {key} (Description: {description}, Active: {is_active}, Expires: {expires_at}, EnableContext: {enable_context_completion})...")
+    updates = []
+    params = []
 
-    if description is not None: # 如果提供了描述 (If description is provided)
-        updates.append("description = ?") # 添加描述更新语句 (Add description update statement)
-        params.append(description) # 添加描述参数 (Add description parameter)
-    if is_active is not None: # 如果提供了激活状态 (If active status is provided)
-        updates.append("is_active = ?") # 添加激活状态更新语句 (Add active status update statement)
-        params.append(is_active) # 添加激活状态参数 (Add active status parameter)
-    if expires_at is not None: # 如果提供了 expires_at (即使是空字符串，也表示要更新) (If expires_at is provided (even if it's an empty string, it means update))
-        updates.append("expires_at = ?") # 添加过期时间更新语句 (Add expiration time update statement)
-        # 如果传入的是空字符串，将其转换为 None 存入数据库，表示永不过期
-        # If an empty string is passed, convert it to None and store in the database, meaning never expires
-        params.append(expires_at if expires_at else None) # 添加过期时间参数 (Add expiration time parameter)
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description)
+    if is_active is not None:
+        updates.append("is_active = ?")
+        params.append(is_active)
+    if expires_at is not None:
+        updates.append("expires_at = ?")
+        params.append(expires_at if expires_at else None)
+    if enable_context_completion is not None:
+        updates.append("enable_context_completion = ?")
+        params.append(enable_context_completion)
 
-    if not updates: # 再次检查，以防 expires_at 是 None 但其他也是 None (Check again in case expires_at is None but others are also None)
-         logger.warning(f"更新 proxy key '{key}' 失败：逻辑错误，没有有效的更新字段。") # Log warning for logical error
-         return False # 返回 False (Return False)
+    if not updates:
+         logger.warning(f"更新 proxy key '{key}' 失败：逻辑错误，没有有效的更新字段。")
+         return False
 
-    params.append(key) # 用于 WHERE 子句 (For WHERE clause)
+    params.append(key)
 
-    sql = f"UPDATE proxy_keys SET {', '.join(updates)} WHERE key = ?" # 构建 SQL 更新语句 (Build SQL update statement)
+    sql = f"UPDATE proxy_keys SET {', '.join(updates)} WHERE key = ?"
 
     try:
-        async with get_db_connection() as conn: # 获取异步数据库连接 (Get asynchronous database connection)
-            cursor = conn.cursor() # 获取游标 (Get cursor)
-            await asyncio.to_thread(cursor.execute, sql, tuple(params)) # 在线程中执行更新操作 (Execute update operation in a thread)
-            rowcount = cursor.rowcount # 获取同步操作的 rowcount (Get rowcount of the synchronous operation)
-            await asyncio.to_thread(conn.commit) # 在线程中提交事务 (Commit transaction in a thread)
-            if rowcount > 0: # 如果更新了记录 (If records were updated)
-                logger.info(f"成功更新 proxy key: {key}。") # Log successful update
-                return True # 返回 True (Return True)
+        async with get_db_connection() as conn:
+            cursor = conn.cursor()
+            await asyncio.to_thread(cursor.execute, sql, tuple(params))
+            rowcount = cursor.rowcount
+            await asyncio.to_thread(conn.commit)
+            if rowcount > 0:
+                logger.info(f"成功更新 proxy key: {key}。")
+                return True
             else:
                 # 检查 key 是否存在以提供更准确的信息
-                # Check if the key exists to provide more accurate information
-                exists = await get_proxy_key(key) # 检查 Key 是否存在 (Check if key exists)
+                exists = await get_proxy_key(key)
                 if not exists:
-                    logger.warning(f"更新 proxy key '{key}' 失败：Key 未找到。") # Log warning if key not found
+                    logger.warning(f"更新 proxy key '{key}' 失败：Key 未找到。")
                 else:
-                    logger.warning(f"更新 proxy key '{key}' 失败：值未改变。") # Log warning if values did not change
-                return False # 返回 False (Return False)
+                    logger.warning(f"更新 proxy key '{key}' 失败：值未改变。")
+                return False
     except sqlite3.Error as e:
-        logger.error(f"更新 proxy key '{key}' 时出错: {e}", exc_info=True) # 记录更新 Key 错误 (Log error updating key)
-        return False # 出错时返回 False (Return False on error)
+        logger.error(f"更新 proxy key '{key}' 时出错: {e}", exc_info=True)
+        return False
 
 async def delete_proxy_key(key: str) -> bool:
     """
