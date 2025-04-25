@@ -16,9 +16,9 @@
 - [使用方式](#%F0%9F%9B%A0%EF%B8%8F-%E4%BD%BF%E7%94%A8%E6%96%B9%E5%BC%8F)
   - [部署到 Hugging Face Spaces](#%F0%9F%9A%80-%E9%83%A8%E7%BD%B2%E5%88%B0-hugging-face-spaces)
   - [本地运行](#%F0%9F%92%BB-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C)
-  - [接入其他服务](#%E6%8E%A5%E5%85%A5%E5%85%B6%E4%BB%96%E6%9C%8D%E5%8A%A1)
+  - [接入其他服务](#接入其他服务)
   - [API Endpoints](#api-endpoints)
-- [注意事项](#%E2%9a%a0%EF%B8%8F-%E6%B3%A8%E6%84%8F%E4%BA%8B%E9%A1%B9)
+- [注意事项](#注意事项)
 - [贡献](#%F0%9F%A4%9D-%E8%B4%A1%E7%8C%AE)
 - [许可证](#%F0%9F%93%9C-%E8%AE%B8%E5%8F%AF%E8%AF%81)
 
