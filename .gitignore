@@ -13,3 +13,6 @@ logs
 
 # macOS specific files
 .DS_Store
+
+# Roo specific files
+.roo/
