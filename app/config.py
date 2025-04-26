@@ -19,7 +19,7 @@ logger = logging.getLogger('my_logger') # 获取日志记录器实例 (Get logge
 
 # --- 应用版本 ---
 # --- Application Version ---
-__version__ = "1.5.0" # 更新版本号到 v1.5.0，新增 Web 报告页面 (Update version number to v1.5.0, add Web report page)
+__version__ = "1.6.1" # 更新版本号到 v1.6.1，优化 Web 报告页面、添加版权信息、调整 API 文档入口、修复 Key 管理页面问题 (Update version number to v1.6.1, optimize Web report page, add copyright info, adjust API docs entry, fix Key management page issue)
 
 
 # --- 应用配置 ---
