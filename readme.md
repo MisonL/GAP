@@ -403,8 +403,8 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 
 欢迎各种形式的贡献！
 
-- **报告 Bug:** 如果你发现了问题，请在 [Issues](https://github.com/MisonL/Hagemi/issues) 中提交详细的 Bug 报告。
-- **功能请求:** 如果你有新的功能想法，也请在 [Issues](https://github.com/MisonL/Hagemi/issues) 中提出。
+- **报告 Bug:** 如果你发现了问题，请在 [Issues](https://github.com/MisonL/GAP/issues) 中提交详细的 Bug 报告。
+- **功能请求:** 如果你有新的功能想法，也请在 [Issues](https://github.com/MisonL/GAP/issues) 中提出。
 - **代码贡献:** 如果你想贡献代码，请先 Fork 本仓库，在你的分支上进行修改，然后提交 Pull Request。
 
 ## 📜 许可证
