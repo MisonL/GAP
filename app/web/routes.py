@@ -97,6 +97,7 @@ async def root_get(request: Request): # 移除了 CsrfProtect 依赖 (Removed Cs
             "request": request, # 请求对象 (Request object)
             "login_required": login_required, # 是否需要登录 (Whether login is required)
             "admin_key_missing": admin_key_missing, # 添加到模板上下文 (Add to template context)
+            "now": datetime.now(timezone.utc) # 添加 now 变量 (Add now variable)
             # "csrf_token": csrf_token # 移除了 CSRF token (Removed CSRF token)
         }
     )
