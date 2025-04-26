@@ -8,6 +8,20 @@ import asyncio # 导入 asyncio 模块 (Import asyncio module)
 import uvicorn # 导入 uvicorn 模块 (Import uvicorn module)
 from fastapi import FastAPI # 导入 FastAPI 类 (Import FastAPI class)
 from dotenv import load_dotenv # 用于加载 .env 文件中的环境变量 (Used for loading environment variables from .env file)
+
+# 加载 .env 文件 (如果存在)
+# Load .env file (if it exists)
+load_dotenv()
+
+# --- 导入 ---
+# --- Imports ---
+import sys # 导入 sys 模块 (Import sys module)
+import os # 导入 os 模块 (Import os module)
+import logging # 导入 logging 模块 (Import logging module)
+import json # 导入 json 模块 (Import json module)
+import asyncio # 导入 asyncio 模块 (Import asyncio module)
+import uvicorn # 导入 uvicorn 模块 (Import uvicorn module)
+from fastapi import FastAPI # 导入 FastAPI 类 (Import FastAPI class)
 from contextlib import asynccontextmanager # 用于定义异步上下文管理器 (lifespan) (Used for defining asynchronous context managers (lifespan))
 from typing import AsyncGenerator # 类型提示，用于异步生成器 (Type hint, used for asynchronous generators)
 from fastapi import Request # 导入 FastAPI Request 对象，用于处理请求上下文 (Import FastAPI Request object, used for handling request context)
@@ -30,7 +44,8 @@ from app.core import db_utils # 导入数据库工具模块，用于初始化 (I
 
 # --- 初始化 ---
 # --- Initialization ---
-load_dotenv() # 加载 .env 文件中的环境变量（应在 config 导入前或后执行，这里放在后面） (Load environment variables from .env file (should be done before or after config import, done after here))
+# 如果需要，可以禁用 uvicorn 的默认日志记录器，以完全使用自定义日志
+# If needed, can disable uvicorn's default logger to fully use custom logging
 # 如果需要，可以禁用 uvicorn 的默认日志记录器，以完全使用自定义日志
 # If needed, can disable uvicorn's default logger to fully use custom logging
 # logging.getLogger("uvicorn").propagate = False

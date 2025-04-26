@@ -3,133 +3,141 @@
 {% block title %}API 使用情况报告{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-lg mt-4 px-lg-5 px-md-4 px-3">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1>API 使用情况报告</h1>
         <small class="text-muted">最后更新时间: <span id="last-updated-time">加载中...</span></small>
     </div>
 
-    <!-- 容量与使用情况 -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light">
-            <h5 class="mb-0">容量与使用情况</h5>
-        </div>
-        <div class="card-body">
-            <div class="row align-items-center">
-                <!-- RPD 图表 -->
-                <div class="col-md-3 text-center mb-3 mb-md-0">
-                    <h6>RPD (每日请求)</h6>
-                    <div class="chart-container mx-auto" style="position: relative; height:180px; width:180px;">
-                        <canvas id="rpd-chart"></canvas>
-                        <div id="rpd-percentage" class="chart-percentage">--%</div>
-                    </div>
-                    <p id="rpd-stats" class="mt-2 small text-muted">加载中...</p>
+    <div class="row">
+        <!-- 左列 -->
+        <div class="col-lg-6">
+            <!-- 容量与使用情况 -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">容量与使用情况</h5>
                 </div>
-                <!-- TPD 输入图表 -->
-                <div class="col-md-3 text-center mb-3 mb-md-0">
-                    <h6>TPD 输入 (每日 Token)</h6>
-                     <div class="chart-container mx-auto" style="position: relative; height:180px; width:180px;">
-                        <canvas id="tpd-input-chart"></canvas>
-                        <div id="tpd-input-percentage" class="chart-percentage">--%</div>
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <!-- RPD 图表 -->
+                        <div class="col-md-6 text-center mb-3 mb-md-0"> <!-- 调整为 col-md-6 -->
+                            <h6>RPD (每日请求)</h6>
+                            <div class="chart-container mx-auto" style="position: relative;">
+                                <canvas id="rpd-chart"></canvas>
+                                <div id="rpd-percentage" class="chart-percentage">--%</div>
+                            </div>
+                            <p id="rpd-stats" class="mt-2 small text-muted">加载中...</p>
+                        </div>
+                        <!-- TPD 输入图表 -->
+                        <div class="col-md-6 text-center mb-3 mb-md-0"> <!-- 调整为 col-md-6 -->
+                            <h6>TPD 输入 (每日 Token)</h6>
+                             <div class="chart-container mx-auto" style="position: relative;">
+                                <canvas id="tpd-input-chart"></canvas>
+                                <div id="tpd-input-percentage" class="chart-percentage">--%</div>
+                            </div>
+                            <p id="tpd-input-stats" class="mt-2 small text-muted">加载中...</p>
+                        </div>
+                        <!-- 关键统计数据 -->
+                        <div class="col-12 mt-4"> <!-- 调整为 col-12 并添加上边距 -->
+                            <h6>关键指标</h6>
+                            <ul class="list-group list-group-flush">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    活跃 Key 数量:
+                                    <span id="active-keys-count" class="badge bg-primary rounded-pill">...</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    启动时无效 Key:
+                                    <span id="invalid-keys-startup" class="badge bg-warning text-dark rounded-pill">...</span>
+                                </li>
+                                 <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    过去 7 天平均日 RPD:
+                                    <span id="avg-daily-rpd" class="badge bg-info rounded-pill">...</span>
+                                </li>
+                                <li class="list-group-item">
+                                    RPD 容量估算 (gemini-2.5-pro-exp-03-25):
+                                    <strong id="rpd-capacity-target">...</strong>
+                                    <div id="rpd-capacity-others" class="small text-muted mt-1"></div>
+                                </li>
+                                <li class="list-group-item">
+                                    TPD 输入容量估算 (gemini-2.5-pro-exp-03-25):
+                                    <strong id="tpd-input-capacity-target">...</strong>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
-                    <p id="tpd-input-stats" class="mt-2 small text-muted">加载中...</p>
-                </div>
-                <!-- 关键统计数据 -->
-                <div class="col-md-6">
-                    <h6>关键指标</h6>
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            活跃 Key 数量:
-                            <span id="active-keys-count" class="badge bg-primary rounded-pill">...</span>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            启动时无效 Key:
-                            <span id="invalid-keys-startup" class="badge bg-warning text-dark rounded-pill">...</span>
-                        </li>
-                         <li class="list-group-item d-flex justify-content-between align-items-center">
-                            过去 7 天平均日 RPD:
-                            <span id="avg-daily-rpd" class="badge bg-info rounded-pill">...</span>
-                        </li>
-                        <li class="list-group-item">
-                            RPD 容量估算 (gemini-2.5-pro-exp-03-25):
-                            <strong id="rpd-capacity-target">...</strong>
-                            <div id="rpd-capacity-others" class="small text-muted mt-1"></div>
-                        </li>
-                        <li class="list-group-item">
-                            TPD 输入容量估算 (gemini-2.5-pro-exp-03-25):
-                            <strong id="tpd-input-capacity-target">...</strong>
-                        </li>
-                    </ul>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <!-- Key 使用概览 -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light">
-            <h5 class="mb-0">Key 使用概览</h5>
-        </div>
-        <div class="card-body">
-            <div id="key-status-charts" class="row justify-content-center">
-                <!-- 图表将动态添加到这里 -->
-                <p id="key-status-loading" class="text-center text-muted">正在加载 Key 状态图表...</p>
-            </div>
-            <hr>
-            <h6>状态详情</h6>
-            <div id="key-status-details" class="mt-3 small">
-                <!-- 详细状态文本将添加到这里 -->
-                 <p class="text-center text-muted">暂无详情数据。</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Key 数量建议 -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light">
-             <h5 class="mb-0">Key 数量建议</h5>
-        </div>
-        <div class="card-body">
-            <p id="key-suggestion" class="lead">正在加载建议...</p>
-        </div>
-    </div>
-
-    <!-- Top IP 统计 -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light">
-            <h5 class="mb-0">Top 5 IP 地址统计 (PT 时间)</h5>
-        </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-12 mb-4">
-                    <h6>请求次数</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-striped table-hover">
-                            <thead class="table-light">
-                                <tr><th>时间范围</th><th>IP 地址</th><th>次数</th></tr>
-                            </thead>
-                            <tbody id="top-ips-requests">
-                                <tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+            <!-- Key 使用概览 -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Key 使用概览</h5>
                 </div>
-                <div class="col-12">
-                    <h6>输入 Token</h6>
-                    <div class="table-responsive">
-                         <table class="table table-sm table-striped table-hover">
-                            <thead class="table-light">
-                                <tr><th>时间范围</th><th>IP 地址</th><th>Token 数</th></tr>
-                            </thead>
-                            <tbody id="top-ips-tokens">
-                                 <tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>
-                            </tbody>
-                        </table>
+                <div class="card-body">
+                    <div id="key-status-charts" class="row justify-content-center">
+                        <!-- 图表将动态添加到这里 -->
+                        <p id="key-status-loading" class="text-center text-muted">正在加载 Key 状态图表...</p>
+                    </div>
+                    <hr>
+                    <h6>状态详情</h6>
+                    <div id="key-status-details" class="mt-3 small">
+                        <!-- 详细状态文本将添加到这里 -->
+                         <p class="text-center text-muted">暂无详情数据。</p>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+
+        <!-- 右列 -->
+        <div class="col-lg-6">
+            <!-- Key 数量建议 -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                     <h5 class="mb-0">Key 数量建议</h5>
+                </div>
+                <div class="card-body">
+                    <p id="key-suggestion" class="lead">正在加载建议...</p>
+                </div>
+            </div>
+
+            <!-- Top IP 统计 -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Top 5 IP 地址统计 (PT 时间)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-12 mb-4">
+                            <h6>请求次数</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-striped table-hover">
+                                    <thead class="table-light">
+                                        <tr><th>时间范围</th><th>IP 地址</th><th>次数</th></tr>
+                                    </thead>
+                                    <tbody id="top-ips-requests">
+                                        <tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <h6>输入 Token</h6>
+                            <div class="table-responsive">
+                                 <table class="table table-sm table-striped table-hover">
+                                    <thead class="table-light">
+                                        <tr><th>时间范围</th><th>IP 地址</th><th>Token 数</th></tr>
+                                    </thead>
+                                    <tbody id="top-ips-tokens">
+                                         <tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div> <!-- end .row -->
 
 </div>
 
@@ -144,8 +152,9 @@
 .chart-container {
     position: relative;
     margin: auto;
-    /* height: 180px;
-    width: 180px; */
+    /* height: 180px; */ /* Removed fixed height */
+    /* width: 180px; */  /* Removed fixed width */
+    max-width: 180px; /* 添加最大宽度以控制大小 */
 }
 .chart-percentage {
     position: absolute;
@@ -157,6 +166,27 @@
     color: #495057; /* 调整颜色 */
     pointer-events: none; /* 确保不影响图表交互 */
 }
+/* 确保 Key 状态图表在列内响应式 */
+#key-status-charts .col-lg-3,
+#key-status-charts .col-md-4,
+#key-status-charts .col-sm-6 {
+    /* 可以根据需要调整图表大小 */
+    max-width: 200px; /* 限制图表容器的最大宽度 */
+    margin-left: auto;
+    margin-right: auto;
+}
+#key-status-charts canvas {
+    max-height: 150px; /* 限制 Canvas 高度 */
+}
+
+/* 修正 Bootstrap 栅格列在宽屏下的宽度优先级问题 */
+@media (min-width: 992px) { /* Bootstrap's 'lg' breakpoint */
+    .row .col-lg-6 { /* Increased specificity to override .row > * */
+        flex: 0 0 auto; /* Ensure flex properties are set */
+        width: 50% !important; /* Force width */
+    }
+}
+
 </style>
 
 <script>
@@ -207,14 +237,15 @@
             const chartCol = document.createElement('div');
             // 调整列宽以适应更多图表或提供更多空间
             // Adjust column width for more charts or more space
-            chartCol.className = 'col-lg-3 col-md-4 col-sm-6 mb-4 text-center';
+            // 使用更灵活的列定义，让它们在不同尺寸下更好地排列
+            chartCol.className = 'col-lg-4 col-md-6 col-sm-6 mb-4 text-center'; // 调整列定义
             const chartTitle = document.createElement('h6');
             // chartTitle.className = 'text-center mb-2'; // 移到 col 的 text-center
             chartTitle.textContent = `${modelName} (${totalKeys} Keys)`;
             const canvas = document.createElement('canvas');
             canvas.id = `key-status-chart-${modelName}`;
-            canvas.style.maxWidth = '150px'; // 限制最大宽度
-            canvas.style.maxHeight = '150px'; // 限制最大高度
+            // canvas.style.maxWidth = '150px'; // Removed max width constraint
+            // canvas.style.maxHeight = '150px'; // Removed max height constraint
             canvas.style.margin = '0 auto'; // 居中
             // canvas.width = 150; // 使用 CSS 控制大小
             // canvas.height = 150; // 使用 CSS 控制大小
@@ -236,7 +267,7 @@
                 'rgba(111, 66, 193, 0.7)' // 紫色 (Purple)
             ];
             const borderColors = backgroundColors.map(color => color.replace('0.7', '1')); // 更深的边框色 (Darker border color)
-
+            
             // 3. 创建图表实例
             // 3. Create chart instance
             const ctx = canvas.getContext('2d');
@@ -256,7 +287,7 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false, // 允许调整大小 (Allow resizing)
+                    maintainAspectRatio: false, // 设置为 false 以更好地填充容器 (Set to false to better fill container)
                     plugins: {
                         legend: {
                             position: 'bottom', // 图例位置 (Legend position)
@@ -370,50 +401,7 @@
              rpdPercentageDiv.textContent = '--%';
              // 可以选择隐藏 Canvas 或显示无数据消息
              // Optionally hide Canvas or show no data message
-        }
-
-
-        // TPD 输入图表
-        // TPD Input Chart
-        if (tpdInputData && tpdInputData.capacity > 0) {
-            const tpdUsedValue = (tpdInputData.estimated_today && tpdInputData.estimated_today > 0) ? tpdInputData.estimated_today : tpdInputData.used_today;
-            const tpdUsageRatio = (tpdUsedValue / tpdInputData.capacity) * 100;
-            const tpdRemainingRatio = Math.max(0, 100 - tpdUsageRatio);
-            tpdInputChartInstance = new Chart(tpdInputCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['已用/预估', '剩余'], // Labels
-                    datasets: [{
-                        data: [tpdUsageRatio, tpdRemainingRatio],
-                        backgroundColor: ['rgba(255, 159, 64, 0.7)', 'rgba(0, 123, 255, 0.7)'], // Orange, Blue
-                        borderColor: ['rgba(255, 159, 64, 1)', 'rgba(0, 123, 255, 1)'],
-                        borderWidth: 1,
-                        circumference: 180, // 半圆 (Semicircle)
-                        rotation: -90 // 从顶部开始 (Start from top)
-                    }]
-                },
-                 options: {
-                    responsive: true,
-                    maintainAspectRatio: true,
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `${context.label}: ${context.parsed.toFixed(1)}%`;
-                                }
-                            }
-                        },
-                         legend: { display: false } // 隐藏图例 (Hide legend)
-                    },
-                    cutout: '70%' // 环形图粗细 (Doughnut thickness)
-                }
-            });
-            tpdInputPercentageDiv.textContent = `${tpdUsageRatio.toFixed(1)}%`;
-            document.getElementById('tpd-input-stats').textContent = `已用: ${formatNumber(tpdInputData.used_today)}, 预估: ${formatNumber(tpdInputData.estimated_today) || 'N/A'} / 容量: ${formatNumber(tpdInputData.capacity)}`;
-        } else {
-             document.getElementById('tpd-input-stats').textContent = `已用: ${formatNumber(tpdInputData?.used_today)}, 容量: ${formatNumber(tpdInputData?.capacity) || 'N/A'}`;
-             tpdInputPercentageDiv.textContent = '--%';
-        }
+         }
     }
 
     // 填充 Top IP 表格
@@ -480,37 +468,60 @@
             console.error('未找到 JWT token，无法获取报告数据。'); // JWT token not found
             // 可以考虑重定向到登录页 (Consider redirecting to login page)
             // window.location.href = '/';
-            document.getElementById('last-updated-time').textContent = '错误：需要登录'; // Error: Login required
-            // 显示加载失败状态
-            // Show loading failed status
-            document.getElementById('key-status-loading').textContent = '加载失败：需要登录';
-            document.getElementById('rpd-stats').textContent = '加载失败';
-            document.getElementById('tpd-input-stats').textContent = '加载失败';
-            document.getElementById('rpd-percentage').textContent = 'ERR';
-            document.getElementById('tpd-input-percentage').textContent = 'ERR';
-            document.getElementById('key-suggestion').textContent = '加载失败';
-            document.getElementById('top-ips-requests').innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载失败：需要登录</td></tr>';
-            document.getElementById('top-ips-tokens').innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载失败：需要登录</td></tr>';
+            const lastUpdatedElem = document.getElementById('last-updated-time');
+            if (lastUpdatedElem) lastUpdatedElem.textContent = '错误：需要登录'; // Error: Login required
+
+            // 显示加载失败状态 (Show loading failed status)
+            const keyStatusLoadingElem = document.getElementById('key-status-loading');
+            if (keyStatusLoadingElem) keyStatusLoadingElem.textContent = '加载失败：需要登录';
+            const rpdStatsElem = document.getElementById('rpd-stats');
+            if (rpdStatsElem) rpdStatsElem.textContent = '加载失败';
+            const tpdInputStatsElem = document.getElementById('tpd-input-stats');
+            if (tpdInputStatsElem) tpdInputStatsElem.textContent = '加载失败';
+            const rpdPercentageElem = document.getElementById('rpd-percentage');
+            if (rpdPercentageElem) rpdPercentageElem.textContent = 'ERR';
+            const tpdInputPercentageElem = document.getElementById('tpd-input-percentage');
+            if (tpdInputPercentageElem) tpdInputPercentageElem.textContent = 'ERR';
+            const keySuggestionElem = document.getElementById('key-suggestion');
+            if (keySuggestionElem) keySuggestionElem.textContent = '加载失败';
+            const topIpsRequestsElem = document.getElementById('top-ips-requests');
+            if (topIpsRequestsElem) topIpsRequestsElem.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载失败：需要登录</td></tr>';
+            const topIpsTokensElem = document.getElementById('top-ips-tokens');
+            if (topIpsTokensElem) topIpsTokensElem.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载失败：需要登录</td></tr>';
             return;
         }
 
-        // 显示加载中状态
-        // Show loading status
-        document.getElementById('last-updated-time').textContent = '正在加载...';
-        document.getElementById('key-status-loading').style.display = 'block';
-        document.getElementById('key-status-loading').textContent = '正在加载 Key 状态图表...';
-        document.getElementById('rpd-stats').textContent = '加载中...';
-        document.getElementById('tpd-input-stats').textContent = '加载中...';
-        document.getElementById('rpd-percentage').textContent = '--%';
-        document.getElementById('tpd-input-percentage').textContent = '--%';
-        document.getElementById('active-keys-count').textContent = '...';
-        document.getElementById('invalid-keys-startup').textContent = '...';
-        document.getElementById('avg-daily-rpd').textContent = '...';
-        document.getElementById('rpd-capacity-target').textContent = '...';
-        document.getElementById('tpd-input-capacity-target').textContent = '...';
-        document.getElementById('key-suggestion').textContent = '正在加载建议...';
-        document.getElementById('top-ips-requests').innerHTML = '<tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>';
-        document.getElementById('top-ips-tokens').innerHTML = '<tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>';
+        // 显示加载中状态 (Show loading status)
+        const lastUpdatedElemInit = document.getElementById('last-updated-time');
+        if (lastUpdatedElemInit) lastUpdatedElemInit.textContent = '正在加载...';
+        const keyStatusLoadingP = document.getElementById('key-status-loading');
+        if (keyStatusLoadingP) keyStatusLoadingP.style.display = 'block'; // 检查元素是否存在
+        const rpdStatsElemInit = document.getElementById('rpd-stats');
+        if (rpdStatsElemInit) rpdStatsElemInit.textContent = '加载中...';
+        const tpdInputStatsElemInit = document.getElementById('tpd-input-stats');
+        if (tpdInputStatsElemInit) tpdInputStatsElemInit.textContent = '加载中...';
+        const rpdPercentageElemInit = document.getElementById('rpd-percentage');
+        if (rpdPercentageElemInit) rpdPercentageElemInit.textContent = '--%';
+        const tpdInputPercentageElemInit = document.getElementById('tpd-input-percentage');
+        if (tpdInputPercentageElemInit) tpdInputPercentageElemInit.textContent = '--%';
+        const keySuggestionElemInit = document.getElementById('key-suggestion');
+        if (keySuggestionElemInit) keySuggestionElemInit.textContent = '正在加载建议...';
+        const topIpsRequestsElemInit = document.getElementById('top-ips-requests');
+        if (topIpsRequestsElemInit) topIpsRequestsElemInit.innerHTML = '<tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>';
+        const topIpsTokensElemInit = document.getElementById('top-ips-tokens');
+        if (topIpsTokensElemInit) topIpsTokensElemInit.innerHTML = '<tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>';
+        const activeKeysCountElem = document.getElementById('active-keys-count');
+        if (activeKeysCountElem) activeKeysCountElem.textContent = '...';
+        const invalidKeysStartupElem = document.getElementById('invalid-keys-startup');
+        if (invalidKeysStartupElem) invalidKeysStartupElem.textContent = '...';
+        const avgDailyRpdElem = document.getElementById('avg-daily-rpd');
+        if (avgDailyRpdElem) avgDailyRpdElem.textContent = '...';
+        const rpdCapacityTargetElem = document.getElementById('rpd-capacity-target');
+        if (rpdCapacityTargetElem) rpdCapacityTargetElem.textContent = '...';
+        const rpdCapacityOthersElem = document.getElementById('rpd-capacity-others');
+        if (rpdCapacityOthersElem) rpdCapacityOthersElem.textContent = '';
+        const tpdInputCapacityTargetElem = document.getElementById('tpd-input-capacity-target');
+        if (tpdInputCapacityTargetElem) tpdInputCapacityTargetElem.textContent = '...';
 
 
         try {
@@ -520,83 +531,159 @@
                 }
             });
 
-            if (response.status === 401 || response.status === 403) {
-                console.error('认证失败或无权限，请重新登录。'); // Authentication failed or no permission
-                localStorage.removeItem('access_token'); // 清除无效 token (Clear invalid token)
-                window.location.href = '/?error=auth_failed'; // 重定向到登录页 (Redirect to login page)
-                return; // 阻止后续代码执行 (Prevent subsequent code execution)
-            }
-
             if (!response.ok) {
-                 let errorMsg = `获取报告数据失败: ${response.status} ${response.statusText}`;
-                try {
-                    const errorData = await response.json();
-                    errorMsg += ` - ${errorData.detail || JSON.stringify(errorData)}`;
-                } catch (e) { /* 忽略解析错误 */ }
-                throw new Error(errorMsg); // Failed to fetch report data
+                if (response.status === 401) {
+                     console.error('认证失败，请重新登录。'); // Authentication failed
+                     const lastUpdatedElemAuth = document.getElementById('last-updated-time');
+                     if (lastUpdatedElemAuth) lastUpdatedElemAuth.textContent = '错误：认证失败';
+                     // 显示加载失败状态 (Show loading failed status)
+                     const keyStatusLoadingElemAuth = document.getElementById('key-status-loading');
+                     if (keyStatusLoadingElemAuth) keyStatusLoadingElemAuth.textContent = '加载失败：认证失败';
+                     const rpdStatsElemAuth = document.getElementById('rpd-stats');
+                     if (rpdStatsElemAuth) rpdStatsElemAuth.textContent = '加载失败';
+                     const tpdInputStatsElemAuth = document.getElementById('tpd-input-stats');
+                     if (tpdInputStatsElemAuth) tpdInputStatsElemAuth.textContent = '加载失败';
+                     const rpdPercentageElemAuth = document.getElementById('rpd-percentage');
+                     if (rpdPercentageElemAuth) rpdPercentageElemAuth.textContent = 'ERR';
+                     const tpdInputPercentageElemAuth = document.getElementById('tpd-input-percentage');
+                     if (tpdInputPercentageElemAuth) tpdInputPercentageElemAuth.textContent = 'ERR';
+                     const keySuggestionElemAuth = document.getElementById('key-suggestion');
+                     if (keySuggestionElemAuth) keySuggestionElemAuth.textContent = '加载失败';
+                     const topIpsRequestsElemAuth = document.getElementById('top-ips-requests');
+                     if (topIpsRequestsElemAuth) topIpsRequestsElemAuth.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载失败：认证失败</td></tr>';
+                     const topIpsTokensElemAuth = document.getElementById('top-ips-tokens');
+                     if (topIpsTokensElemAuth) topIpsTokensElemAuth.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载失败：认证失败</td></tr>';
+                     // 可选：清除 token 并重定向 (Optional: Clear token and redirect)
+                     // localStorage.removeItem('access_token');
+                     // window.location.href = '/';
+                } else {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return; // 认证失败或非 OK 响应后停止执行
             }
 
             const data = await response.json();
-            console.log("获取到的报告数据:", data); // Log fetched data
+            console.log('API 返回数据:', data); // 添加日志打印返回数据
 
-            // 更新最后更新时间
-            // Update last updated time
-            document.getElementById('last-updated-time').textContent = new Date(data.report_time_utc).toLocaleString();
+            // 更新最后更新时间 (Update last updated time)
+            const lastUpdatedElemData = document.getElementById('last-updated-time');
+            if (lastUpdatedElemData) lastUpdatedElemData.textContent = data.last_updated || '未知';
+            console.log('最后更新时间已更新:', lastUpdatedElemData.textContent); // 添加日志
 
-            // 渲染 Key 状态图表和详情
-            // Render Key status charts and details
-            document.getElementById('key-status-loading').style.display = 'none'; // 隐藏加载提示 (Hide loading message)
-            renderKeyStatusCharts(data.key_status_summary);
+            // 渲染容量图表 (Render capacity charts)
+            console.log('渲染容量图表...'); // 添加日志
+            renderCapacityCharts(data.capacity?.rpd, data.capacity?.tpd_input);
+            console.log('容量图表渲染完成。'); // 添加日志
 
-            // 渲染容量图表和统计
-            // Render capacity charts and stats
-            renderCapacityCharts(data.overall_stats.rpd, data.overall_stats.tpd_input);
-            document.getElementById('active-keys-count').textContent = formatNumber(data.overall_stats.active_keys_count);
-            document.getElementById('invalid-keys-startup').textContent = formatNumber(data.overall_stats.invalid_keys_startup);
-            document.getElementById('avg-daily-rpd').textContent = formatNumber(data.overall_stats.avg_daily_rpd_past_7_days) || 'N/A';
 
-            // RPD 容量
-            const rpdTargetCapacity = data.overall_stats.rpd.capacity_target_model?.capacity;
-            document.getElementById('rpd-capacity-target').textContent = formatNumber(rpdTargetCapacity) || 'N/A';
-            const rpdOthersDiv = document.getElementById('rpd-capacity-others');
-            rpdOthersDiv.innerHTML = ''; // 清空 (Clear)
-            if (data.overall_stats.rpd.capacity_other_models && data.overall_stats.rpd.capacity_other_models.length > 0) {
-                 data.overall_stats.rpd.capacity_other_models.forEach(item => {
-                    const p = document.createElement('div'); // 使用 div 替代 p
-                    p.innerHTML = `&bull; RPD=${item.limit}: ${item.models.join(', ')} (容量: ${formatNumber(item.capacity)}/天)`;
-                    rpdOthersDiv.appendChild(p);
-                });
-            } else if (rpdTargetCapacity) {
-                 rpdOthersDiv.innerHTML = '仅基于 gemini-2.5-pro-exp-03-25 计算'; // Only calculated based on target model
-            } else {
-                 rpdOthersDiv.innerHTML = '无可用容量数据'; // No capacity data available
+            // 渲染 Key 状态图表 (Render key status charts)
+            console.log('渲染 Key 状态图表...'); // 添加日志
+            const keyStatusLoadingElemData = document.getElementById('key-status-loading');
+            if (keyStatusLoadingElemData) keyStatusLoadingElemData.style.display = 'none'; // 隐藏加载提示
+            renderKeyStatusCharts(data.key_status);
+            console.log('Key 状态图表渲染完成。'); // 添加日志
+
+            // 更新关键指标 (Update key metrics)
+            console.log('更新关键指标...'); // 添加日志
+            const activeKeysCountElemData = document.getElementById('active-keys-count');
+            if (activeKeysCountElemData) activeKeysCountElemData.textContent = formatNumber(data.key_metrics?.active_keys_count);
+            console.log('活跃 Key 数量已更新:', activeKeysCountElemData?.textContent); // 添加日志
+            const invalidKeysStartupElemData = document.getElementById('invalid-keys-startup');
+            if (invalidKeysStartupElemData) invalidKeysStartupElemData.textContent = formatNumber(data.key_metrics?.invalid_keys_startup);
+            console.log('启动时无效 Key 已更新:', invalidKeysStartupElemData?.textContent); // 添加日志
+            const avgDailyRpdElemData = document.getElementById('avg-daily-rpd');
+            if (avgDailyRpdElemData) avgDailyRpdElemData.textContent = formatNumber(data.key_metrics?.avg_daily_rpd_last_7_days);
+            console.log('过去 7 天平均日 RPD 已更新:', avgDailyRpdElemData?.textContent); // 添加日志
+
+            // 更新容量估算文本 (Update capacity estimation text)
+            console.log('更新容量估算文本...'); // 添加日志
+            const targetModel = "gemini-2.5-pro-exp-03-25"; // 或者从配置读取 (Or read from config)
+            const rpdCapacityTargetElemData = document.getElementById('rpd-capacity-target');
+            if (rpdCapacityTargetElemData) {
+                if (data.capacity?.rpd?.capacity_by_model && data.capacity.rpd.capacity_by_model[targetModel]) {
+                    rpdCapacityTargetElemData.textContent = formatNumber(data.capacity.rpd.capacity_by_model[targetModel]);
+                } else {
+                     rpdCapacityTargetElemData.textContent = 'N/A';
+                }
             }
+            console.log('RPD 容量估算 (目标模型) 已更新:', rpdCapacityTargetElemData?.textContent); // 添加日志
 
-            // TPD 输入容量
-            document.getElementById('tpd-input-capacity-target').textContent = formatNumber(data.overall_stats.tpd_input.capacity_target_model?.capacity) || 'N/A';
+            let otherRpdCapacityHtml = '';
+            if (data.capacity?.rpd?.capacity_by_model) {
+                Object.entries(data.capacity.rpd.capacity_by_model).forEach(([model, capacity]) => {
+                    if (model !== targetModel) {
+                        otherRpdCapacityHtml += `<div>${model}: ${formatNumber(capacity)}</div>`;
+                    }
+                });
+            }
+            const rpdCapacityOthersElemData = document.getElementById('rpd-capacity-others');
+            if (rpdCapacityOthersElemData) rpdCapacityOthersElemData.innerHTML = otherRpdCapacityHtml || '无其他模型数据';
+            console.log('RPD 容量估算 (其他模型) 已更新:', rpdCapacityOthersElemData?.innerHTML); // 添加日志
 
 
-            // 更新 Key 数量建议
-            // Update Key count suggestion
-            document.getElementById('key-suggestion').textContent = data.key_suggestion || '暂无建议。'; // No suggestion
+            const tpdInputCapacityTargetElemData = document.getElementById('tpd-input-capacity-target');
+            if (tpdInputCapacityTargetElemData) {
+                if (data.capacity?.tpd_input?.capacity_by_model && data.capacity.tpd_input.capacity_by_model[targetModel]) {
+                    tpdInputCapacityTargetElemData.textContent = formatNumber(data.capacity.tpd_input.capacity_by_model[targetModel]);
+                } else {
+                     tpdInputCapacityTargetElemData.textContent = 'N/A';
+                }
+            }
+            console.log('TPD 输入容量估算 (目标模型) 已更新:', tpdInputCapacityTargetElemData?.textContent); // 添加日志
 
-            // 填充 Top IP 表格
-            // Populate Top IP tables
+
+            // 更新 Key 数量建议 (Update key suggestion)
+            console.log('更新 Key 数量建议...'); // 添加日志
+            const keySuggestionElemData = document.getElementById('key-suggestion');
+            if (keySuggestionElemData) keySuggestionElemData.textContent = data.key_suggestion || '暂无建议。';
+            console.log('Key 数量建议已更新:', keySuggestionElemData?.textContent); // 添加日志
+
+            // 填充 Top IP 表格 (Populate Top IP tables)
+            console.log('填充 Top IP 表格...'); // 添加日志
             populateTopIpTables(data.top_ips);
+            console.log('Top IP 表格填充完成。'); // 添加日志
+
 
         } catch (error) {
-            console.error('渲染报告时出错:', error); // Error rendering report
-            document.getElementById('last-updated-time').textContent = `加载失败`;
-            // 在各个部分显示错误信息
-            // Display error messages in various sections
-             document.getElementById('key-status-loading').textContent = '加载 Key 状态失败';
-             document.getElementById('rpd-stats').textContent = '加载 RPD 失败';
-             document.getElementById('tpd-input-stats').textContent = '加载 TPD 输入失败';
-             document.getElementById('rpd-percentage').textContent = 'ERR';
-             document.getElementById('tpd-input-percentage').textContent = 'ERR';
-             document.getElementById('key-suggestion').textContent = '加载建议失败';
-             document.getElementById('top-ips-requests').innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载 Top IP 请求失败: ${error.message}</td></tr>`;
-             document.getElementById('top-ips-tokens').innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载 Top IP Token 失败: ${error.message}</td></tr>`;
+            console.error('获取报告数据时出错:', error); // Error fetching report data
+            // 尝试获取更具体的错误信息
+            let errorMsg = '错误：加载失败';
+            if (error instanceof TypeError) {
+                errorMsg = '错误：数据处理失败';
+                console.error('TypeError:', error.message, error.stack);
+            } else if (error.message && error.message.includes('Failed to fetch')) {
+                errorMsg = '错误：网络请求失败';
+                 console.error('Fetch Error:', error.message);
+            } else if (error.response && error.response.status) { // 如果 fetch 包装在某个库中可能暴露 response
+                 errorMsg = `错误：服务器响应 ${error.response.status}`;
+                 console.error('Server Response Error:', error.response.status, await error.response.text().catch(() => ''));
+            } else if (typeof error === 'string') {
+                 errorMsg = `错误：${error}`;
+                 console.error('String Error:', error);
+            } else {
+                console.error('Unknown Error:', error.message, error.stack); // 打印未知错误信息
+            }
+
+
+            const lastUpdatedElemErr = document.getElementById('last-updated-time');
+            if (lastUpdatedElemErr) lastUpdatedElemErr.textContent = errorMsg;
+            // 显示更详细的错误状态 (Show more detailed error status)
+            const keyStatusLoadingElemErr = document.getElementById('key-status-loading');
+            if (keyStatusLoadingElemErr) keyStatusLoadingElemErr.textContent = '加载失败';
+            const rpdStatsElemErr = document.getElementById('rpd-stats');
+            if (rpdStatsElemErr) rpdStatsElemErr.textContent = '加载失败';
+            const tpdInputStatsElemErr = document.getElementById('tpd-input-stats');
+            if (tpdInputStatsElemErr) tpdInputStatsElemErr.textContent = '加载失败';
+            const rpdPercentageElemErr = document.getElementById('rpd-percentage');
+            if (rpdPercentageElemErr) rpdPercentageElemErr.textContent = 'ERR';
+            const tpdInputPercentageElemErr = document.getElementById('tpd-input-percentage');
+            if (tpdInputPercentageElemErr) tpdInputPercentageElemErr.textContent = 'ERR';
+            const keySuggestionElemErr = document.getElementById('key-suggestion');
+            if (keySuggestionElemErr) keySuggestionElemErr.textContent = '加载失败';
+            const topIpsRequestsElemErr = document.getElementById('top-ips-requests');
+            if (topIpsRequestsElemErr) topIpsRequestsElemErr.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载失败</td></tr>';
+            const topIpsTokensElemErr = document.getElementById('top-ips-tokens');
+            if (topIpsTokensElemErr) topIpsTokensElemErr.innerHTML = '<tr><td colspan="3" class="text-center text-danger">加载失败</td></tr>';
         }
     }
 

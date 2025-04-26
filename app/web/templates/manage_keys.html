@@ -111,6 +111,12 @@
     {% endif %} {# End of 'if not is_memory_mode' #} {# 内存模式判断结束 #}
 </div>
 
+
+
+</div>
+
+{% endblock %} {# 内容块结束 #}
+
 {% block scripts %} {# 脚本块 #}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -361,7 +367,7 @@
 
              // Basic ISO format check for expires_at
              // 对 expires_at 进行基本的 ISO 格式检查
-            if (expiresAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(payload.expiresAt)) { // 如果提供了过期时间且格式不匹配
+            if (expiresAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(expiresAt)) { // 如果提供了过期时间且格式不匹配
                  addKeyStatus.textContent = '添加失败: 过期时间格式无效。'; // 显示错误消息
                  addKeyStatus.className = 'ms-2 text-danger';
                  return;
@@ -450,7 +456,7 @@
 
                  // Basic ISO format check for expires_at
                  // 对 expires_at 进行基本的 ISO 格式检查
-                if (payload.expiresAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(payload.expiresAt)) { // 如果提供了过期时间且格式不匹配
+                if (payload.expires_at && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|[+-]\d{2}:\d{2})$/.test(payload.expires_at)) { // 如果提供了过期时间且格式不匹配
                      editStatus.textContent = '保存失败: 过期时间格式无效。'; // 显示错误消息
                      editStatus.className = 'mt-2 text-danger';
                      return;
@@ -503,7 +509,8 @@
              console.error("Could not find save button or initialize edit modal."); // Log error
         }
 
-        } // End of 'if (document.getElementById('add-key-form'))' // 内存模式判断结束
+        } // End of 'if (document.getElementById('add-key-form'))'
     });
+    // 内存模式判断结束 {# This comment is now inside the script block #}
 </script>
 {% endblock %} {# 脚本块结束 #}
