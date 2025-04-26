@@ -1,12 +1,3 @@
-## v1.6.0
-
-- **新增 Gemini 原生 API (v2) 支持**: 引入 `/v2` 前缀的新接口，高保真代理 Gemini 原生功能，目前已实现 `/v2/models/{model}:generateContent` 端点。
-- **增强上下文管理**:
-    - 支持为每个代理 Key 单独配置是否启用上下文自动补全功能（默认启用）。
-    - 更新 Web UI (`/manage/keys`)，允许管理员在文件存储模式下管理 Key 的上下文补全状态。
-    - 适配上下文存储 (`app/core/context_store.py`) 和请求处理逻辑 (`app/api/v2_endpoints.py`)，以支持 `/v2` 接口和按 Key 配置的上下文管理。
-- **文档更新**: 更新 `readme.md`，详细说明 `/v1` 和 `/v2` 接口的区别、用途，以及增强的上下文管理功能和 Key 配置方法。
-
 ## v1.6.1
 
 - **Web UI 改进**:
@@ -17,6 +8,15 @@
     - 修复代理 Key 管理页面（`/manage/keys`）中 JavaScript 错误导致的功能异常。
 - **其他**:
     - 添加 `/debug/config` 调试接口。
+## v1.6.0
+
+- **新增 Gemini 原生 API (v2) 支持**: 引入 `/v2` 前缀的新接口，高保真代理 Gemini 原生功能，目前已实现 `/v2/models/{model}:generateContent` 端点。
+- **增强上下文管理**:
+    - 支持为每个代理 Key 单独配置是否启用上下文自动补全功能（默认启用）。
+    - 更新 Web UI (`/manage/keys`)，允许管理员在文件存储模式下管理 Key 的上下文补全状态。
+    - 适配上下文存储 (`app/core/context_store.py`) 和请求处理逻辑 (`app/api/v2_endpoints.py`)，以支持 `/v2` 接口和按 Key 配置的上下文管理。
+- **文档更新**: 更新 `readme.md`，详细说明 `/v1` 和 `/v2` 接口的区别、用途，以及增强的上下文管理功能和 Key 配置方法。
+
 ## v1.5.0
 
 - **新增 Web 报告页面**: 引入了一个全新的 Web 界面 (`/report`)，用于美观地展示 API 使用情况报告。
