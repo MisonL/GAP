@@ -12,23 +12,38 @@
 
 <!-- TOC start -->
 
-- [主要功能](#-主要功能)
-- [使用方式](#%EF%B8%8F-使用方式)
-  - [部署到 Hugging Face Spaces](#-部署到-hugging-face-spaces)
-  - [本地运行](#-本地运行)
-- [API 接口说明](#-api-接口说明)
-  - [接口版本对比 (v1 vs v2)](#接口版本对比-v1-vs-v2)
-  - [OpenAI 兼容接口 (`/v1`)](#openai-兼容接口-v1)
-    - [模型列表 (`GET /v1/models`)](#模型列表-get-v1models)
-    - [聊天补全 (`POST /v1/chat/completions`)](#聊天补全-post-v1chatcompletions)
-    - [如何接入 `/v1` 接口](#如何接入-v1-接口)
-  - [Gemini 原生接口 (`/v2`)](#gemini-原生接口-v2)
-    - [生成内容 (`POST /v2/models/{model}:generateContent`)](#生成内容-post-v2modelsmodelgeneratecontent)
-  - [API 认证 (适用于 `/v1` 和 `/v2`)](#api-认证-适用于-v1-和-v2)
-  - [Web UI 认证](#web-ui-认证)
-- [注意事项](#%EF%B8%8F-注意事项)
-- [贡献](#-贡献)
-- [许可证](#-许可证)
+- [🚀 Gemini API 代理](#-gemini-api-代理)
+  - [目录](#目录)
+  - [✨ 主要功能](#-主要功能)
+    - [点击展开/折叠详细功能列表](#点击展开折叠详细功能列表)
+      - [🔑 API 密钥轮询和管理](#-api-密钥轮询和管理)
+      - [📊 API 使用情况跟踪与智能选择](#-api-使用情况跟踪与智能选择)
+      - [📊 术语解释](#-术语解释)
+      - [💬 多接口支持 (v1 \& v2)](#-多接口支持-v1--v2)
+      - [🖼️ 图片输入处理 (多模态)](#️-图片输入处理-多模态)
+      - [🔄 上下文管理](#-上下文管理)
+      - [⚠️ 重要提醒 (上下文管理)](#️-重要提醒-上下文管理)
+      - [📝 日志系统](#-日志系统)
+      - [🔒 API 密钥保护（可选）](#-api-密钥保护可选)
+      - [🚦 速率限制和防滥用](#-速率限制和防滥用)
+      - [⚙️ 安全过滤控制（可选）](#️-安全过滤控制可选)
+      - [🧩 服务兼容](#-服务兼容)
+  - [🛠️ 使用方式](#️-使用方式)
+    - [🚀 部署到 Hugging Face Spaces](#-部署到-hugging-face-spaces)
+    - [💻 本地运行](#-本地运行)
+  - [🌐 API 接口说明](#-api-接口说明)
+    - [接口版本对比 (v1 vs v2)](#接口版本对比-v1-vs-v2)
+    - [OpenAI 兼容接口 (`/v1`)](#openai-兼容接口-v1)
+      - [模型列表 (`GET /v1/models`)](#模型列表-get-v1models)
+      - [聊天补全 (`POST /v1/chat/completions`)](#聊天补全-post-v1chatcompletions)
+      - [如何接入 `/v1` 接口](#如何接入-v1-接口)
+    - [Gemini 原生接口 (`/v2`)](#gemini-原生接口-v2)
+      - [生成内容 (`POST /v2/models/{model}:generateContent`)](#生成内容-post-v2modelsmodelgeneratecontent)
+    - [API 认证 (适用于 `/v1` 和 `/v2`)](#api-认证-适用于-v1-和-v2)
+    - [Web UI 认证](#web-ui-认证)
+  - [⚠️ 注意事项](#️-注意事项)
+  - [🤝 贡献](#-贡献)
+  - [📜 许可证](#-许可证)
 
 <!-- TOC end -->
 
@@ -62,7 +77,7 @@
 - **TPD_Input (Input Tokens Per Day)**: 指每个 API 密钥每天允许处理的最大 *输入* Token 总数。
 - **TPM_Input (Input Tokens Per Minute)**: 指每个 API 密钥每分钟允许处理的最大 *输入* Token 总数。
 
-    *本代理程序会跟踪这些指标，用于智能选择可用密钥并进行本地速率预检查。*
+  *本代理程序会跟踪这些指标，用于智能选择可用密钥并进行本地速率预检查。*
 
 #### 💬 多接口支持 (v1 & v2)
 
@@ -75,8 +90,8 @@
 
 - 支持 OpenAI 格式 (`/v1`) 和 Gemini 原生格式 (`/v2`) 的多模态消息中的图片输入。
 - **仅接受** Base64 编码的数据。
-    - `/v1`: 使用 Data URI 格式 (`data:image/...;base64,...`)。
-    - `/v2`: 使用 `inline_data` 字段 (包含 `mime_type` 和 `data`)。
+  - `/v1`: 使用 Data URI 格式 (`data:image/...;base64,...`)。
+  - `/v2`: 使用 `inline_data` 字段 (包含 `mime_type` 和 `data`)。
 - **增强验证**: 使用正则表达式解析 Data URI (v1)，并验证 MIME 类型是否为 Gemini 支持的格式 (JPEG, PNG, WebP, HEIC, HEIF)，提高了处理健壮性。
 
 #### 🔄 上下文管理
@@ -106,15 +121,15 @@
 
 - 完善的日志记录系统，包括应用日志、错误日志和访问日志。
 - 支持日志轮转功能，防止日志文件过大：
-    - 基于大小的轮转：当日志文件达到指定大小时自动创建新文件。
-    - 基于时间的轮转：按照指定的时间间隔（如每天午夜）自动创建新文件。
+  - 基于大小的轮转：当日志文件达到指定大小时自动创建新文件。
+  - 基于时间的轮转：按照指定的时间间隔（如每天午夜）自动创建新文件。
 - 自动清理过期日志文件，默认保留30天，减少磁盘空间占用。
 - 详细记录API请求、响应和错误信息，便于问题排查。
 - 可通过环境变量自定义日志配置：
-    - `MAX_LOG_SIZE`：单个日志文件最大大小（默认10MB）。
-    - `MAX_LOG_BACKUPS`：保留的日志文件备份数量（默认5个）。
-    - `LOG_ROTATION_INTERVAL`：日志轮转间隔（默认每天午夜）。
-    - `DEBUG`：设置为 "true" 启用详细日志记录。
+  - `MAX_LOG_SIZE`：单个日志文件最大大小（默认10MB）。
+  - `MAX_LOG_BACKUPS`：保留的日志文件备份数量（默认5个）。
+  - `LOG_ROTATION_INTERVAL`：日志轮转间隔（默认每天午夜）。
+  - `DEBUG`：设置为 "true" 启用详细日志记录。
 
 #### 🔒 API 密钥保护（可选）
 
@@ -125,8 +140,8 @@
 #### 🚦 速率限制和防滥用
 
 - 通过环境变量自定义限制：
-    - `MAX_REQUESTS_PER_MINUTE`：每分钟最大请求数（默认 30）。
-    - `MAX_REQUESTS_PER_DAY_PER_IP`：每天每个 IP 最大请求数（默认 600）。
+  - `MAX_REQUESTS_PER_MINUTE`：每分钟最大请求数（默认 30）。
+  - `MAX_REQUESTS_PER_DAY_PER_IP`：每天每个 IP 最大请求数（默认 600）。
 - 超过速率限制时返回 429 错误。
 - 修复了速率限制逻辑中的缩进错误 (v1.2.0)。
 
@@ -142,18 +157,18 @@
 - `/v1` 接口与 OpenAI API 格式兼容,便于接入各种服务。
 - 支持各种基于 OpenAI API 的应用程序和工具。
 - 增强的兼容性处理，支持多种客户端（如Chatbox、Roo Code等）：
-    - 空消息检查：自动检测并处理空messages数组，返回友好的错误信息。
-    - 多模态支持：Message模型支持content字段为字符串或字典列表，兼容图片等多模态输入。
-    - 增强的日志记录：详细记录请求体内容，便于调试客户端兼容性问题。
-    - 模型名称验证：启动时记录可用模型列表，确保客户端使用正确的模型列表，确保客户端使用正确的模型名称。
+  - 空消息检查：自动检测并处理空messages数组，返回友好的错误信息。
+  - 多模态支持：Message模型支持content字段为字符串或字典列表，兼容图片等多模态输入。
+  - 增强的日志记录：详细记录请求体内容，便于调试客户端兼容性问题。
+  - 模型名称验证：启动时记录可用模型列表，确保客户端使用正确的模型列表，确保客户端使用正确的模型名称。
 
 ## 🛠️ 使用方式
 
 ### 🚀 部署到 Hugging Face Spaces
 
-1.  创建一个新的 Space。
-2.  将本项目代码上传到 Space。
-3.  在 Space 的 `Settings` -> `Secrets` 中设置以下环境变量：
+1. 创建一个新的 Space。
+2. 将本项目代码上传到 Space。
+3. 在 Space 的 `Settings` -> `Secrets` 中设置以下环境变量：
 
     | 环境变量                                | 说明                                                                                                                               | 默认值/示例                               |
     | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
@@ -181,16 +196,16 @@
     | `CACHE_REFRESH_INTERVAL_SECONDS`        | （可选）Key 分数缓存刷新间隔（秒）。                                                                                                   | `10`                                      |
     | `STREAM_SAVE_REPLY`                     | （可选）设置为 `"true"` 时，流式响应结束后会尝试保存包含模型回复的完整上下文。                                                              | `false`                                   |
 
-4.  **（重要）扩展 `app/data/model_limits.json`**: 确保此文件存在，并且为需要进行上下文截断的模型添加了 `"input_token_limit"` 字段（参考 Google 官方文档）。
-5.  确保 `requirements.txt` 文件已包含必要的依赖 (`jinja2`, `starlette[full]` 等)。
-6.  Space 将会自动构建并运行。
-7.  URL格式为`https://your-space-url.hf.space`。
+4. **（重要）扩展 `app/data/model_limits.json`**: 确保此文件存在，并且为需要进行上下文截断的模型添加了 `"input_token_limit"` 字段（参考 Google 官方文档）。
+5. 确保 `requirements.txt` 文件已包含必要的依赖 (`jinja2`, `starlette[full]` 等)。
+6. Space 将会自动构建并运行。
+7. URL格式为`https://your-space-url.hf.space`。
 
 ### 💻 本地运行
 
-1.  克隆项目代码到本地。
-2.  安装依赖：`pip install -r requirements.txt` (确保包含 `python-multipart` 等以支持所有功能)
-3.  **（重要）创建并扩展模型限制文件：** 在 `app/data/` 目录下创建 `model_limits.json` 文件。定义模型的 RPM, RPD, TPD_Input, TPM_Input 限制，并且**为需要进行上下文截断的模型添加 `"input_token_limit"` 字段**（参考 Google 官方文档）。示例：
+1. 克隆项目代码到本地。
+2. 安装依赖：`pip install -r requirements.txt` (确保包含 `python-multipart` 等以支持所有功能)
+3. **（重要）创建并扩展模型限制文件：** 在 `app/data/` 目录下创建 `model_limits.json` 文件。定义模型的 RPM, RPD, TPD_Input, TPM_Input 限制，并且**为需要进行上下文截断的模型添加 `"input_token_limit"` 字段**（参考 Google 官方文档）。示例：
 
     ```json
     {
@@ -200,7 +215,7 @@
     }
     ```
 
-4.  **配置环境变量：**
+4. **配置环境变量：**
     - **（推荐）** 在项目根目录创建 `.env` 文件，并填入以下内容（根据需要取消注释并修改）：
       下面是一个 `.env` 文件内容的示例。请根据需要取消注释并修改值。**详细的环境变量说明请参考上方“部署到 Hugging Face Spaces”部分的表格。**
 
@@ -236,8 +251,10 @@
       export SECRET_KEY="your_secret"
       export PASSWORD="your_password"
       # ... 其他环境变量
+
       ```
-5.  运行：`uvicorn app.main:app --reload --host 0.0.0.0 --port 7860`
+
+5. 运行：`uvicorn app.main:app --reload --host 0.0.0.0 --port 7860`
 
 ## 🌐 API 接口说明
 
@@ -302,10 +319,10 @@ POST /v1/chat/completions
 
 在需要配置 OpenAI API 的客户端或服务中：
 
-1.  **API Base URL / API 端点:** 填入你的代理服务地址，并**必须**以 `/v1` 结尾。
+1. **API Base URL / API 端点:** 填入你的代理服务地址，并**必须**以 `/v1` 结尾。
     - Hugging Face Spaces: `https://your-space-url.hf.space/v1`
     - 本地运行: `http://localhost:7860/v1` (或其他你配置的地址和端口)
-2.  **API Key:** 填入你的认证凭证 (详见下方的 [API 认证](#api-认证-适用于-v1-和-v2) 部分)。
+2. **API Key:** 填入你的认证凭证 (详见下方的 [API 认证](#api-认证-适用于-v1-和-v2) 部分)。
 
 ### Gemini 原生接口 (`/v2`)
 
@@ -366,7 +383,7 @@ POST /v2/models/{model}:generateContent
 
 所有对 `/v1` 和 `/v2` API 端点的请求都需要通过 HTTP `Authorization` Header 进行认证：
 
-```
+```text
 Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 ```
 
@@ -379,10 +396,10 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 
 访问 Web 管理界面 (`/`, `/manage/context`, `/manage/keys`, `/report`) 需要进行登录认证：
 
-1.  访问 `/login` 页面。
-2.  使用 `PASSWORD` 环境变量中配置的**某个**值作为密码进行登录。
-3.  登录成功后，浏览器会存储一个 JWT (JSON Web Token) 用于后续的会话认证。
-4.  **此功能需要设置 `SECRET_KEY` 环境变量**，用于 JWT 的签名和加密。
+1. 访问 `/login` 页面。
+2. 使用 `PASSWORD` 环境变量中配置的**某个**值作为密码进行登录。
+3. 登录成功后，浏览器会存储一个 JWT (JSON Web Token) 用于后续的会话认证。
+4. **此功能需要设置 `SECRET_KEY` 环境变量**，用于 JWT 的签名和加密。
 
 ## ⚠️ 注意事项
 

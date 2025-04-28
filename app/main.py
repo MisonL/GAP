@@ -216,8 +216,8 @@ logger.info("已注册全局异常处理器。") # 记录已注册异常处理�
 # API routes
 # 包含 OpenAI 兼容 API (v1) 端点的路由
 # Include router for OpenAI compatible API (v1) endpoints
-app.include_router(api_endpoints.router, prefix="/v1", tags=["OpenAI Compatible API v1"]) # 添加 /v1 前缀和标签 (Add /v1 prefix and tag)
-logger.info("已包含 API 端点路由器 (/v1)。") # 记录已包含 API 路由器 (Log API router included)
+app.include_router(api_endpoints.router, tags=["OpenAI Compatible API v1"]) # 包含 OpenAI 兼容 API (v1) 端点的路由 (Include router for OpenAI compatible API (v1) endpoints)
+logger.info("已包含 API 端点路由器。") # 记录已包含 API 路由器 (Log API router included)
 
 # 包含 Gemini 原生 API (v2) 端点的路由
 # Include router for Gemini native API (v2) endpoints
