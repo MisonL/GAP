@@ -8,67 +8,67 @@
 
 为了将Gemini API的原生缓存功能集成到多Key轮换机制中，用户提出了以下核心方案：
 
-1.  **用户开关：** 提供一个用户级别的配置开关，允许用户选择是否启用“原生缓存功能”。
-2.  **互斥关系：** 如果用户选择开启“原生缓存功能”，则强制关闭“自动补全上下文功能”。
-3.  **新的Key选用机制（粘性会话）：** 如果开启“原生缓存功能”，该用户的请求将采用“粘性会话”机制，尽量使用同一个API Key进行请求，但仍需遵守模型限制规则。
-4.  **默认行为：** 如果关闭“原生缓存功能”，则程序行为与之前一致，用户可以自由选择是否开启“自动补全上下文功能”。
+1. **用户开关：** 提供一个用户级别的配置开关，允许用户选择是否启用“原生缓存功能”。
+2. **互斥关系：** 如果用户选择开启“原生缓存功能”，则强制关闭“自动补全上下文功能”。
+3. **新的Key选用机制（粘性会话）：** 如果开启“原生缓存功能”，该用户的请求将采用“粘性会话”机制，尽量使用同一个API Key进行请求，但仍需遵守模型限制规则。
+4. **默认行为：** 如果关闭“原生缓存功能”，则程序行为与之前一致，用户可以自由选择是否开启“自动补全上下文功能”。
 
 ## 最终计划详细步骤
 
 基于用户提出的方案和对Gemini API缓存特性及项目源码的分析，制定以下详细实现步骤：
 
-1.  **用户配置：** 在配置文件或数据库中增加一个用户级别的配置项（例如 `enable_native_caching`），用于控制是否开启“原生缓存功能”。
-2.  **依赖管理：** 更新 `requirements.txt` 文件，添加 `google-genai>=1.0.0` 库。
-3.  **数据库设计：** 在数据库中创建一个 `cached_contents` 表，用于存储缓存的元数据，包括 `cache_id` (从Gemini API获取), `original_content_hash` (原始内容的哈希值), `model_name`, `created_time`, `expiry_time`, `user_id` (关联用户), `key_id` (关联API Key)等字段。
-4.  **请求处理流程修改 (`app/api/request_processor.py` 或相关文件):**
-    *   在处理用户请求的早期阶段，根据当前用户的 `enable_native_caching` 配置判断是否启用缓存逻辑和新的Key选择机制。
-    *   如果开启了“原生缓存”，则强制关闭“自动补全上下文功能”相关的逻辑。
-    *   如果开启了“原生缓存”，则计算需要发送给Gemini API的内容的哈希值。
-    *   查询 `cached_contents` 表，检查是否存在相同哈希值且未过期的缓存记录。
-    *   如果存在，获取 `cache_id` 和关联的 `key_id`。
-    *   如果不存在，判断内容是否满足缓存条件（例如，token数超过阈值，需要使用固定版本模型），如果满足，则调用缓存创建逻辑。
-5.  **Key选择逻辑修改 (`app/core/key_management.py` 或相关文件):**
-    *   修改Key选择函数，增加对“粘性会话”的支持。
-    *   维护用户与Key的映射关系（例如，在内存中或数据库中）。
-    *   在选择Key时，如果用户开启了“原生缓存”，且存在与该用户关联的Key，并且该Key满足当前请求的模型限制，则优先选择该Key。
-    *   如果关联Key不可用或不满足限制，或者用户未开启“原生缓存”，则回退到原有的Key轮换和选择机制，但此时不考虑缓存命中。
-    *   在成功选择Key后，如果用户开启了“原生缓存”，更新用户与所选Key的关联关系。
-6.  **实现缓存管理模块：**
-    *   创建一个新的Python模块或类（例如 `app/core/cache_manager.py`）来处理缓存的创建、更新和删除。
-    *   在该模块中，使用 `google.genai` 库初始化客户端。
-    *   实现一个异步函数，接收原始内容、模型名称、关联的Key等参数，调用 `client.files.upload()` (如果需要上传文件) 和 `client.caches.create()` 创建缓存。
-    *   缓存创建成功后，将缓存信息存储到 `cached_contents` 表中。
-    *   实现缓存更新和删除的函数。
-7.  **重构 `GeminiClient` 类 (`app/core/gemini.py`):**
-    *   将 `GeminiClient` 的实现修改为使用 `google.genai` SDK。
-    *   修改 `stream_chat` 和 `complete_chat` 方法，增加一个可选参数 `cached_content_id: Optional[str] = None`。
-    *   在初始化 `google.genai.GenerativeModel` 时，如果提供了 `cached_content_id`，则使用 `genai.GenerativeModel.from_cached_content(cached_content=cached_content_id)`。
-    *   如果未提供 `cached_content_id`，则使用 `genai.GenerativeModel(model_name)`。
-    *   调用模型对象的 `generate_content` 或 `start_chat().send_message()` 方法进行生成。
-    *   需要适配现有的请求和响应格式。
-8.  **更新报告和追踪：**
-    *   修改 `app/core/reporting.py` 和 `app/core/tracking.py`，以便记录和报告缓存的使用情况，例如缓存命中的次数、通过缓存节省的token数等。
-    *   **注意：** 之前的Key选择优化计划中提到了Key筛选原因的跟踪和报告，这部分内容与缓存优化计划中的报告追踪有所交叉，在实际实现时需要整合考虑。
-9.  **编写测试：**
-    *   为新的缓存管理模块和修改后的 `GeminiClient` 类编写单元测试。
-    *   编写集成测试，验证缓存创建、引用、失效、粘性会话等功能的端到端流程。
-    *   进行性能测试，评估缓存对token节省和响应延迟的影响。
+1. **用户配置：** 在配置文件或数据库中增加一个用户级别的配置项（例如 `enable_native_caching`），用于控制是否开启“原生缓存功能”。
+2. **依赖管理：** 更新 `requirements.txt` 文件，添加 `google-genai>=1.0.0` 库。
+3. **数据库设计：** 在数据库中创建一个 `cached_contents` 表，用于存储缓存的元数据，包括 `cache_id` (从Gemini API获取), `original_content_hash` (原始内容的哈希值), `model_name`, `created_time`, `expiry_time`, `user_id` (关联用户), `key_id` (关联API Key)等字段。
+4. **请求处理流程修改 (`app/api/request_processor.py` 或相关文件):**
+    * 在处理用户请求的早期阶段，根据当前用户的 `enable_native_caching` 配置判断是否启用缓存逻辑和新的Key选择机制。
+    * 如果开启了“原生缓存”，则强制关闭“自动补全上下文功能”相关的逻辑。
+    * 如果开启了“原生缓存”，则计算需要发送给Gemini API的内容的哈希值。
+    * 查询 `cached_contents` 表，检查是否存在相同哈希值且未过期的缓存记录。
+    * 如果存在，获取 `cache_id` 和关联的 `key_id`。
+    * 如果不存在，判断内容是否满足缓存条件（例如，token数超过阈值，需要使用固定版本模型），如果满足，则调用缓存创建逻辑。
+5. **Key选择逻辑修改 (`app/core/key_management.py` 或相关文件):**
+    * 修改Key选择函数，增加对“粘性会话”的支持。
+    * 维护用户与Key的映射关系（例如，在内存中或数据库中）。
+    * 在选择Key时，如果用户开启了“原生缓存”，且存在与该用户关联的Key，并且该Key满足当前请求的模型限制，则优先选择该Key。
+    * 如果关联Key不可用或不满足限制，或者用户未开启“原生缓存”，则回退到原有的Key轮换和选择机制，但此时不考虑缓存命中。
+    * 在成功选择Key后，如果用户开启了“原生缓存”，更新用户与所选Key的关联关系。
+6. **实现缓存管理模块：**
+    * 创建一个新的Python模块或类（例如 `app/core/cache_manager.py`）来处理缓存的创建、更新和删除。
+    * 在该模块中，使用 `google.genai` 库初始化客户端。
+    * 实现一个异步函数，接收原始内容、模型名称、关联的Key等参数，调用 `client.files.upload()` (如果需要上传文件) 和 `client.caches.create()` 创建缓存。
+    * 缓存创建成功后，将缓存信息存储到 `cached_contents` 表中。
+    * 实现缓存更新和删除的函数。
+7. **重构 `GeminiClient` 类 (`app/core/gemini.py`):**
+    * 将 `GeminiClient` 的实现修改为使用 `google.genai` SDK。
+    * 修改 `stream_chat` 和 `complete_chat` 方法，增加一个可选参数 `cached_content_id: Optional[str] = None`。
+    * 在初始化 `google.genai.GenerativeModel` 时，如果提供了 `cached_content_id`，则使用 `genai.GenerativeModel.from_cached_content(cached_content=cached_content_id)`。
+    * 如果未提供 `cached_content_id`，则使用 `genai.GenerativeModel(model_name)`。
+    * 调用模型对象的 `generate_content` 或 `start_chat().send_message()` 方法进行生成。
+    * 需要适配现有的请求和响应格式。
+8. **更新报告和追踪：**
+    * 修改 `app/core/reporting.py` 和 `app/core/tracking.py`，以便记录和报告缓存的使用情况，例如缓存命中的次数、通过缓存节省的token数等。
+    * **注意：** 之前的Key选择优化计划中提到了Key筛选原因的跟踪和报告，这部分内容与缓存优化计划中的报告追踪有所交叉，在实际实现时需要整合考虑。
+9. **编写测试：**
+    * 为新的缓存管理模块和修改后的 `GeminiClient` 类编写单元测试。
+    * 编写集成测试，验证缓存创建、引用、失效、粘性会话等功能的端到端流程。
+    * 进行性能测试，评估缓存对token节省和响应延迟的影响。
 10. **（可选）增加缓存管理接口和前端支持：**
-    *   如果需要，在 `app/api/endpoints.py` 中增加API端点，用于列出、查看、更新和删除缓存记录。
-    *   修改前端界面以支持用户选择缓存上传内容、查看缓存列表等功能。
+    * 如果需要，在 `app/api/endpoints.py` 中增加API端点，用于列出、查看、更新和删除缓存记录。
+    * 修改前端界面以支持用户选择缓存上传内容、查看缓存列表等功能。
 
 ## 缓存适用内容和管理策略
 
-*   **适用内容：** 固定的系统指令和用户上传的大型文档/代码片段。
-*   **触发机制：**
-    *   系统指令：当系统指令的token数超过阈值时自动缓存。
-    *   用户上传内容：提供用户选择是否缓存的选项。
-*   **管理策略：**
-    *   使用数据库存储缓存元数据和关联的Key。
-    *   利用Gemini API的TTL管理缓存失效。
-    *   实现基于内容哈希的缓存查找和更新。
-    *   实现基于用户和Key的“粘性会话”Key选择策略。
-    *   可选择提供手动管理缓存的接口。
+* **适用内容：** 固定的系统指令和用户上传的大型文档/代码片段。
+* **触发机制：**
+  * 系统指令：当系统指令的token数超过阈值时自动缓存。
+  * 用户上传内容：提供用户选择是否缓存的选项。
+* **管理策略：**
+  * 使用数据库存储缓存元数据和关联的Key。
+  * 利用Gemini API的TTL管理缓存失效。
+  * 实现基于内容哈希的缓存查找和更新。
+  * 实现基于用户和Key的“粘性会话”Key选择策略。
+  * 可选择提供手动管理缓存的接口。
 
 ## 流程示意图
 
