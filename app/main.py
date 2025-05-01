@@ -9,6 +9,7 @@ from fastapi import FastAPI # 导入 FastAPI 类
 from dotenv import load_dotenv # 用于加载 .env 文件中的环境变量
 from contextlib import asynccontextmanager # 导入 asynccontextmanager
 from typing import AsyncGenerator # 导入 AsyncGenerator
+from fastapi.staticfiles import StaticFiles # 导入 StaticFiles
 
 # 加载 .env 文件 (如果存在)
 load_dotenv()
@@ -181,6 +182,10 @@ logger.info("已包含 Gemini 原生 API 端点路由器 (/v2)。") # 记录已�
 # Web UI 路由
 app.include_router(web_routes.router) # 包含 Web UI 界面的路由
 logger.info("已包含 Web UI 路由器。") # 记录已包含 Web UI 路由器
+
+# 添加静态文件服务
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+logger.info("已挂载静态文件目录 /assets。")
 
 
 if __name__ == "__main__":
