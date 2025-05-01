@@ -22,8 +22,8 @@ import uuid # 用于生成新的 Key (Used for generating new keys)
 from pydantic import BaseModel, Field # 用于 API 请求体验证 (Used for API request body validation)
 # 相对导入
 # Relative imports
-from .. import config # 导入根配置 (Import root config)
-from ..config import ( # 导入具体配置项 (Import specific configuration items)
+from app import config # 导入根配置 (Import root config)
+from app.config import ( # 导入具体配置项 (Import specific configuration items)
     PROTECT_STATUS_PAGE, # 是否保护状态页面 (Whether to protect status page)
     PASSWORD, # Web UI 密码 (Web UI password)
     # ... (其他可能需要的配置) (... (other potentially needed configurations))
@@ -46,27 +46,29 @@ from ..config import ( # 导入具体配置项 (Import specific configuration it
 # )
 # 导入上下文存储
 # Import context storage
-from ..core import context_store # 导入 context_store 模块 (Import context_store module)
-from ..core import db_utils # 导入数据库工具函数和 IS_MEMORY_DB (Import database utility functions and IS_MEMORY_DB)
+# from app.core import context_store # 导入 context_store 模块 (Import context_store module) - 延迟导入到函数内部以解决循环依赖 (Delayed import to function interior to resolve circular dependency)
+from app.core import db_utils # 导入数据库工具函数和 IS_MEMORY_DB (Import database utility functions and IS_MEMORY_DB)
 # 导入新的安全和认证模块
 # Import new security and authentication modules
-from ..core.security import create_access_token # 导入创建访问令牌函数 (Import create_access_token function)
-from .auth import verify_jwt_token # 导入新的 JWT 验证依赖 (Import new JWT verification dependency)
+from app.core.security import create_access_token # 导入创建访问令牌函数 (Import create_access_token function)
+from app.web.auth import verify_jwt_token # 导入新的 JWT 验证依赖 (Import new JWT verification dependency)
 # CSRF 保护相关导入已移除
 # CSRF protection related imports removed
 
 # 导入报告相关的函数和 Key Manager 实例
 # Import report related function and Key Manager instance
-from ..core.usage_reporter import get_structured_report_data # 导入获取结构化报告数据的函数 (Import function to get structured report data)
-from ..core.utils import key_manager_instance # 导入 Key Manager 实例 (Import Key Manager instance)
+from app.core.usage_reporter import get_structured_report_data # 导入获取结构化报告数据的函数 (Import function to get structured report data)
+from app.core.key_manager_class import key_manager_instance # 导入 Key Manager 实例 (Import Key Manager instance)
 
+from app.core.key_manager_class import APIKeyManager # 导入 APIKeyManager 类型提示
+from app.core.dependencies import get_key_manager # 导入 get_key_manager 依赖
 
 logger = logging.getLogger('my_logger') # 获取日志记录器实例 (Get logger instance)
 router = APIRouter(tags=["Web UI"]) # 创建 APIRouter 实例并添加标签 (Create APIRouter instance and add tag)
 
 # 设置模板目录
 # Set template directory
-templates = Jinja2Templates(directory="app/web/templates") # 设置 Jinja2 模板目录 (Set Jinja2 templates directory)
+templates = Jinja2Templates(directory="app/web/templates", autoescape=True) # 设置 Jinja2 模板目录并启用自动转义 (Set Jinja2 templates directory and enable autoescape)
 
 # --- 旧的 Session 认证依赖 (已移除) ---
 # --- Old Session Authentication Dependency (Removed) ---
@@ -177,7 +179,11 @@ async def login_for_access_token(
         access_token = create_access_token(data=access_token_data) # 创建访问令牌 (Create access token)
         login_type = "管理员" if is_admin_login else "普通用户" # 判断登录类型 (Determine login type)
         logger.info(f"Web UI {login_type}登录成功，用户 Key: {password[:8]}... 已签发 JWT。") # Log successful login and JWT issuance
-        return JSONResponse(content={"access_token": access_token, "token_type": "bearer"}) # 返回 JWT 响应 (Return JWT response)
+
+        # 返回 JWT 访问令牌作为 JSON 响应
+        # Return JWT access token as JSON response
+        return JSONResponse(content={"access_token": access_token, "token_type": "bearer"}) # 返回 JWT 作为 JSON 响应 (Return JWT as JSON response)
+
     except ValueError as e: # 捕获 create_access_token 中 SECRET_KEY 未设置的错误 (Catch SECRET_KEY not set error in create_access_token)
          logger.error(f"无法创建 JWT: {e}") # 记录错误 (Log error)
          raise HTTPException(
@@ -202,14 +208,6 @@ async def manage_redirect():
     Management home page redirects to context management.
     """
     return RedirectResponse(url="/manage/context", status_code=status.HTTP_303_SEE_OTHER) # 重定向到上下文管理页面 (Redirect to context management page)
-
-# --- 代理 Key 管理 (已移除) ---
-# --- Proxy Key Management (Removed) ---
-# @router.get("/manage/keys", ...) ... (代码已删除) (code deleted)
-# @router.post("/manage/keys/add", ...) ... (代码已删除) (code deleted)
-# @router.post("/manage/keys/toggle/{key}", ...) ... (代码已删除) (code deleted)
-# @router.post("/manage/keys/delete/{key}", ...) ... (代码已删除) (code deleted)
-
 
 # --- 代理 Key 管理 (已移除) ---
 # --- Proxy Key Management (Removed) ---
@@ -269,17 +267,16 @@ async def require_file_db_mode():
 @router.get(
     "/manage/keys",
     response_class=HTMLResponse,
-    include_in_schema=False
-    # 移除装饰器中的重复依赖 (Remove duplicate dependency from decorator)
-    # dependencies=[Depends(verify_jwt_token)] # 添加 JWT 验证依赖 (Add JWT verification dependency)
+    include_in_schema=False,
+    # 移除页面加载认证依赖，页面数据通过 API 获取并认证
+    # Removed page load authentication dependency, page data is fetched and authenticated via API
 )
-# 将 verify_jwt_token 添加为依赖项 (Add verify_jwt_token as a dependency)
-async def manage_keys_page(request: Request): # 移除 token_payload 参数 (Remove token_payload parameter)
+async def manage_keys_page(request: Request): # 移除认证依赖参数
     """
     显示代理 Key 管理页面的 HTML 骨架。如果处于内存数据库模式，则显示提示信息。
-    需要有效的 JWT Bearer Token 认证。
+    数据通过 API 获取，API 会进行认证。
     Displays the HTML skeleton of the proxy key management page. If in memory database mode, displays a hint message.
-    Requires valid JWT Bearer Token authentication.
+    Data is fetched via API, which handles authentication.
     """
     # 移除手动检查 JWT 认证的 try...except 块，依赖注入会自动处理认证失败
     # Remove the try...except block for manual JWT check, dependency injection handles failures automatically
@@ -308,37 +305,22 @@ async def manage_keys_page(request: Request): # 移除 token_payload 参数 (Rem
             # Add 'now' to context
             {"request": request, "is_memory_mode": False, "admin_key_missing": admin_key_missing, "now": datetime.now(timezone.utc)} # 模板上下文 (Template context)
         )
-    # except HTTPException as e:
-    #     # 如果认证失败 (例如 401 或 403)，重定向到登录页面
-    #     # If authentication fails (e.g. 401 or 403), redirect to login page
-    #     if e.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]: # 如果是 401 或 403 错误 (If it's 401 or 403 error)
-    #         logger.warning(f"访问 /manage/keys 未认证或无权限，重定向到登录页。") # Log warning
-    #         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER) # 重定向到根路径 (登录页) (Redirect to root path (login page))
-    #     else:
-    #         # 其他 HTTPException 重新抛出
-    #         # Re-raise other HTTPExceptions
-    #         raise e
-    # except Exception as e:
-    #     # 捕获其他意外错误
-    #     # Catch other unexpected errors
-    #     logger.error(f"访问 /manage/keys 时发生意外错误: {e}", exc_info=True) # Log error
-    #     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="内部服务器错误") # 引发 500 异常 (Raise 500 exception)
 
 # 获取 Key 数据的 API 端点
 # API endpoint for getting Key data
 @router.get(
     "/api/manage/keys/data",
-    # 添加管理员检查依赖
-    # Add admin check dependency
-    dependencies=[Depends(require_file_db_mode), Depends(require_admin_user)] # 依赖项：文件模式和管理员用户 (Dependencies: file mode and admin user)
+    # 确认移除管理员检查依赖
+    dependencies=[Depends(require_file_db_mode), Depends(verify_jwt_token), Depends(require_admin_user)] # 确认依赖项：文件模式、JWT 验证和管理员检查
 )
-async def get_manage_keys_data(token_payload: Dict[str, Any] = Depends(verify_jwt_token)): # 仍然需要 token_payload 来记录日志 (Still need token_payload for logging)
+# 确认 token_payload 由装饰器注入
+async def get_manage_keys_data(token_payload: Dict[str, Any] = Depends(verify_jwt_token)): # 确认保留 token_payload
     """
-    获取代理 Key 管理页面所需的数据 (仅管理员)。
-    Gets the data required for the proxy key management page (admin only).
+    获取代理 Key 管理页面所需的数据。需要登录。
+    Gets the data required for the proxy key management page. Requires login.
     """
-    admin_key = token_payload.get('sub', '未知管理员') # 获取管理员 Key (Get admin key)
-    logger.debug(f"管理员 {admin_key[:8]}... 请求 Key 管理数据") # Log admin requesting data
+    user_key = token_payload.get('sub', '未知用户') # 获取用户 Key (Get user key)
+    logger.debug(f"用户 {user_key[:8]}... 请求 Key 管理数据") # Log user requesting data
     try:
         # 确保 db_utils.get_all_proxy_keys 返回包含 enable_context_completion 字段的数据
         # Ensure db_utils.get_all_proxy_keys returns data including the enable_context_completion field
@@ -394,7 +376,7 @@ async def get_manage_keys_data(token_payload: Dict[str, Any] = Depends(verify_jw
         is_admin_status = token_payload.get("admin", False) # 从 token 获取真实状态 (Get real status from token)
         return {"keys": result, "is_admin": is_admin_status} # 返回 Key 数据和管理员状态 (Return Key data and admin status)
     except Exception as e:
-        logger.error(f"管理员 {admin_key[:8]}... 获取 Key 管理数据时出错: {e}", exc_info=True) # 记录错误 (Log error)
+        logger.error(f"用户 {user_key[:8]}... 获取 Key 管理数据时出错: {e}", exc_info=True) # 记录错误 (Log error)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="获取 Key 数据失败") # 引发 500 异常 (Raise 500 exception)
 
 # 添加新 Key 的 API 端点
@@ -500,27 +482,41 @@ async def update_existing_key(
 
     # 验证 expires_at 格式 (如果提供)
     # Validate expires_at format (if provided)
-    expires_at_to_update = update_data.expires_at # 获取 expires_at 值 (Get expires_at value)
-    if expires_at_to_update is not None: # 注意：空字符串 "" 也需要验证和处理 (Note: Empty string "" also needs validation and handling)
-        if expires_at_to_update == "": # 如果是空字符串 (If it's an empty string)
-            expires_at_to_update = None # 将空字符串视为清除过期时间 (Treat empty string as clearing expiration time)
+    if update_data.expires_at is not None: # 允许传入空字符串或 null 来清除过期时间 (Allow empty string or null to clear expiration time)
+        if update_data.expires_at == "": # 如果是空字符串，视为 None (If empty string, treat as None)
+            expires_at_to_save = None
         else:
             try:
-                datetime.fromisoformat(expires_at_to_update.replace('Z', '+00:00')) # 尝试解析 ISO 格式 (Attempt to parse ISO format)
+                # 尝试解析以确保格式正确
+                # Attempt to parse to ensure format is correct
+                datetime.fromisoformat(update_data.expires_at.replace('Z', '+00:00')) # 尝试解析 ISO 格式 (Attempt to parse ISO format)
+                expires_at_to_save = update_data.expires_at # 格式正确，使用原字符串 (Format is correct, use original string)
             except ValueError:
-                logger.warning(f"管理员 {admin_key[:8]}... 提供的 expires_at 格式无效: {expires_at_to_update}") # Log warning for invalid format
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="expires_at 格式无效，请使用 ISO 8601 格式 (例如 YYYY-MM-DDTHH:MM:SSZ) 或留空") # 引发 400 异常 (Raise 400 exception)
+                logger.warning(f"管理员 {admin_key[:8]}... 提供的 expires_at 格式无效: {update_data.expires_at}") # Log warning for invalid format
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="expires_at 格式无效，请使用 ISO 8601 格式 (例如 YYYY-MM-DDTHH:MM:SSZ)") # 引发 400 异常 (Raise 400 exception)
+    else:
+        expires_at_to_save = None # 如果传入 None，也视为 None (If None is passed, also treat as None)
 
-    success = await db_utils.update_proxy_key( # 添加 await (Added await) # 更新代理 Key (Update proxy key)
-        key=proxy_key,
-        description=update_data.description,
-        is_active=update_data.is_active,
-        expires_at=expires_at_to_update, # 传递处理过的 expires_at (Pass the processed expires_at)
-        enable_context_completion=update_data.enable_context_completion # 传递 enable_context_completion (Pass enable_context_completion)
-    )
+    # 从 update_data 中提取要更新的字段
+    # Extract fields to update from update_data
+    update_fields = {} # 初始化更新字段字典 (Initialize update fields dictionary)
+    if update_data.description is not None: # 如果提供了描述 (If description is provided)
+        update_fields['description'] = update_data.description # 添加描述 (Add description)
+    if update_data.is_active is not None: # 如果提供了激活状态 (If active status is provided)
+        update_fields['is_active'] = update_data.is_active # 添加激活状态 (Add active status)
+    if update_data.expires_at is not None: # 如果提供了 expires_at (即使是空字符串) (If expires_at is provided (even if empty string))
+        update_fields['expires_at'] = expires_at_to_save # 使用验证/处理后的值 (Use validated/processed value)
+    if update_data.enable_context_completion is not None: # 如果提供了上下文补全状态 (If context completion status is provided)
+        update_fields['enable_context_completion'] = update_data.enable_context_completion # 添加上下文补全状态 (Add context completion status)
+
+    # 调用数据库函数进行更新
+    # Call database function to perform update
+    success = await db_utils.update_proxy_key(key=proxy_key, **update_fields) # 添加 await (Added await) # 更新代理 Key (Update proxy key)
 
     if success: # 如果更新成功 (If update is successful)
-        logger.info(f"管理员 {admin_key[:8]}... 成功更新 Key: {proxy_key[:8]}...") # Log successful update
+        logger.info(f"管理员 {admin_key[:8]}... 成功更新 Key: {proxy_key[:8]}... 更新内容: {update_fields}") # Log successful update
+        # 返回更新后的 Key 信息
+        # Return updated Key information
         updated_key_info = await db_utils.get_proxy_key(proxy_key) # 添加 await (Added await) # 获取更新后的 Key 信息 (Get updated key info)
         if updated_key_info: # 如果获取到信息 (If info is obtained)
              key_dict = dict(updated_key_info) # 转换为字典 (Convert to dictionary)
@@ -542,29 +538,21 @@ async def update_existing_key(
                  key_dict['expires_at'] = expires_at_val.replace(tzinfo=timezone.utc).isoformat() # 转为 ISO 格式 (Convert to ISO format)
              # else: # 保持数据库返回的字符串或 None (Keep database returned string or None)
 
-             return {"message": "Key 更新成功", "key": key_dict} # 返回成功消息和 Key 信息 (Return success message and key info)
+             return {"message": "Key 更新成功", "key": key_dict} # 返回成功消息和更新后的 Key 信息 (Return success message and updated key info)
         else:
-             logger.warning(f"更新 Key {proxy_key[:8]}... 成功，但无法检索更新后的信息 (可能已被并发删除?)") # Log warning
+             logger.error(f"更新 Key {proxy_key[:8]}... 成功，但无法立即检索其更新后的信息。") # Log error
              return {"message": "Key 更新成功，但无法检索更新后的信息"} # 返回成功消息 (Return success message)
     else:
-        # update_proxy_key 内部已记录 Key 未找到或未改变的警告
-        # update_proxy_key internally logs warning if Key not found or not changed
-        # 检查 Key 是否存在，以返回更具体的错误
-        # Check if the Key exists to return a more specific error
-        existing_key = await db_utils.get_proxy_key(proxy_key) # 添加 await (Added await) # 获取现有 Key 信息 (Get existing key info)
-        if not existing_key: # 如果 Key 不存在 (If key does not exist)
-            logger.warning(f"尝试更新不存在的 Key: {proxy_key[:8]}...") # Log warning
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Key '{proxy_key}' 不存在") # 引发 404 异常 (Raise 404 exception)
-        else:
-            logger.error(f"更新 Key {proxy_key[:8]}... 失败 (数据库错误或其他原因)") # 记录更新失败错误 (Log update failure error)
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="更新 Key 失败") # 引发 500 异常 (Raise 500 exception)
-
+        logger.error(f"更新 Key {proxy_key[:8]}... 失败 (可能是 Key 不存在)") # 记录更新失败错误 (Log update failure error)
+        # update_proxy_key 内部会记录 Key 不存在的日志
+        # update_proxy_key internally logs if key doesn't exist
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Key '{proxy_key}' 未找到，无法更新") # 引发 404 异常 (Raise 404 exception)
 
 # 删除 Key 的 API 端点
 # API endpoint for deleting a Key
 @router.delete( # 使用 DELETE 方法删除资源 (Using DELETE method to delete resources)
     "/api/manage/keys/delete/{proxy_key}",
-    status_code=status.HTTP_204_NO_CONTENT, # 204 表示成功处理，无内容返回 (204 indicates successful processing with no content returned)
+    status_code=status.HTTP_200_OK, # 成功删除后返回 200 或 204 (Return 200 or 204 after successful deletion)
     # 添加管理员检查依赖
     # Add admin check dependency
     dependencies=[Depends(require_file_db_mode), Depends(require_admin_user)] # 依赖项：文件模式和管理员用户 (Dependencies: file mode and admin user)
@@ -574,241 +562,265 @@ async def delete_existing_key(
     token_payload: Dict[str, Any] = Depends(verify_jwt_token) # 仍然需要 token_payload 来记录日志 (Still need token_payload for logging)
 ):
     """
-    删除指定代理 Key 关联的上下文记录 (管理员或 Key 所有者)。
-    Deletes the context record associated with the specified proxy key (admin or key owner).
+    API 端点：删除指定的代理 Key (仅管理员)。
+    API endpoint: Deletes the specified proxy key (admin only).
     """
     admin_key = token_payload.get('sub', '未知管理员') # 获取管理员 Key (Get admin key)
     logger.debug(f"管理员 {admin_key[:8]}... 请求删除 Key: {proxy_key[:8]}...") # Log admin requesting to delete key
 
+    # 检查是否尝试删除管理员自己的 Key (如果管理员 Key 存在于数据库中)
+    # Check if trying to delete the admin's own key (if the admin key exists in the database)
+    if config.ADMIN_API_KEY and proxy_key == config.ADMIN_API_KEY:
+        logger.warning(f"管理员 {admin_key[:8]}... 尝试删除自己的管理员 Key，操作被阻止。") # Log warning
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不能删除正在使用的管理员 Key") # 引发 400 异常 (Raise 400 exception)
+
+    # 调用数据库函数进行删除
+    # Call database function to perform deletion
     success = await db_utils.delete_proxy_key(key=proxy_key) # 添加 await (Added await) # 删除代理 Key (Delete proxy key)
 
     if success: # 如果删除成功 (If deletion is successful)
         logger.info(f"管理员 {admin_key[:8]}... 成功删除 Key: {proxy_key[:8]}...") # Log successful deletion
-        # 204 状态码表示成功处理请求，但无需返回任何内容
-        # 204 status code indicates successful request processing with no content returned
-        return None # FastAPI 会自动生成无内容的 204 响应 (FastAPI will automatically generate a 204 response with no content)
+        # 删除成功后，也删除关联的上下文
+        # After successful deletion, also delete associated context
+        context_deleted = await db_utils.delete_context_for_key(proxy_key) # 添加 await (Added await) # 删除上下文 (Delete context)
+        if context_deleted:
+            logger.info(f"已删除 Key {proxy_key[:8]}... 的关联上下文。") # Log context deletion
+        else:
+            logger.info(f"Key {proxy_key[:8]}... 没有关联的上下文需要删除。") # Log no context to delete
+        return {"message": f"Key '{proxy_key}' 删除成功"} # 返回成功消息 (Return success message)
     else:
-        # delete_proxy_key 内部已记录 Key 未找到的警告
-        # delete_proxy_key internally logs warning if Key not found
-        logger.warning(f"尝试删除不存在的 Key: {proxy_key[:8]}...") # Log warning
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Key '{proxy_key}' 不存在") # 引发 404 异常 (Raise 404 exception)
+        logger.error(f"删除 Key {proxy_key[:8]}... 失败 (可能是 Key 不存在)") # 记录删除失败错误 (Log delete failure error)
+        # delete_proxy_key 内部会记录 Key 不存在的日志
+        # delete_proxy_key internally logs if key doesn't exist
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Key '{proxy_key}' 未找到，无法删除") # 引发 404 异常 (Raise 404 exception)
 
 
 # --- 上下文管理 ---
 # --- Context Management ---
-# 移除 JWT 依赖，改为由前端 JS 获取数据时验证
-# Remove JWT dependency, changed to verify when frontend JS fetches data
-# 添加 CsrfProtect 依赖
-# Add CsrfProtect dependency
-@router.get("/manage/context", response_class=HTMLResponse, include_in_schema=False) # 移除 JWT 验证依赖 (Removed JWT verification dependency)
-async def manage_context_page(request: Request): # 移除 CsrfProtect 依赖 (Removed CsrfProtect dependency)
+
+@router.get("/manage/context", response_class=HTMLResponse, include_in_schema=False) # 移除 JWT 验证依赖和管理员权限依赖
+async def manage_context_page(request: Request): # 移除不必要的认证依赖
     """
     显示上下文管理页面的 HTML 骨架。
-    实际数据将由前端 JavaScript 通过 /api/manage/context/data 获取。
-    需要 JWT 认证。
+    认证和数据加载由前端通过 API 完成。
     Displays the HTML skeleton of the context management page.
-    Actual data will be fetched by frontend JavaScript via /api/manage/context/data.
-    Requires valid JWT authentication.
+    Authentication and data loading are done by the frontend via API.
     """
-    # 不再需要在这里获取数据，只渲染模板
-    # No longer need to fetch data here, just render the template
-    # current_ttl_days = await context_store.get_ttl_days() # 改为 await (Changed to await)
-    # contexts_info = await context_store.list_all_context_keys_info() # 改为 await (Changed to await)
-    # # 转换 datetime 对象 ... (移除) (... (Removed))
+    # 页面骨架不需要认证，前端 JS 会检查 token 并调用 API
+    # Page skeleton doesn't require authentication, frontend JS checks token and calls API
+    logger.debug("渲染上下文管理页面骨架") # Log rendering context management skeleton
+    is_memory_mode = db_utils.IS_MEMORY_DB # 检查是否为内存模式 (Check if it's memory mode)
     admin_key_missing = not config.ADMIN_API_KEY # 检查管理员 Key 是否缺失 (Check if admin key is missing)
+
     context = { # 模板上下文 (Template context)
-        "request": request,
-        # "current_ttl_days": current_ttl_days, # 数据由 API 提供 (Data provided by API)
-        # "contexts_info": contexts_info,      # 数据由 API 提供 (Data provided by API)
-        "admin_key_missing": admin_key_missing, # 添加到模板上下文 (Add to template context)
-        "now": datetime.now(timezone.utc) # 确保时区一致 (UTC) 且键名为 'now' (Ensure timezone consistency (UTC) and key name is 'now')
+        "request": request, # 请求对象 (Request object)
+        "is_memory_mode": is_memory_mode, # 是否为内存模式 (Whether it's memory mode)
+        "admin_key_missing": admin_key_missing, # 管理员 Key 是否缺失 (Whether admin key is missing)
+        "now": datetime.now(timezone.utc) # 当前时间 (Current time)
     }
-    # CSRF 相关代码已移除
-    # CSRF Related Code Removed
-
-    response = templates.TemplateResponse("manage_context.html", context) # 创建模板响应 (Create template response)
-
-    # CSRF 相关代码已移除
-    # CSRF Related Code Removed
-
-    return response # 返回响应 (Return response)
+    return templates.TemplateResponse("manage_context.html", context) # 返回模板响应 (Return template response)
 
 
-# --- 新增：获取上下文管理数据的 API 端点 ---
-# --- New: API Endpoint for Getting Context Management Data ---
-@router.get("/api/manage/context/data", dependencies=[Depends(verify_jwt_token)]) # 定义 GET /api/manage/context/data 端点，依赖 JWT 验证 (Define GET /api/manage/context/data endpoint, depends on JWT verification)
+# 获取上下文数据的 API 端点
+# API endpoint for getting context data
+@router.get("/api/manage/context/data", dependencies=[Depends(verify_jwt_token), Depends(require_admin_user)]) # 定义 GET /api/manage/context/data 端点，依赖 JWT 验证和管理员权限 (Define GET /api/manage/context/data endpoint, depends on JWT verification and admin privilege)
 async def get_context_data(token_payload: Dict[str, Any] = Depends(verify_jwt_token)): # 依赖 JWT 验证并获取 payload (Depends on JWT verification and gets payload)
     """
-    获取上下文管理页面所需的数据。
-    需要有效的 JWT Bearer Token 认证。
-    Gets the data required for the context management page.
-    Requires valid JWT Bearer Token authentication.
+    获取上下文管理页面所需的数据 (仅管理员)。
+    Gets the data required for the context management page (admin only).
     """
-    user_key = token_payload.get("sub") # 获取用户 Key (Get user key)
-    is_admin = token_payload.get("admin", False) # 获取管理员状态 (Get admin status)
-    # 修改日志语句，处理 user_key 为 None 的情况，并更明确地记录管理员状态
-    # Modify log statement to handle case where user_key is None, and log admin status more explicitly
-    log_user_id = user_key[:8] + "..." if user_key else "未知用户" # 格式化用户 ID 或显示未知用户 (Format user ID or display unknown user)
-    log_admin_status = "管理员" if is_admin else "非管理员" # 显示管理员状态 (Display admin status)
-    logger.debug(f"用户 {log_user_id} ({log_admin_status}) 请求上下文管理数据") # Log user requesting context data
-
+    admin_key = token_payload.get('sub', '未知管理员') # 获取管理员 Key (Get admin key)
+    logger.debug(f"管理员 {admin_key[:8]}... 请求上下文管理数据") # Log admin requesting context data
     try:
-        current_ttl_days = await context_store.get_ttl_days() # 获取当前 TTL (Get current TTL)
-        contexts_info_raw = await context_store.list_all_context_keys_info() # 获取原始上下文信息 (Get raw context info)
+        # 导入 context_store 模块
+        # Import context_store module
+        from app.core import context_store # 延迟导入以解决循环依赖 (Delayed import to resolve circular dependency)
 
-        # 转换 datetime 对象并处理 None
-        # Convert datetime objects and handle None
-        contexts_info = [] # 初始化处理后的列表 (Initialize processed list)
-        for info in contexts_info_raw: # 遍历原始信息 (Iterate through raw info)
-            info_dict = dict(info) # 转换为字典 (Convert to dictionary)
-            last_accessed = info_dict.get('last_accessed') # 获取 last_accessed 值 (Get last_accessed value)
-            if isinstance(last_accessed, datetime): # 如果是 datetime 对象 (If it's a datetime object)
-                # 确保是 UTC 时间，然后格式化
-                # Ensure it's UTC time, then format
-                info_dict['last_accessed'] = last_accessed.replace(tzinfo=timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC') # 格式化为带 UTC 的字符串 (Format as string with UTC)
-            elif last_accessed is None: # 如果是 None (If it's None)
-                info_dict['last_accessed'] = "从未访问" # 设置为 "从未访问" (Set to "Never accessed")
-            # 如果已经是字符串或其他类型，保持原样 (If already string or other type, keep as is)
+        # 获取所有上下文数据
+        # Get all context data
+        # 从 token_payload 获取 user_key 和 is_admin 状态
+        # Get user_key and is_admin status from token_payload
+        user_key = token_payload.get('sub') # 获取用户 Key (Get user key)
+        is_admin = token_payload.get('admin', False) # 获取管理员状态，默认为 False (Get admin status, default to False)
+        # 调用正确的函数并传入 user_key 和 is_admin
+        # Call the correct function and pass user_key and is_admin
+        all_context_data = await context_store.list_all_context_keys_info(user_key=user_key, is_admin=is_admin) # 获取上下文信息 (Get context info)
 
-            contexts_info.append(info_dict) # 添加到处理后的列表 (Append to processed list)
+        # 转换 Row 对象为字典列表，并格式化日期
+        # Convert Row objects to a list of dictionaries and format dates
+        result = [] # 初始化结果列表 (Initialize result list)
+        for row in all_context_data: # 遍历上下文数据 (Iterate through context data)
+            context_info = dict(row) # 转换为字典 (Convert to dictionary)
+            # 格式化 last_accessed
+            # Format last_accessed
+            last_accessed_val = context_info.get('last_accessed') # 获取 last_accessed 值 (Get last_accessed value)
+            if isinstance(last_accessed_val, datetime): # 如果是 datetime 对象 (If it's a datetime object)
+                 context_info['last_accessed'] = last_accessed_val.strftime('%Y-%m-%d %H:%M:%S') # 格式化为字符串 (Format as string)
+            elif isinstance(last_accessed_val, str): # 如果是字符串 (If it's a string)
+                 try:
+                     dt_obj = datetime.fromisoformat(last_accessed_val.replace('Z', '+00:00')) # 处理 Z 时区 (Handle Z timezone)
+                     context_info['last_accessed'] = dt_obj.strftime('%Y-%m-%d %H:%M:%S') # 格式化为字符串 (Format as string)
+                 except ValueError:
+                     logger.warning(f"无法解析 Key {context_info.get('key')} 的 last_accessed 字符串: {last_accessed_val}") # Log warning
+                     context_info['last_accessed'] = last_accessed_val # 保持原样 (Keep as is)
 
-        return JSONResponse(content={ # 返回 JSON 响应 (Return JSON response)
-            "current_ttl_days": current_ttl_days, # 当前 TTL (Current TTL)
-            "contexts_info": contexts_info, # 处理后的上下文信息 (Processed context info)
-            "is_admin": is_admin # 添加管理员状态 (Add admin status)
-        })
+            # 截断 context_data 以提高可读性
+            # Truncate context_data for readability
+            if 'context_data' in context_info and isinstance(context_info['context_data'], str): # 如果存在 context_data 且为字符串 (If context_data exists and is a string)
+                 context_info['context_data_preview'] = context_info['context_data'][:100] + '...' if len(context_info['context_data']) > 100 else context_info['context_data'] # 截断预览 (Truncate preview)
+                 # 移除原始的长 context_data，避免发送大量数据到前端
+                 # Remove the original long context_data to avoid sending large amounts of data to the frontend
+                 del context_info['context_data'] # 删除原始数据 (Delete original data)
+
+            result.append(context_info) # 添加到结果列表 (Append to result list)
+
+        # 返回上下文数据和管理员状态
+        # Return context data and admin status
+        return {"contexts": result, "is_admin": is_admin}
     except Exception as e:
-        logger.error(f"获取上下文管理数据时出错: {e}", exc_info=True) # 记录错误 (Log error)
+        logger.error(f"管理员 {admin_key[:8]}... 获取上下文管理数据时出错: {e}", exc_info=True) # 记录错误 (Log error)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="获取上下文数据失败") # 引发 500 异常 (Raise 500 exception)
 
-# --- 新增：更新 TTL 的 API 端点 ---
-# --- New: API Endpoint for Updating TTL ---
-@router.post(
-    "/manage/context/update_ttl",
-    dependencies=[Depends(verify_jwt_token), Depends(require_admin_user)] # 依赖 JWT 验证和管理员权限 (Depends on JWT verification and admin privileges)
+
+# 更新上下文 TTL 的 API 端点
+# API endpoint for updating context TTL
+@router.post( # 使用 POST 更符合实际操作，即使没有请求体 (Using POST is more appropriate for the action, even without a request body)
+    "/api/manage/context/update_ttl",
+    status_code=status.HTTP_200_OK, # 成功时返回 200 (Return 200 on success)
+    dependencies=[Depends(verify_jwt_token), Depends(require_admin_user)] # 依赖 JWT 验证和管理员权限 (Depends on JWT verification and admin privilege)
 )
 async def update_context_ttl(
-    ttl_days: int = Form(...), # 从表单获取 TTL 天数 (Get TTL days from form)
-    token_payload: Dict[str, Any] = Depends(verify_jwt_token) # 获取 token payload 用于日志记录 (Get token payload for logging)
+    request: Request, # 获取请求对象 (Get request object)
+    key: str = Form(...), # 从表单获取 Key (Get Key from form)
+    ttl: int = Form(...), # 从表单获取 TTL (Get TTL from form)
+    token_payload: Dict[str, Any] = Depends(verify_jwt_token) # 通过依赖注入获取 JWT payload (Get JWT payload via dependency injection)
 ):
     """
-    更新上下文的 TTL 设置 (仅管理员)。
-    Updates the TTL setting for contexts (admin only).
+    API 端点：更新指定 Key 的上下文 TTL (仅管理员)。
+    API endpoint: Updates the context TTL for a specified key (admin only).
     """
-    admin_key = token_payload.get('sub', '未知管理员') # 获取管理员 Key (Get admin key)
-    logger.debug(f"管理员 {admin_key[:8]}... 请求更新上下文 TTL 为 {ttl_days} 天") # Log admin requesting TTL update
-
-    if ttl_days < 0: # 验证 TTL 值是否有效 (Validate TTL value)
-        logger.warning(f"管理员 {admin_key[:8]}... 尝试设置无效的 TTL 值: {ttl_days}") # Log warning for invalid TTL
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="TTL 天数不能为负数") # 引发 400 异常 (Raise 400 exception)
+    admin_key = token_payload.get('sub', '未知管理员') # 从 token payload 获取管理员 Key (Get admin key from token payload)
+    logger.debug(f"管理员 {admin_key[:8]}... 请求更新 Key {key[:8]}... 的上下文 TTL 为 {ttl}") # Log admin requesting to update context TTL
 
     try:
-        await context_store.set_ttl_days(ttl_days) # 调用 context_store 更新 TTL (Call context_store to update TTL)
-        logger.info(f"管理员 {admin_key[:8]}... 成功将上下文 TTL 更新为 {ttl_days} 天") # Log successful update
-        return JSONResponse(content={"message": f"上下文 TTL 已成功更新为 {ttl_days} 天"}) # 返回成功响应 (Return success response)
-    except Exception as e:
-        logger.error(f"管理员 {admin_key[:8]}... 更新上下文 TTL 时出错: {e}", exc_info=True) # 记录错误 (Log error)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="更新 TTL 失败") # 引发 500 异常 (Raise 500 exception)
+        # 导入 context_store 模块以避免循环依赖
+        # Import context_store module to avoid circular dependency
+        from app.core import context_store
 
-# --- 新增：删除上下文的 API 端点 ---
-# --- New: API Endpoint for Deleting Context ---
-# 注意：前端模板中的删除按钮已经指向了这个路由，但这里需要实现它
-# Note: The delete button in the frontend template already points to this route, but it needs to be implemented here
+        # 调用正确的函数来更新指定上下文的 TTL
+        # Call the correct function to update the TTL for the specified context
+        # 注意：这里的逻辑是更新单个 context_key 的 TTL，而不是所有上下文
+        # Note: The logic here is to update the TTL for a single context_key, not all contexts
+        # TTL 在前端是以天为单位，后端函数需要秒，所以需要乘以 86400 (24 * 60 * 60)
+        # TTL is in days on the frontend, backend function needs seconds, so multiply by 86400 (24 * 60 * 60)
+        success = await context_store.update_ttl(context_key=key, ttl_seconds=ttl * 86400) # 调用正确的函数并传递参数 (Call the correct function and pass parameters)
+
+        if success:
+            logger.info(f"管理员 {admin_key[:8]}... 成功更新上下文 '{key[:8]}...' 的 TTL 到 {ttl} 天。") # 修正日志消息 (Correct log message)
+            return JSONResponse(content={"message": f"上下文 '{key[:8]}...' 的 TTL 已成功更新到 {ttl} 天。"}) # 修正返回消息 (Correct return message)
+        else:
+            logger.error(f"管理员 {admin_key[:8]}... 更新上下文 '{key[:8]}...' TTL 到 {ttl} 天失败。") # 修正日志消息 (Correct log message)
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"更新上下文 '{key[:8]}...' TTL 失败") # 修正错误详情 (Correct error detail)
+    except Exception as e:
+        logger.error(f"管理员 {admin_key[:8]}... 更新上下文 '{key[:8]}...' TTL 时发生错误: {e}", exc_info=True) # 修正日志消息 (Correct log message)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"更新上下文 '{key[:8]}...' TTL 时发生内部错误") # 修正错误详情 (Correct error detail)
+
+
+# 删除特定 Key 上下文的 API 端点
+# API endpoint for deleting context for a specific Key
 @router.post( # 使用 POST 更符合实际操作，即使没有请求体 (Using POST is more appropriate for the action, even without a request body)
-    "/manage/context/delete/{proxy_key}",
-    dependencies=[Depends(verify_jwt_token), Depends(require_admin_user)] # 依赖 JWT 验证和管理员权限 (Depends on JWT verification and admin privileges)
+    "/api/manage/context/delete/{proxy_key}",
+    status_code=status.HTTP_200_OK, # 成功时返回 200 (Return 200 on success)
+    dependencies=[Depends(verify_jwt_token), Depends(require_admin_user)] # 依赖 JWT 验证和管理员权限 (Depends on JWT verification and admin privilege)
 )
 async def delete_context_for_key(
-    proxy_key: str, # 要删除上下文的 Key (Key whose context to delete)
-    token_payload: Dict[str, Any] = Depends(verify_jwt_token) # 获取 token payload 用于日志记录 (Get token payload for logging)
+    proxy_key: str, # 要删除上下文的 Key (Key whose context is to be deleted)
+    token_payload: Dict[str, Any] = Depends(verify_jwt_token) # 依赖 JWT 验证并获取 payload (Depends on JWT verification and gets payload)
 ):
     """
-    删除指定代理 Key 的上下文记录 (仅管理员)。
-    Deletes the context record for a specified proxy key (admin only).
+    API 端点：删除指定代理 Key 的上下文 (仅管理员)。
+    API endpoint: Deletes the context for the specified proxy key (admin only).
     """
     admin_key = token_payload.get('sub', '未知管理员') # 获取管理员 Key (Get admin key)
-    logger.debug(f"管理员 {admin_key[:8]}... 请求删除 Key '{proxy_key}' 的上下文") # Log admin requesting context deletion
-
+    logger.info(f"管理员 {admin_key[:8]}... 请求删除 Key {proxy_key[:8]}... 的上下文。") # Log admin requesting context deletion for key
     try:
-        deleted = await context_store.delete_context(proxy_key) # 调用 context_store 删除上下文 (Call context_store to delete context)
-        if deleted: # 如果删除成功 (If deletion was successful)
-            logger.info(f"管理员 {admin_key[:8]}... 成功删除 Key '{proxy_key}' 的上下文") # Log successful deletion
-            # 返回 200 OK 和成功消息，因为前端 JS 会处理这个响应
-            # Return 200 OK and success message, as frontend JS handles this response
-            return JSONResponse(content={"message": f"Key '{proxy_key}' 的上下文已删除"}) # 返回成功响应 (Return success response)
-        else: # 如果 context_store 返回 False (例如 Key 不存在) (If context_store returns False (e.g., key doesn't exist))
-            logger.warning(f"管理员 {admin_key[:8]}... 尝试删除不存在的 Key '{proxy_key}' 的上下文") # Log warning
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"未找到 Key '{proxy_key}' 的上下文记录") # 引发 404 异常 (Raise 404 exception)
+        # 导入 context_store 模块
+        # Import context_store module
+        from app.core import context_store # 延迟导入以解决循环依赖 (Delayed import to resolve circular dependency)
+        # 调用删除函数
+        # Call delete function
+        deleted = await context_store.delete_context(proxy_key) # 添加 await (Added await) # 删除上下文 (Delete context)
+        if deleted: # 如果成功删除 (If successfully deleted)
+            logger.info(f"成功删除 Key {proxy_key[:8]}... 的上下文。") # Log successful deletion
+            return {"message": f"Key '{proxy_key}' 的上下文已删除。"} # 返回成功消息 (Return success message)
+        else:
+            logger.info(f"Key {proxy_key[:8]}... 没有找到关联的上下文，无需删除。") # Log no context found
+            return {"message": f"Key '{proxy_key}' 没有找到关联的上下文。"} # 返回未找到消息 (Return not found message)
     except Exception as e:
-        logger.error(f"管理员 {admin_key[:8]}... 删除 Key '{proxy_key}' 的上下文时出错: {e}", exc_info=True) # 记录错误 (Log error)
+        logger.error(f"管理员 {admin_key[:8]}... 删除 Key {proxy_key[:8]}... 上下文时出错: {e}", exc_info=True) # 记录错误 (Log error)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="删除上下文失败") # 引发 500 异常 (Raise 500 exception)
 
 
-# --- 新增：获取报告数据的 API 端点 ---
-# --- New: API Endpoint for Getting Report Data ---
-@router.get("/api/report/data", dependencies=[Depends(verify_jwt_token)]) # 定义 GET /api/report/data 端点，依赖 JWT 验证 (Define GET /api/report/data endpoint，depends on JWT verification)
-async def get_report_data(token_payload: Dict[str, Any] = Depends(verify_jwt_token)): # 依赖 JWT 验证并获取 payload (Depends on JWT verification and gets payload)
-    """
-    获取使用情况报告所需的数据。
-    需要有效的 JWT Bearer Token 认证。
-    Gets the data required for the usage report.
-    Requires valid JWT Bearer Token authentication.
-    """
-    user_key = token_payload.get("sub") # 获取用户 Key (Get user key)
-    is_admin = token_payload.get("admin", False) # 获取管理员状态 (Get admin status)
-    logger.debug(f"用户 {user_key[:8]}... (Admin: {is_admin}) 请求报告数据") # Log user requesting data
+# --- 报告页面 ---
+# --- Report Page ---
 
-    # 调用 usage_reporter 中的函数获取结构化数据
-    # Call the function in usage_reporter to get structured data
+# 获取报告数据的 API 端点
+# API endpoint for getting report data
+@router.get("/api/report/data", dependencies=[Depends(verify_jwt_token)]) # 定义 GET /api/report/data 端点，依赖 JWT 验证 (Define GET /api/report/data endpoint，depends on JWT verification)
+async def get_report_data(
+    token_payload: Dict[str, Any] = Depends(verify_jwt_token), # 依赖 JWT 验证并获取 payload (Depends on JWT verification and gets payload)
+    key_manager: APIKeyManager = Depends(get_key_manager) # 注入 Key Manager 实例 (Inject Key Manager instance)
+):
+    """
+    获取报告页面所需的数据。需要登录。
+    Gets the data required for the report page. Requires login.
+    """
+    user_key = token_payload.get('sub', '未知用户') # 获取用户 Key (Get user key)
+    logger.debug(f"用户 {user_key[:8]}... 请求报告数据") # Log user requesting report data
     try:
-        report_data = await get_structured_report_data(key_manager_instance) # 获取报告数据 (Get report data)
-        return JSONResponse(content=report_data) # 返回 JSON 响应 (Return JSON response)
+        # 调用报告函数，传递 key_manager
+        # Call the report function, passing key_manager
+        report_data = await get_structured_report_data(key_manager=key_manager) # 获取结构化报告数据，传入 key_manager (Get structured report data, pass key_manager)
+        # 增加管理员状态
+        # Add admin status
+        report_data["is_admin"] = token_payload.get("admin", False) # 从 token 获取管理员状态 (Get admin status from token)
+        return report_data # 返回报告数据 (Return report data)
     except Exception as e:
-        logger.error(f"获取报告数据时出错: {e}", exc_info=True) # 记录错误 (Log error)
+        logger.error(f"用户 {user_key[:8]}... 获取报告数据时出错: {e}", exc_info=True) # 记录错误 (Log error)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="获取报告数据失败") # 引发 500 异常 (Raise 500 exception)
 
-# --- 新增：报告页面路由 ---
-# --- New: Report Page Route ---
+
+# 渲染报告页面的路由
+# Route for rendering the report page
 @router.get(
-    "/report",
-    response_class=HTMLResponse,
-    include_in_schema=False
-    # 移除装饰器中的重复依赖 (Remove duplicate dependency from decorator)
-    # dependencies=[Depends(verify_jwt_token)] # 添加 JWT 验证依赖 (Add JWT verification dependency)
+    "/manage/report", # 路径
+    response_class=HTMLResponse, # 响应类型
+    include_in_schema=False, # 不包含在 OpenAPI schema 中
+    # 移除页面加载认证依赖，页面数据通过 API 获取并认证
+    # Removed page load authentication dependency, page data is fetched and authenticated via API
 )
-async def report_page(request: Request): # 移除 token_payload 参数 (Remove token_payload parameter)
+async def report_page(request: Request): # 移除认证依赖注入 (Remove authentication dependency injection)
     """
-    显示使用情况报告页面。
-    需要有效的 JWT Bearer Token 认证。
-    Displays the usage report page.
-    Requires valid JWT Bearer Token authentication.
+    显示报告页面骨架。
+    认证状态由前端 JavaScript 检查 localStorage 并处理重定向。
+    后端不再直接处理此页面路由的认证，以允许前端逻辑执行。
+    Displays the report page skeleton.
+    Authentication status is checked by frontend JavaScript using localStorage, handling redirection.
+    Backend no longer handles authentication directly for this page route to allow frontend logic execution.
     """
-    # 移除手动检查 JWT 认证的 try...except 块，依赖注入会自动处理认证失败
-    # Remove the try...except block for manual JWT check, dependency injection handles failures automatically
-    # try:
-        # token_payload = await verify_jwt_token(request) # 手动调用依赖函数 (Manually call dependency function)
-    # 如果认证成功，继续渲染页面 (If authentication is successful, continue rendering the page)
-    # token_payload 现在由 Depends 注入 (token_payload is now injected by Depends)
-    logger.debug("渲染报告页面") # Log rendering report page
+    # 始终渲染页面骨架，前端 JS 会处理认证和重定向
+    # Always render the page skeleton, frontend JS handles authentication and redirection
+    # 移除内部认证状态日志，因为它不再相关
+    # Remove internal authentication status log as it's no longer relevant
+    logger.debug("渲染 /manage/report 页面骨架") # Log rendering skeleton
+    is_memory_mode = db_utils.IS_MEMORY_DB # 检查是否为内存模式 (Check if it's memory mode)
     admin_key_missing = not config.ADMIN_API_KEY # 检查管理员 Key 是否缺失 (Check if admin key is missing)
-    context = { # 模板上下文 (Template context)
-        "request": request,
-        "admin_key_missing": admin_key_missing, # 添加到模板上下文 (Add to template context)
-        "now": datetime.now(timezone.utc) # 确保时区一致 (UTC) 且键名为 'now' (Ensure timezone consistency (UTC) and key name is 'now')
-    }
-    return templates.TemplateResponse("report.html", context) # 返回模板响应 (Return template response)
-    # except HTTPException as e:
-    #     # 如果认证失败 (例如 401 或 403)，重定向到登录页面
-    #     # If authentication fails (e.g. 401 or 403), redirect to login page
-    #     if e.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]: # 如果是 401 或 403 错误 (If it's 401 or 403 error)
-    #         logger.warning(f"访问 /report 未认证或无权限，重定向到登录页。") # Log warning
-    #         return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER) # 重定向到根路径 (登录页) (Redirect to root path (login page))
-    #     else:
-    #         # 其他 HTTPException 重新抛出
-    #         # Re-raise other HTTPExceptions
-    #         raise e
-    # except Exception as e:
-    #     # 捕获其他意外错误
-    #     # Catch other unexpected错误
-    #     logger.error(f"访问 /report 时发生意外错误: {e}", exc_info=True) # Log error
-    #     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="内部服务器错误") # 引发 500 异常 (Raise 500 exception)
+    return templates.TemplateResponse(
+        "report.html", # 模板文件 (Template file)
+        {
+            "request": request, # 请求对象 (Request object)
+            "is_memory_mode": is_memory_mode, # 添加内存模式标志 (Add memory mode flag)
+            "admin_key_missing": admin_key_missing, # 添加管理员 Key 缺失标志 (Add admin key missing flag)
+            "now": datetime.now(timezone.utc) # 添加 now 变量 (Add now variable)
+        }
+    )
