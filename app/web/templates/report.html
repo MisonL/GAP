@@ -53,15 +53,24 @@
                                     过去 7 天平均日 RPD:
                                     <span id="avg-daily-rpd" class="badge bg-info rounded-pill">...</span>
                                 </li>
-                                <li class="list-group-item">
-                                    RPD 容量估算 (gemini-2.5-pro-exp-03-25):
-                                    <strong id="rpd-capacity-target">...</strong>
-                                    <div id="rpd-capacity-others" class="small text-muted mt-1"></div>
-                                </li>
-                                <li class="list-group-item">
-                                    TPD 输入容量估算 (gemini-2.5-pro-exp-03-25):
-                                    <strong id="tpd-input-capacity-target">...</strong>
-                                </li>
+                               <!-- RPD 容量列表容器 -->
+                               <li id="rpd-capacity-list-container" class="list-group-item">
+                                   RPD 容量估算:
+                                   {% if has_valid_keys %}
+                                   <div class="small text-muted mt-1">加载中...</div>
+                                   {% else %}
+                                   <div class="small mt-1">无有效 API Key，无法估算容量</div> {# 无有效 Key 时的提示 #}
+                                   {% endif %}
+                               </li>
+                               <!-- TPD 输入容量列表容器 -->
+                               <li id="tpd-input-capacity-list-container" class="list-group-item">
+                                   TPD 输入容量估算:
+                                   {% if has_valid_keys %}
+                                   <div class="small text-muted mt-1">加载中...</div>
+                                   {% else %}
+                                   <div class="small mt-1">无有效 API Key，无法估算容量</div> {# 无有效 Key 时的提示 #}
+                                   {% endif %}
+                               </li>
                             </ul>
                         </div>
                     </div>
@@ -661,6 +670,49 @@ body {
                 if (topIpsRequestsElemJsonError) topIpsRequestsElemJsonError.innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载失败: JSON 解析错误</td></tr>`;
                 const topIpsTokensElemJsonError = document.getElementById('top-ips-tokens');
                 if (topIpsTokensElemJsonError) topIpsTokensElemJsonError.innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载失败: JSON 解析错误</td></tr>`;
+// 更新 RPD 容量估算 (多模型)
+         // Update RPD Capacity Estimation (Multi-model)
+         const rpdCapacityContainer = document.getElementById('rpd-capacity-list-container');
+         const rpdCapacityPerModel = data.overall_stats?.rpd?.capacity_per_model;
+         if (rpdCapacityContainer && rpdCapacityPerModel && Object.keys(rpdCapacityPerModel).length > 0) {
+             rpdCapacityContainer.innerHTML = 'RPD 容量估算:'; // 重置标题
+             const listDiv = document.createElement('div');
+             listDiv.className = 'small mt-1'; // 使用 div 替代 ul/li，更简洁
+             Object.entries(rpdCapacityPerModel).forEach(([model, capacityInfo]) => {
+                 const itemDiv = document.createElement('div');
+                 if (capacityInfo) {
+                     itemDiv.innerHTML = `&nbsp;&nbsp;- <strong>${model}:</strong> ${formatNumber(capacityInfo.capacity)}/天 (基于 ${formatNumber(capacityInfo.limit)} RPD)`;
+                 } else {
+                     itemDiv.innerHTML = `&nbsp;&nbsp;- <strong>${model}:</strong> <span class="text-danger">限制未定义</span>`;
+                 }
+                 listDiv.appendChild(itemDiv);
+             });
+             rpdCapacityContainer.appendChild(listDiv);
+         } else if (rpdCapacityContainer) {
+             rpdCapacityContainer.innerHTML = 'RPD 容量估算: <div class="small text-muted mt-1">N/A</div>';
+         }
+
+         // 更新 TPD 输入容量估算 (多模型)
+         // Update TPD Input Capacity Estimation (Multi-model)
+         const tpdInputCapacityContainer = document.getElementById('tpd-input-capacity-list-container');
+         const tpdInputCapacityPerModel = data.overall_stats?.tpd_input?.capacity_per_model;
+         if (tpdInputCapacityContainer && tpdInputCapacityPerModel && Object.keys(tpdInputCapacityPerModel).length > 0) {
+             tpdInputCapacityContainer.innerHTML = 'TPD 输入容量估算:'; // 重置标题
+             const listDiv = document.createElement('div');
+             listDiv.className = 'small mt-1';
+             Object.entries(tpdInputCapacityPerModel).forEach(([model, capacityInfo]) => {
+                 const itemDiv = document.createElement('div');
+                 if (capacityInfo) {
+                     itemDiv.innerHTML = `&nbsp;&nbsp;- <strong>${model}:</strong> ${formatNumber(capacityInfo.capacity)}/天 (基于 ${formatNumber(capacityInfo.limit)} TPD_In)`;
+                 } else {
+                     itemDiv.innerHTML = `&nbsp;&nbsp;- <strong>${model}:</strong> <span class="text-danger">限制未定义</span>`;
+                 }
+                 listDiv.appendChild(itemDiv);
+             });
+             tpdInputCapacityContainer.appendChild(listDiv);
+         } else if (tpdInputCapacityContainer) {
+             tpdInputCapacityContainer.innerHTML = 'TPD 输入容量估算: <div class="small text-muted mt-1">N/A</div>';
+         }
                 return;
             }
 

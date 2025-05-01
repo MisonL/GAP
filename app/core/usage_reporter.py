@@ -225,28 +225,34 @@ def report_usage(key_manager: 'APIKeyManager'):
              if model_name in config.MODEL_LIMITS:
                   model_rpd_usage_count[model_name] += 1
 
-    # 定义需要估算的三个目标模型
+    # 定义需要估算的三个目标模型 (修正大小写)
     target_models = [
-        "Gemini-2.5-pro-exp-03-25",
+        "gemini-2.5-pro-exp-03-25",
         "gemini-2.5-flash-preview-04-17",
         "gemini-2.0-flash-thinking-exp-01-21"
     ]
 
-    # 遍历目标模型进行容量估算
+    # 计算并报告目标模型的 RPD 容量
     reported_rpd_limits = set() # 记录已报告的 RPD 限制，避免重复
+    target_model_rpd_capacities = {} # 存储目标模型的 RPD 容量
     for target_model in target_models:
         target_model_limits = config.MODEL_LIMITS.get(target_model, {})
         target_model_rpd_limit = target_model_limits.get("rpd")
-
         if target_model_rpd_limit is not None:
             target_rpd_capacity = active_keys_count * target_model_rpd_limit
+            target_model_rpd_capacities[target_model] = {
+                "limit": target_model_rpd_limit,
+                "capacity": target_rpd_capacity
+            }
             report_lines.append(f"    - 基于 {target_model} (RPD={target_model_rpd_limit}): {COLOR_POSITIVE}{target_rpd_capacity:,}/天{COLOR_RESET}")
             reported_rpd_limits.add(target_model_rpd_limit) # 记录已报告的 RPD 限制
         else:
             logger.warning(f"目标模型 {target_model} 或其 RPD 限制未在 model_limits.json 中找到，无法估算 RPD 容量。")
             report_lines.append(f"    - 基于 {target_model}: {COLOR_ERROR}RPD 限制未定义。{COLOR_RESET}")
+            target_model_rpd_capacities[target_model] = None # 标记为未定义
 
     # 报告其他 RPD 组的容量 (排除已在目标模型中报告的 RPD 限制)
+    other_model_rpd_capacities = [] # 存储其他模型的 RPD 容量
     for rpd_limit, models in sorted(rpd_groups.items()):
         if rpd_limit not in reported_rpd_limits: # 检查是否已报告
              group_capacity = active_keys_count * rpd_limit
@@ -254,20 +260,30 @@ def report_usage(key_manager: 'APIKeyManager'):
              if used_models_in_group:
                   model_names_str = ', '.join(used_models_in_group)
                   report_lines.append(f"    - RPD={rpd_limit}: {model_names_str} (估算容量: {COLOR_POSITIVE}{group_capacity:,}/天{COLOR_RESET})")
+                  other_model_rpd_capacities.append({
+                      "rpd_limit": rpd_limit,
+                      "models": used_models_in_group,
+                      "capacity": group_capacity
+                  })
 
     # TPD 输入容量
     report_lines.append(f"\n  {COLOR_SECTION_HEADER}TPD 输入容量估算:{COLOR_RESET}") # 报告 TPD 输入容量估算标题，使用新颜色
 
-    # 遍历目标模型进行 TPD 输入容量估算
+    # 计算并报告目标模型的 TPD 输入容量
+    target_model_tpd_input_capacities = {} # 存储目标模型的 TPD 输入容量
     for target_model in target_models:
         target_model_limits = config.MODEL_LIMITS.get(target_model, {})
         target_model_tpd_input_limit = target_model_limits.get("tpd_input")
-
         if target_model_tpd_input_limit is not None:
             target_tpd_input_capacity = active_keys_count * target_model_tpd_input_limit
+            target_model_tpd_input_capacities[target_model] = {
+                "limit": target_model_tpd_input_limit,
+                "capacity": target_tpd_input_capacity
+            }
             report_lines.append(f"    - 基于 {target_model} (TPD_In={target_model_tpd_input_limit:,}): {COLOR_POSITIVE}{target_tpd_input_capacity:,}/天{COLOR_RESET}")
         else:
             report_lines.append(f"    - 基于 {target_model}: {COLOR_ERROR}TPD_Input 限制未定义。{COLOR_RESET}")
+            target_model_tpd_input_capacities[target_model] = None # 标记为未定义
 
     # 今日用量与估算
     report_lines.append(f"\n  {COLOR_SECTION_HEADER}今日用量与估算 (PT 时间):{COLOR_RESET}") # 报告今日用量与估算标题，使用新颜色
@@ -439,13 +455,12 @@ async def get_structured_report_data(key_manager: 'APIKeyManager') -> Dict[str, 
                 "active_keys_count": 0, # 活跃 Key 数量
                 "invalid_keys_startup": INVALID_KEY_COUNT_AT_STARTUP, # 启动时无效 Key 数量
                 "rpd": { # RPD 相关统计
-                    "capacity_target_model": None, # 目标模型容量信息
-                    "capacity_other_models": [], # 其他模型容量信息
+                    "capacity_per_model": {}, # 新增：按模型存储 RPD 容量 (New: Store RPD capacity per model)
                     "used_today": 0, # 今日已用 RPD
                     "estimated_today": None, # 今日预估 RPD
                 },
                 "tpd_input": { # TPD 输入相关统计
-                     "capacity_target_model": None, # 目标模型容量信息
+                     "capacity_per_model": {}, # 新增：按模型存储 TPD 输入容量 (New: Store TPD input capacity per model)
                      "used_today": 0, # 今日已用 TPD 输入
                      "estimated_today": None, # 今日预估 TPD 输入
                 },
@@ -482,13 +497,12 @@ async def get_structured_report_data(key_manager: 'APIKeyManager') -> Dict[str, 
             "active_keys_count": active_keys_count, # 活跃 Key 数量
             "invalid_keys_startup": INVALID_KEY_COUNT_AT_STARTUP, # 启动时无效 Key 数量
             "rpd": { # RPD 相关统计
-                "capacity_target_model": None, # 目标模型容量信息
-                "capacity_other_models": [], # 其他模型容量信息
+                "capacity_per_model": {}, # 新增：按模型存储 RPD 容量 (New: Store RPD capacity per model)
                 "used_today": 0, # 今日已用 RPD
                 "estimated_today": None, # 今日预估 RPD
             },
             "tpd_input": { # TPD 输入相关统计
-                 "capacity_target_model": None, # 目标模型容量信息
+                 "capacity_per_model": {}, # 新增：按模型存储 TPD 输入容量 (New: Store TPD input capacity per model)
                  "used_today": 0, # 今日已用 TPD 输入
                  "estimated_today": None, # 今日预估 TPD 输入
             },
