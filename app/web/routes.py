@@ -799,7 +799,7 @@ async def get_report_data(
     # 移除页面加载认证依赖，页面数据通过 API 获取并认证
     # Removed page load authentication dependency, page data is fetched and authenticated via API
 )
-async def report_page(request: Request): # 移除认证依赖注入 (Remove authentication dependency injection)
+async def report_page(request: Request, key_manager: APIKeyManager = Depends(get_key_manager)): # 注入 Key Manager 依赖
     """
     显示报告页面骨架。
     认证状态由前端 JavaScript 检查 localStorage 并处理重定向。
@@ -815,12 +815,21 @@ async def report_page(request: Request): # 移除认证依赖注入 (Remove auth
     logger.debug("渲染 /manage/report 页面骨架") # Log rendering skeleton
     is_memory_mode = db_utils.IS_MEMORY_DB # 检查是否为内存模式 (Check if it's memory mode)
     admin_key_missing = not config.ADMIN_API_KEY # 检查管理员 Key 是否缺失 (Check if admin key is missing)
+
+    # 检查是否存在有效的 Gemini API Keys
+    # Check if valid Gemini API Keys exist
+    # 假设 key_manager 有一个方法 has_valid_keys()
+    # Assume key_manager has a method has_valid_keys()
+    has_valid_keys = key_manager.get_active_keys_count() > 0 # 检查是否有有效的 Gemini API Key (使用正确的方法) (Check if there are valid Gemini API Keys (using correct method))
+    logger.debug(f"报告页面检查有效 Key 状态: {has_valid_keys}") # 记录检查结果 (Log check result)
+
     return templates.TemplateResponse(
         "report.html", # 模板文件 (Template file)
         {
             "request": request, # 请求对象 (Request object)
             "is_memory_mode": is_memory_mode, # 添加内存模式标志 (Add memory mode flag)
             "admin_key_missing": admin_key_missing, # 添加管理员 Key 缺失标志 (Add admin key missing flag)
+            "has_valid_keys": has_valid_keys, # 将有效 Key 状态传递给模板 (Pass valid key status to template)
             "now": datetime.now(timezone.utc) # 添加 now 变量 (Add now variable)
         }
     )

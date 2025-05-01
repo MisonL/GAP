@@ -195,7 +195,7 @@
     | `GEMINI_API_KEYS`                       | **（必需）** 你的 Gemini API 密钥，用逗号分隔。                                                                                       | `key1,key2,key3`                          |
     | `ADMIN_API_KEY`                         | **（必需）** 中转服务管理员 API Key，用于管理所有上下文和 Key（文件模式）。拥有最高权限。 | `your_admin_api_key_here`                 |
     | `PASSWORD`                              | （可选）设置服务的 API 密钥（用于内存模式认证和 Web UI 登录）。**在内存模式下，支持逗号分隔配置多个 Key，每个 Key 对应一个独立的用户和上下文。** | `"123,password2,password3"`               |
-    | `SECRET_KEY`                            | **（必需）** 用于 Web UI Session 和 JWT 加密的密钥。请设置一个长而随机的字符串。                                                          |                                           |
+    | `SECRET_KEY`                            | **（必需）** 用于 Web UI Session 和 JWT 加密的密钥。**为了安全，请务必设置一个强随机且唯一的字符串！**                                       |                                           |
     | `MAX_REQUESTS_PER_MINUTE`               | （可选）每分钟最大请求数。                                                                                                           | `30`                                      |
     | `MAX_REQUESTS_PER_DAY_PER_IP`           | （可选）每天每个 IP 最大请求数（默认 600）。                                                                                                       | `600`                                     |
     | `MAX_LOG_SIZE`                          | （可选）单个日志文件最大大小（MB）。                                                                                                   | `10`                                      |
@@ -244,7 +244,7 @@
       # (必需) Gemini API 密钥，逗号分隔
       GEMINI_API_KEYS=YOUR_API_KEY_1,YOUR_API_KEY_2
 
-      # (必需) Web UI 和 JWT 密钥
+      # (必需) Web UI 和 JWT 密钥。**为了安全，请务必设置一个强随机且唯一的字符串！**
       SECRET_KEY=your_very_strong_random_secret_key_here
 
       # (可选) 服务 API 密钥 (内存模式认证 & Web UI 登录)
