@@ -103,14 +103,25 @@ def report_usage(key_manager: 'APIKeyManager'):
     # Use the correctly calculated invalid key count from key_management
     # invalid_keys_count = INITIAL_KEY_COUNT - active_keys_count
 
-    report_lines = [f"--- API 使用情况报告 ({today_pt.strftime('%Y-%m-%d %H:%M:%S %Z')}) ---"] # 报告标题
-    separator = "=" * 20 # 定义分隔符
+    # 添加 ANSI 转义码以增加颜色和样式
+    # 新配色方案 New Color Scheme
+    COLOR_TITLE = "\033[1;94m"  # 亮蓝色 (Bright Blue) - 用于主标题
+    COLOR_SEPARATOR = "\033[0;90m" # 亮黑色/深灰色 (Bright Black/Dark Gray) - 用于分隔符
+    COLOR_SECTION_HEADER = "\033[1;96m" # 亮青色 (Bright Cyan) - 用于区域标题
+    COLOR_POSITIVE = "\033[1;92m" # 亮绿色 (Bright Green) - 用于良好状态、数值、模型名
+    COLOR_WARNING = "\033[1;93m" # 亮黄色 (Bright Yellow) - 用于警告、次要建议
+    COLOR_ERROR = "\033[1;91m" # 亮红色 (Bright Red) - 用于错误、主要警告、重要建议
+    COLOR_INFO = "\033[0;37m" # 白色 (White) - 用于普通标签 (可选，或直接用 RESET)
+    COLOR_RESET = "\033[0m"    # 重置颜色和样式
+
+    report_lines = [f"{COLOR_TITLE}--- API 使用情况报告 ({today_pt.strftime('%Y-%m-%d %H:%M:%S %Z')}) ---{COLOR_RESET}"] # 报告标题
+    separator = f"{COLOR_SEPARATOR}{'=' * 60}{COLOR_RESET}" # 定义分隔符，使用新颜色并加长
 
     # --- Key 使用情况聚合 ---
-    report_lines.append(f"\n{separator} Key 使用情况聚合 {separator}") # 添加分隔符和标题
+    report_lines.append(f"\n{separator}\n{COLOR_SECTION_HEADER} Key 使用情况聚合 {COLOR_RESET}\n{separator}") # 添加分隔符和标题，使用新颜色
 
     if not usage_data_copy:
-        report_lines.append("  暂无 Key 使用数据。") # 如果没有 Key 使用数据则报告
+        report_lines.append(f"  {COLOR_WARNING}暂无 Key 使用数据。{COLOR_RESET}") # 如果没有 Key 使用数据则报告，使用警告色
     else:
         # 遍历每个 Key 的使用数据
         for key, models_usage in usage_data_copy.items():
@@ -177,19 +188,19 @@ def report_usage(key_manager: 'APIKeyManager'):
                 key_status_summary[model_name][status_str] += 1 # 按模型和状态汇总 Key 数量
 
         if not key_status_summary:
-             report_lines.append("  暂无 Key 使用数据。") # Report if no key usage data after processing
+             report_lines.append(f"  {COLOR_WARNING}暂无 Key 使用数据。{COLOR_RESET}") # Report if no key usage data after processing, use warning color
         else:
             # 遍历并报告每个模型的 Key 使用情况
             for model_name, statuses in sorted(key_status_summary.items()):
                 total_keys_for_model = sum(statuses.values()) # 计算使用该模型的 Key 总数
-                report_lines.append(f"\n  模型: {model_name}") # 报告模型名称
-                report_lines.append(f"    今日总 RPD: {model_total_rpd[model_name]:,}") # 报告模型今日总 RPD
-                report_lines.append(f"    今日总 TPD_In: {model_total_tpd_input[model_name]:,}") # 报告模型今日总 TPD 输入
-                report_lines.append(f"    使用此模型的 Key 数量: {total_keys_for_model}") # 报告使用此模型的 Key 数量
-                report_lines.append("    状态分布:") # 报告状态分布标题
+                report_lines.append(f"\n  {COLOR_POSITIVE}模型: {model_name}{COLOR_RESET}") # 报告模型名称，使用新颜色
+                report_lines.append(f"    今日总 RPD: {COLOR_POSITIVE}{model_total_rpd[model_name]:,}{COLOR_RESET}") # 报告模型今日总 RPD，使用新颜色
+                report_lines.append(f"    今日总 TPD_In: {COLOR_POSITIVE}{model_total_tpd_input[model_name]:,}{COLOR_RESET}") # 报告模型今日总 TPD 输入，使用新颜色
+                report_lines.append(f"    使用此模型的 Key 数量: {COLOR_POSITIVE}{total_keys_for_model}{COLOR_RESET}") # 报告使用此模型的 Key 数量，使用新颜色
+                report_lines.append(f"    {COLOR_SECTION_HEADER}状态分布:{COLOR_RESET}") # 报告状态分布标题，使用新颜色
                 # 按数量降序排序状态并报告
                 for status, count in sorted(statuses.items(), key=lambda item: item[1], reverse=True):
-                    report_lines.append(f"      - 数量: {count}") # 报告数量
+                    report_lines.append(f"      - 数量: {COLOR_POSITIVE}{count}{COLOR_RESET}") # 报告数量，使用新颜色
                     # 解析状态字符串并格式化输出
                     parts = status.split(' | ')
                     for part in parts:
@@ -198,12 +209,12 @@ def report_usage(key_manager: 'APIKeyManager'):
 
 
     # --- 总体统计与预测 ---
-    report_lines.append(f"\n{separator} 总体统计与预测 {separator}") # 添加分隔符和标题
-    report_lines.append(f"  活跃 Key 数量: {active_keys_count}") # 报告活跃 Key 数量
-    report_lines.append(f"  启动时无效 Key 数量: {INVALID_KEY_COUNT_AT_STARTUP}") # 报告启动时无效 Key 数量
+    report_lines.append(f"\n{separator}\n{COLOR_SECTION_HEADER} 总体统计与预测 {COLOR_RESET}\n{separator}") # 添加分隔符和标题，使用新颜色
+    report_lines.append(f"  活跃 Key 数量: {COLOR_POSITIVE}{active_keys_count}{COLOR_RESET}") # 报告活跃 Key 数量，使用新颜色
+    report_lines.append(f"  启动时无效 Key 数量: {COLOR_WARNING}{INVALID_KEY_COUNT_AT_STARTUP}{COLOR_RESET}") # 报告启动时无效 Key 数量，使用警告色
 
     # RPD 容量
-    report_lines.append("\n  RPD 容量估算:") # 报告 RPD 容量估算标题
+    report_lines.append(f"\n  {COLOR_SECTION_HEADER}RPD 容量估算:{COLOR_RESET}") # 报告 RPD 容量估算标题，使用新颜色
     rpd_groups = defaultdict(list) # 按 RPD 限制分组模型
     model_rpd_usage_count = defaultdict(int) # 统计使用每个模型的 Key 数量
     for model, limits in config.MODEL_LIMITS.items():
@@ -214,43 +225,56 @@ def report_usage(key_manager: 'APIKeyManager'):
              if model_name in config.MODEL_LIMITS:
                   model_rpd_usage_count[model_name] += 1
 
-    target_model = "gemini-2.5-pro-exp-03-25" # 目标模型名称
-    target_model_limits = config.MODEL_LIMITS.get(target_model, {}) # 获取目标模型的限制
-    target_model_rpd_limit = target_model_limits.get("rpd") # 获取目标模型的 RPD 限制
-    target_model_tpd_input_limit = target_model_limits.get("tpd_input") # 获取目标模型的 TPD 输入限制
+    # 定义需要估算的三个目标模型
+    target_models = [
+        "Gemini-2.5-pro-exp-03-25",
+        "gemini-2.5-flash-preview-04-17",
+        "gemini-2.0-flash-thinking-exp-01-21"
+    ]
 
-    target_rpd_capacity = 0
-    if target_model_rpd_limit:
-        target_rpd_capacity = active_keys_count * target_model_rpd_limit # 计算目标模型的总 RPD 容量
-        report_lines.append(f"    - 基于 {target_model} (RPD={target_model_rpd_limit}): {target_rpd_capacity:,}/天")
-    else:
-        logger.warning(f"目标模型 {target_model} 或其 RPD 限制未在 model_limits.json 中找到，无法估算 RPD 容量。") # Log warning if target model or its RPD limit is not found
-        report_lines.append(f"    - 基于 {target_model}: RPD 限制未定义。") # Report if RPD limit is not defined
+    # 遍历目标模型进行容量估算
+    reported_rpd_limits = set() # 记录已报告的 RPD 限制，避免重复
+    for target_model in target_models:
+        target_model_limits = config.MODEL_LIMITS.get(target_model, {})
+        target_model_rpd_limit = target_model_limits.get("rpd")
 
-    # 报告其他 RPD 组的容量
+        if target_model_rpd_limit is not None:
+            target_rpd_capacity = active_keys_count * target_model_rpd_limit
+            report_lines.append(f"    - 基于 {target_model} (RPD={target_model_rpd_limit}): {COLOR_POSITIVE}{target_rpd_capacity:,}/天{COLOR_RESET}")
+            reported_rpd_limits.add(target_model_rpd_limit) # 记录已报告的 RPD 限制
+        else:
+            logger.warning(f"目标模型 {target_model} 或其 RPD 限制未在 model_limits.json 中找到，无法估算 RPD 容量。")
+            report_lines.append(f"    - 基于 {target_model}: {COLOR_ERROR}RPD 限制未定义。{COLOR_RESET}")
+
+    # 报告其他 RPD 组的容量 (排除已在目标模型中报告的 RPD 限制)
     for rpd_limit, models in sorted(rpd_groups.items()):
-        if rpd_limit != target_model_rpd_limit:
-             group_capacity = active_keys_count * rpd_limit # 计算该组的总容量
-             used_models_in_group = [m for m in models if model_rpd_usage_count.get(m, 0) > 0] # 找出该组中实际使用的模型
+        if rpd_limit not in reported_rpd_limits: # 检查是否已报告
+             group_capacity = active_keys_count * rpd_limit
+             used_models_in_group = [m for m in models if model_rpd_usage_count.get(m, 0) > 0]
              if used_models_in_group:
                   model_names_str = ', '.join(used_models_in_group)
-                  report_lines.append(f"    - RPD={rpd_limit}: {model_names_str} (估算容量: {group_capacity:,}/天)")
+                  report_lines.append(f"    - RPD={rpd_limit}: {model_names_str} (估算容量: {COLOR_POSITIVE}{group_capacity:,}/天{COLOR_RESET})")
 
     # TPD 输入容量
-    report_lines.append("\n  TPD 输入容量估算:") # 报告 TPD 输入容量估算标题
-    target_tpd_input_capacity = 0
-    if target_model_tpd_input_limit:
-        target_tpd_input_capacity = active_keys_count * target_model_tpd_input_limit # 计算目标模型的总 TPD 输入容量
-        report_lines.append(f"    - 基于 {target_model} (TPD_In={target_model_tpd_input_limit:,}): {target_tpd_input_capacity:,}/天")
-    else:
-        report_lines.append(f"    - 基于 {target_model}: TPD_Input 限制未定义。") # 如果 TPD 输入限制未定义则报告
+    report_lines.append(f"\n  {COLOR_SECTION_HEADER}TPD 输入容量估算:{COLOR_RESET}") # 报告 TPD 输入容量估算标题，使用新颜色
+
+    # 遍历目标模型进行 TPD 输入容量估算
+    for target_model in target_models:
+        target_model_limits = config.MODEL_LIMITS.get(target_model, {})
+        target_model_tpd_input_limit = target_model_limits.get("tpd_input")
+
+        if target_model_tpd_input_limit is not None:
+            target_tpd_input_capacity = active_keys_count * target_model_tpd_input_limit
+            report_lines.append(f"    - 基于 {target_model} (TPD_In={target_model_tpd_input_limit:,}): {COLOR_POSITIVE}{target_tpd_input_capacity:,}/天{COLOR_RESET}")
+        else:
+            report_lines.append(f"    - 基于 {target_model}: {COLOR_ERROR}TPD_Input 限制未定义。{COLOR_RESET}")
 
     # 今日用量与估算
-    report_lines.append("\n  今日用量与估算 (PT 时间):") # 报告今日用量与估算标题
+    report_lines.append(f"\n  {COLOR_SECTION_HEADER}今日用量与估算 (PT 时间):{COLOR_RESET}") # 报告今日用量与估算标题，使用新颜色
     current_total_rpd = sum(model_total_rpd.values()) # 计算今日总 RPD
     current_total_tpd_input = sum(model_total_tpd_input.values()) # 计算今日总 TPD 输入
-    report_lines.append(f"    - 今日已用 RPD: {current_total_rpd:,}") # 报告今日已用 RPD
-    report_lines.append(f"    - 今日已用 TPD 输入: {current_total_tpd_input:,}") # 报告今日已用 TPD 输入
+    report_lines.append(f"    - 今日已用 RPD: {COLOR_POSITIVE}{current_total_rpd:,}{COLOR_RESET}") # 报告今日已用 RPD，使用新颜色
+    report_lines.append(f"    - 今日已用 TPD 输入: {COLOR_POSITIVE}{current_total_tpd_input:,}{COLOR_RESET}") # 报告今日已用 TPD 输入，使用新颜色
 
     # 计算今天已经过去的时间占全天的比例
     seconds_since_pt_midnight = (today_pt - today_pt.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds()
@@ -262,12 +286,15 @@ def report_usage(key_manager: 'APIKeyManager'):
     if fraction_of_day_passed > 0.01:
         estimated_total_rpd_today = int(current_total_rpd / fraction_of_day_passed) # 估算今日总 RPD
         estimated_total_tpd_input_today = int(current_total_tpd_input / fraction_of_day_passed) # 估算今日总 TPD 输入
-        report_lines.append(f"  预估今日 RPD (PT): {estimated_total_rpd_today:,} (基于 {fraction_of_day_passed:.1%} 时间)") # Report estimated RPD
-        report_lines.append(f"  预估今日 TPD 输入 (PT): N/A (时间过早)") # Report N/A for TPD input if too early
-        report_lines.append(f"  预估今日 TPD 输入 (PT): N/A (时间过早)") # Report N/A for TPD input if too early
+        report_lines.append(f"  预估今日 RPD (PT): {COLOR_POSITIVE}{estimated_total_rpd_today:,}{COLOR_RESET} (基于 {fraction_of_day_passed:.1%} 时间)") # Report estimated RPD, use new color
+        # 根据时间早晚决定是否显示 TPD 输入估算
+        if fraction_of_day_passed > 0.1: # 例如，如果超过 10% 的时间过去了
+            report_lines.append(f"  预估今日 TPD 输入 (PT): {COLOR_POSITIVE}{estimated_total_tpd_input_today:,}{COLOR_RESET} (基于 {fraction_of_day_passed:.1%} 时间)") # Report estimated TPD input, use new color
+        else:
+            report_lines.append(f"  预估今日 TPD 输入 (PT): {COLOR_WARNING}N/A (时间过早){COLOR_RESET}") # Report N/A for TPD input if too early, use warning color
 
     # 平均 RPD
-    report_lines.append("\n  历史平均用量:") # 报告历史平均用量标题
+    report_lines.append(f"\n  {COLOR_SECTION_HEADER}历史平均用量:{COLOR_RESET}") # 报告历史平均用量标题，使用新颜色
     N = 7 # 统计过去 N 天
     last_n_days_rpd = [] # 存储过去 N 天的 RPD
     # 遍历过去 N 天
@@ -280,13 +307,13 @@ def report_usage(key_manager: 'APIKeyManager'):
     avg_daily_rpd = 0
     if last_n_days_rpd:
         avg_daily_rpd = sum(last_n_days_rpd) / len(last_n_days_rpd) # 计算平均 RPD
-        report_lines.append(f"  过去 {len(last_n_days_rpd)} 天平均日 RPD (PT): {avg_daily_rpd:,.0f}") # Report average daily RPD
+        report_lines.append(f"  过去 {len(last_n_days_rpd)} 天平均日 RPD (PT): {COLOR_POSITIVE}{avg_daily_rpd:,.0f}{COLOR_RESET}") # Report average daily RPD, use new color
     else:
-        report_lines.append(f"  过去 {N} 天平均日 RPD (PT): N/A (无历史数据)") # Report N/A if no historical data
+        report_lines.append(f"  过去 {N} 天平均日 RPD (PT): {COLOR_WARNING}N/A (无历史数据){COLOR_RESET}") # Report N/A if no historical data, use warning color
 
     # --- Key 数量建议 ---
-    report_lines.append(f"\n{separator} Key 数量建议 {separator}") # 添加分隔符和标题
-    suggestion = "保持当前 Key 数量。" # 默认建议
+    report_lines.append(f"\n{separator}\n{COLOR_SECTION_HEADER} Key 数量建议 {COLOR_RESET}\n{separator}") # 添加分隔符和标题，使用新颜色
+    suggestion = f"{COLOR_POSITIVE}保持当前 Key 数量。{COLOR_RESET}" # 默认建议，使用新颜色
     # 使用预估今日 RPD 和平均 RPD 中的较大值作为 RPD 使用指标
     rpd_usage_indicator = max(estimated_total_rpd_today, avg_daily_rpd)
     tpd_input_usage_indicator = estimated_total_tpd_input_today # TPD 输入使用指标
@@ -301,76 +328,76 @@ def report_usage(key_manager: 'APIKeyManager'):
 
     # 根据使用率提供 Key 数量建议
     if active_keys_count == 0:
-        suggestion = "错误: 未找到有效的 API Key！"
+        suggestion = f"{COLOR_ERROR}错误: 未找到有效的 API Key！{COLOR_RESET}" # 使用错误色
     elif target_rpd_capacity <= 0:
-        suggestion = "无法生成建议 (目标模型 RPD 限制未定义)。"
+        suggestion = f"{COLOR_ERROR}无法生成建议 (目标模型 RPD 限制未定义)。{COLOR_RESET}" # 使用错误色
     elif rpd_usage_ratio > 0.85:
         # 如果 RPD 使用率过高，建议增加 Key 数量
         needed_keys = int(rpd_usage_indicator / (target_model_rpd_limit * 0.7)) # 计算建议的 Key 数量
-        suggestion = f"警告: 预估/平均 RPD ({rpd_usage_indicator:,.0f}) 已达目标容量 ({target_rpd_capacity:,}) 的 {rpd_usage_ratio:.1%}。建议增加 Key 数量至约 {max(needed_keys, active_keys_count + 1)} 个。"
+        suggestion = f"{COLOR_ERROR}警告: 预估/平均 RPD ({rpd_usage_indicator:,.0f}) 已达目标容量 ({target_rpd_capacity:,}) 的 {rpd_usage_ratio:.1%}。建议增加 Key 数量至约 {max(needed_keys, active_keys_count + 1)} 个。{COLOR_RESET}" # 使用错误色
     elif target_tpd_input_capacity > 0 and tpd_input_usage_ratio > 0.85:
          # 如果 TPD 输入使用率过高，建议增加 Key 数量
          needed_keys = int(tpd_input_usage_indicator / (target_model_tpd_input_limit * 0.7)) # 计算建议的 Key 数量
-         suggestion = f"警告: 预估 TPD 输入 ({tpd_input_usage_indicator:,.0f}) 已达目标容量 ({target_tpd_input_capacity:,}) 的 {tpd_input_usage_ratio:.1%}。建议增加 Key 数量至约 {max(needed_keys, active_keys_count + 1)} 个。"
+         suggestion = f"{COLOR_ERROR}警告: 预估 TPD 输入 ({tpd_input_usage_indicator:,.0f}) 已达目标容量 ({target_tpd_input_capacity:,}) 的 {tpd_input_usage_ratio:.1%}。建议增加 Key 数量至约 {max(needed_keys, active_keys_count + 1)} 个。{COLOR_RESET}" # 使用错误色
     elif rpd_usage_ratio < 0.3 and tpd_input_usage_ratio < 0.3 and active_keys_count > 1:
         # 如果 RPD 和 TPD 输入使用率都较低，且活跃 Key 数量大于 1，建议减少 Key 数量
         if rpd_usage_ratio >= tpd_input_usage_ratio and target_model_rpd_limit:
              ideal_keys = int(rpd_usage_indicator / (target_model_rpd_limit * 0.5)) + 1 # 计算理想的 Key 数量
-             suggestion = f"提示: 预估/平均 RPD ({rpd_usage_indicator:,.0f}) 较低 ({rpd_usage_ratio:.1%})。可考虑减少 Key 数量至约 {max(1, ideal_keys)} 个。"
+             suggestion = f"{COLOR_WARNING}提示: 预估/平均 RPD ({rpd_usage_indicator:,.0f}) 较低 ({rpd_usage_ratio:.1%})。可考虑减少 Key 数量至约 {max(1, ideal_keys)} 个。{COLOR_RESET}" # 使用警告色
         elif target_model_tpd_input_limit:
              ideal_keys = int(tpd_input_usage_indicator / (target_model_tpd_input_limit * 0.5)) + 1 # 计算理想的 Key 数量
-             suggestion = f"提示: 预估 TPD 输入 ({tpd_input_usage_indicator:,.0f}) 较低 ({tpd_input_usage_ratio:.1%})。可考虑减少 Key 数量至约 {max(1, ideal_keys)} 个。"
+             suggestion = f"{COLOR_WARNING}提示: 预估 TPD 输入 ({tpd_input_usage_indicator:,.0f}) 较低 ({tpd_input_usage_ratio:.1%})。可考虑减少 Key 数量至约 {max(1, ideal_keys)} 个。{COLOR_RESET}" # 使用警告色
     report_lines.append(f"  {suggestion}") # 报告建议
 
 
     # --- Top 5 IP 地址统计 ---
-    report_lines.append(f"\n{separator} Top 5 IP 地址统计 (PT 时间) {separator}") # 添加分隔符和标题
+    report_lines.append(f"\n{separator}\n{COLOR_SECTION_HEADER} Top 5 IP 地址统计 (PT 时间) {COLOR_RESET}\n{separator}") # 添加分隔符和标题，使用新颜色
 
     # 今日 Top 5 请求
     top_ips_today_req = get_top_ips(ip_counts_copy, today_pt.date(), today_pt.date()) # 获取今日 Top 5 请求 IP
-    report_lines.append("\n  今日请求次数 Top 5:") # 报告今日 Top 5 请求标题
+    report_lines.append(f"\n  {COLOR_SECTION_HEADER}今日请求次数 Top 5:{COLOR_RESET}") # 报告今日 Top 5 请求标题，使用新颜色
     if top_ips_today_req:
-        for ip, count in top_ips_today_req: report_lines.append(f"    - {ip}: {count}") # 报告每个 IP 和计数
-    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告
+        for ip, count in top_ips_today_req: report_lines.append(f"    - {ip}: {COLOR_POSITIVE}{count}{COLOR_RESET}") # 报告每个 IP 和计数，使用新颜色
+    else: report_lines.append(f"    - {COLOR_WARNING}暂无记录{COLOR_RESET}") # 如果没有记录则报告，使用警告色
 
     # 今日 Top 5 输入 Token
     top_ips_today_input_token = get_top_ips(ip_input_token_counts_copy, today_pt.date(), today_pt.date()) # 获取今日 Top 5 输入 Token IP
-    report_lines.append("  今日输入 Token Top 5:") # 报告今日 Top 5 输入 Token 标题
+    report_lines.append(f"  {COLOR_SECTION_HEADER}今日输入 Token Top 5:{COLOR_RESET}") # 报告今日 Top 5 输入 Token 标题，使用新颜色
     if top_ips_today_input_token:
-        for ip, tokens in top_ips_today_input_token: report_lines.append(f"    - {ip}: {tokens:,}") # 报告每个 IP 和 Token 计数
-    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告
+        for ip, tokens in top_ips_today_input_token: report_lines.append(f"    - {ip}: {COLOR_POSITIVE}{tokens:,}{COLOR_RESET}") # 报告每个 IP 和 Token 计数，使用新颜色
+    else: report_lines.append(f"    - {COLOR_WARNING}暂无记录{COLOR_RESET}") # 如果没有记录则报告，使用警告色
 
     # 本周 Top 5 请求
     top_ips_week_req = get_top_ips(ip_counts_copy, start_of_week_pt.date(), today_pt.date()) # 获取本周 Top 5 请求 IP
-    report_lines.append("\n  本周请求次数 Top 5:") # 报告本周 Top 5 请求标题
+    report_lines.append(f"\n  {COLOR_SECTION_HEADER}本周请求次数 Top 5:{COLOR_RESET}") # 报告本周 Top 5 请求标题，使用新颜色
     if top_ips_week_req:
-        for ip, count in top_ips_week_req: report_lines.append(f"    - {ip}: {count}") # 报告每个 IP 和计数
-    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告
+        for ip, count in top_ips_week_req: report_lines.append(f"    - {ip}: {COLOR_POSITIVE}{count}{COLOR_RESET}") # 报告每个 IP 和计数，使用新颜色
+    else: report_lines.append(f"    - {COLOR_WARNING}暂无记录{COLOR_RESET}") # 如果没有记录则报告，使用警告色
 
     # 本周 Top 5 输入 Token
     top_ips_week_input_token = get_top_ips(ip_input_token_counts_copy, start_of_week_pt.date(), today_pt.date()) # 获取本周 Top 5 输入 Token IP
-    report_lines.append("  本周输入 Token Top 5:") # 报告本周 Top 5 输入 Token 标题
+    report_lines.append(f"  {COLOR_SECTION_HEADER}本周输入 Token Top 5:{COLOR_RESET}") # 报告本周 Top 5 输入 Token 标题，使用新颜色
     if top_ips_week_input_token:
-        for ip, tokens in top_ips_week_input_token: report_lines.append(f"    - {ip}: {tokens:,}") # 报告每个 IP 和 Token 计数
-    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告
+        for ip, tokens in top_ips_week_input_token: report_lines.append(f"    - {ip}: {COLOR_POSITIVE}{tokens:,}{COLOR_RESET}") # 报告每个 IP 和 Token 计数，使用新颜色
+    else: report_lines.append(f"    - {COLOR_WARNING}暂无记录{COLOR_RESET}") # 如果没有记录则报告，使用警告色
 
     # 本月 Top 5 请求
     top_ips_month_req = get_top_ips(ip_counts_copy, start_of_month_pt.date(), today_pt.date()) # 获取本月 Top 5 请求 IP
-    report_lines.append("\n  本月请求次数 Top 5:") # 报告本月 Top 5 请求标题
+    report_lines.append(f"\n  {COLOR_SECTION_HEADER}本月请求次数 Top 5:{COLOR_RESET}") # 报告本月 Top 5 请求标题，使用新颜色
     if top_ips_month_req:
-        for ip, count in top_ips_month_req: report_lines.append(f"    - {ip}: {count}") # 报告每个 IP 和计数
-    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告
+        for ip, count in top_ips_month_req: report_lines.append(f"    - {ip}: {COLOR_POSITIVE}{count}{COLOR_RESET}") # 报告每个 IP 和计数，使用新颜色
+    else: report_lines.append(f"    - {COLOR_WARNING}暂无记录{COLOR_RESET}") # 如果没有记录则报告，使用警告色
 
     # 本月 Top 5 输入 Token
     # Top 5 Input Tokens This Month
     top_ips_month_input_token = get_top_ips(ip_input_token_counts_copy, start_of_month_pt.date(), today_pt.date()) # 获取本月 Top 5 输入 Token IP (Get Top 5 input token IPs for this month)
-    report_lines.append("  本月输入 Token Top 5:") # 报告本月 Top 5 输入 Token 标题 (Report Top 5 input tokens this month title)
+    report_lines.append(f"  {COLOR_SECTION_HEADER}本月输入 Token Top 5:{COLOR_RESET}") # 报告本月 Top 5 输入 Token 标题 (Report Top 5 input tokens this month title), use new color
     if top_ips_month_input_token:
-        for ip, tokens in top_ips_month_input_token: report_lines.append(f"    - {ip}: {tokens:,}") # 报告每个 IP 和 Token 计数 (Report each IP and token count)
-    else: report_lines.append("    - 暂无记录") # 如果没有记录则报告 (Report if no records)
+        for ip, tokens in top_ips_month_input_token: report_lines.append(f"    - {ip}: {COLOR_POSITIVE}{tokens:,}{COLOR_RESET}") # 报告每个 IP 和 Token 计数 (Report each IP and token count), use new color
+    else: report_lines.append(f"    - {COLOR_WARNING}暂无记录{COLOR_RESET}") # 如果没有记录则报告 (Report if no records), use warning color
 
 
-    report_lines.append(f"\n{separator} 报告结束 {separator}") # 添加结束分隔符
+    report_lines.append(f"\n{separator}\n{COLOR_TITLE} 报告结束 {COLOR_RESET}\n{separator}") # 添加结束分隔符，使用新颜色
     full_report = "\n".join(report_lines) # 将所有报告行连接成单个字符串
 
     # 使用配置的日志级别记录报告
@@ -551,39 +578,56 @@ async def get_structured_report_data(key_manager: 'APIKeyManager') -> Dict[str, 
              if model_name in config.MODEL_LIMITS:
                   model_rpd_usage_count[model_name] += 1
 
-    target_model = "gemini-2.5-pro-exp-03-25"
-    target_model_limits = config.MODEL_LIMITS.get(target_model, {})
-    target_model_rpd_limit = target_model_limits.get("rpd")
-    target_model_tpd_input_limit = target_model_limits.get("tpd_input")
+    # 定义需要估算的三个目标模型
+    target_models = [
+        "Gemini-2.5-pro-exp-03-25",
+        "gemini-2.5-flash-preview-04-17",
+        "gemini-2.0-flash-thinking-exp-01-21"
+    ]
 
-    target_rpd_capacity = 0
-    if target_model_rpd_limit:
-        target_rpd_capacity = active_keys_count * target_model_rpd_limit
-        report_data["overall_stats"]["rpd"]["capacity_target_model"] = {
-            "limit": target_model_rpd_limit,
-            "capacity": target_rpd_capacity,
-            "model": target_model
-        }
+    # 遍历目标模型进行 RPD 容量估算
+    report_data["overall_stats"]["rpd"]["capacity_target_models"] = [] # 修改键名并初始化为列表
+    reported_rpd_limits = set() # 记录已报告的 RPD 限制，避免重复
+    for target_model in target_models:
+        target_model_limits = config.MODEL_LIMITS.get(target_model, {})
+        target_model_rpd_limit = target_model_limits.get("rpd")
 
+        if target_model_rpd_limit is not None:
+            target_rpd_capacity = active_keys_count * target_model_rpd_limit
+            report_data["overall_stats"]["rpd"]["capacity_target_models"].append({
+                "limit": target_model_rpd_limit,
+                "capacity": target_rpd_capacity,
+                "model": target_model
+            })
+            reported_rpd_limits.add(target_model_rpd_limit) # 记录已报告的 RPD 限制
+
+    # 报告其他 RPD 组的容量 (排除已在目标模型中报告的 RPD 限制)
     for rpd_limit, models in sorted(rpd_groups.items()):
-        if rpd_limit != target_model_rpd_limit:
+        if rpd_limit not in reported_rpd_limits: # 检查是否已报告
              group_capacity = active_keys_count * rpd_limit
              used_models_in_group = [m for m in models if model_rpd_usage_count.get(m, 0) > 0]
              if used_models_in_group:
-                 report_data["overall_stats"]["rpd"]["capacity_other_models"].append({
-                     "limit": rpd_limit,
-                     "capacity": group_capacity,
-                     "models": used_models_in_group
-                 })
+                  report_data["overall_stats"]["rpd"]["capacity_other_models"].append({
+                      "limit": rpd_limit,
+                      "capacity": group_capacity,
+                      "models": used_models_in_group
+                  })
 
-    target_tpd_input_capacity = 0
-    if target_model_tpd_input_limit:
-        target_tpd_input_capacity = active_keys_count * target_model_tpd_input_limit
-        report_data["overall_stats"]["tpd_input"]["capacity_target_model"] = {
-            "limit": target_model_tpd_input_limit,
-            "capacity": target_tpd_input_capacity,
-            "model": target_model
-        }
+    # TPD 输入容量
+    report_data["overall_stats"]["tpd_input"]["capacity_target_models"] = [] # 修改键名并初始化为列表
+
+    # 遍历目标模型进行 TPD 输入容量估算
+    for target_model in target_models:
+        target_model_limits = config.MODEL_LIMITS.get(target_model, {})
+        target_model_tpd_input_limit = target_model_limits.get("tpd_input")
+
+        if target_model_tpd_input_limit is not None:
+            target_tpd_input_capacity = active_keys_count * target_model_tpd_input_limit
+            report_data["overall_stats"]["tpd_input"]["capacity_target_models"].append({
+                "limit": target_model_tpd_input_limit, # 修复：使用正确的变量名
+                "capacity": target_tpd_input_capacity,
+                "model": target_model
+            })
 
     current_total_rpd = sum(model_total_rpd.values())
     current_total_tpd_input = sum(model_total_tpd_input.values())

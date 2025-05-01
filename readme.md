@@ -42,6 +42,7 @@
       - [生成内容 (`POST /v2/models/{model}:generateContent`)](#生成内容-post-v2modelsmodelgeneratecontent)
     - [API 认证 (适用于 `/v1` 和 `/v2`)](#api-认证-适用于-v1-和-v2)
     - [Web UI 认证](#web-ui-认证)
+    - [Web UI 功能详情](#web-ui-功能详情)
   - [⚠️ 注意事项](#️-注意事项)
   - [🤝 贡献](#-贡献)
   - [📜 许可证](#-许可证)
@@ -58,6 +59,7 @@
 - 自动检测并移除无效或权限不足的 API 密钥，避免重复尝试 (已修复线程安全问题)。
 - 随机化密钥栈，提高负载均衡性能。
 - 自动在请求失败时切换到下一个可用密钥。
+- **智能选择与切换策略**: 代理会根据 Key 的实时健康度评分（综合考虑 RPD, TPD_Input, RPM, TPM_Input 等指标的剩余量）智能选择最佳 Key。当一个 Key 请求失败或被标记为有问题时，会自动尝试下一个得分最高的可用 Key。
 - 启动时显示所有API密钥状态，方便监控和管理。
 - 详细的API密钥使用日志，记录每个密钥的使用情况和错误信息。
 
@@ -69,7 +71,10 @@
 - **每日重置**: RPD 和 TPD_Input 计数根据太平洋时间 (PT) 在每日午夜自动重置。
 - **周期性报告与建议**: 定期（默认每 30 分钟，可通过 `USAGE_REPORT_INTERVAL_MINUTES` 环境变量配置）在日志文件中输出各 Key、各模型的使用情况、估算的剩余额度，并根据用量趋势提供 Key 池数量调整建议 (报告内容已更新以包含输入 Token 指标，建议逻辑已调整)。报告的日志级别可通过 `REPORT_LOG_LEVEL` 环境变量配置（默认为 INFO），方便在特定环境（如 Hugging Face Spaces中设为WARNING才能在终端日志中谁出）中查看。
 - **智能 Key 选择**: 基于各 Key 对目标模型的健康度评分（综合 RPD, TPD_Input, RPM, TPM_Input 剩余百分比，权重已调整）进行智能选择，优化 Key 利用率。评分缓存会定期自动更新。
+- **健康度评分计算**: 评分综合考虑了 Key 在 RPD, TPD_Input, RPM, TPM_Input 四个维度的剩余额度百分比。剩余百分比越高，评分越高。具体权重和计算逻辑在代码中实现，旨在优先选择当前限制最宽松的 Key。
 - **本地速率预检查**: 在请求发送给 Gemini 前，会根据本地跟踪的使用情况和模型限制进行预检查 (RPD, TPD_Input, RPM, TPM_Input)，若判断超限则提前切换 Key，减少对 API 的无效请求。
+
+- **预检查判断逻辑和 Key 切换**: 预检查会检查当前 Key 在所有跟踪指标（RPD, TPD_Input, RPM, TPM_Input）上是否已达到或超过限制。如果任一指标超限，该 Key 会被标记为不可用，并从可用 Key 池中移除（临时或直到每日重置），然后代理会尝试选择下一个健康的 Key。
 
 #### 📊 术语解释
 
@@ -93,7 +98,8 @@
 - **仅接受** Base64 编码的数据。
   - `/v1`: 使用 Data URI 格式 (`data:image/...;base64,...`)。
   - `/v2`: 使用 `inline_data` 字段 (包含 `mime_type` 和 `data`)。
-- **增强验证**: 使用正则表达式解析 Data URI (v1)，并验证 MIME 类型是否为 Gemini 支持的格式 (JPEG, PNG, WebP, HEIC, HEIF)，提高了处理健壮性。
+- **支持的图片 MIME 类型**: `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif`。
+- **增强验证**: 使用正则表达式解析 Data URI (v1)，并验证 MIME 类型是否为 Gemini 支持的格式，提高了处理健壮性。
 
 #### 🔄 上下文管理
 
@@ -101,6 +107,7 @@
 - **上下文补全功能同时适用于 `/v1` (OpenAI 兼容) 和 `/v2` (Gemini 原生) 接口。**
 - **按 Key 配置:** 支持为每个代理 Key 单独配置是否启用上下文补全功能（默认启用）。在文件存储模式下，可通过 `/manage/keys` Web 界面进行管理。
 - 使用 SQLite 进行上下文存储。**默认使用内存模式** (`:memory:`)，适用于 HF Spaces 免费层（重启丢失数据）。可通过 `CONTEXT_DB_PATH` 环境变量启用**文件持久化存储**。
+- **文件存储模式下的数据库文件管理**: 当设置了 `CONTEXT_DB_PATH` 环境变量时，SQLite 数据库文件将存储在该指定路径。如果只指定文件名（例如 `context_store.db`），文件将创建在项目根目录。建议在部署环境中选择一个支持持久化存储的目录来设置 `CONTEXT_DB_PATH`，以确保数据不会丢失。
 - 根据模型 `input_token_limit` (在 `model_limits.json` 中配置) 自动截断过长的上下文。
 - 内存模式下，会定期自动清理超过 TTL 设置的旧上下文，防止内存溢出。
 - 提供 Web 管理界面 (`/manage`) 用于管理上下文（查看、删除、配置 TTL）。
@@ -173,6 +180,7 @@
 - **apscheduler 审查**: 确保后台任务调度可靠。
 - **Jinja2 和 python-jose 审查**: 确保 Web UI 模板和 JWT 认证的安全性。
 - **清理冗余注释**: 移除英文注释和不再相关的注释。
+- **移除多余空行**: 清理了 README 文件末尾的多余空行，以符合格式规范。
 
 ## 🛠️ 使用方式
 
@@ -205,7 +213,6 @@
     | `MAX_CONTEXT_RECORDS_MEMORY`            | （可选）内存数据库模式下，允许存储的最大上下文记录条数。                                                                                 | `5000`                                    |
     | `JWT_ALGORITHM`                         | （可选）JWT 签名算法。                                                                                                               | `HS256`                                   |
     | `ACCESS_TOKEN_EXPIRE_MINUTES`           | （可选）Web UI 登录 JWT 的有效期（分钟）。                                                                                             | `30`                                      |
-    | `CACHE_REFRESH_INTERVAL_SECONDS`        | （可选）Key 分数缓存刷新间隔（秒）。                                                                                                   | `10`                                      |
     | `STREAM_SAVE_REPLY`                     | （可选）设置为 `"true"` 时，流式响应结束后会尝试保存包含模型回复的完整上下文。                                                              | `false`                                   |
 
 4. **（重要）扩展 `app/data/model_limits.json`**: 确保此文件存在，并且为需要进行上下文截断的模型添加了 `"input_token_limit"` 字段（参考 Google 官方文档）。
@@ -387,6 +394,7 @@ POST /v2/models/{model}:generateContent
     // }
   ]
 }
+
 ```
 
 **注意:** `/v2` 接口目前仅实现了 `generateContent` 端点。其他原生 API 功能（如嵌入、计数 Token 等）将在未来版本中逐步支持。
@@ -401,8 +409,8 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 
 `<YOUR_AUTH_CREDENTIAL>` 的值取决于你的部署模式：
 
-- **内存模式 (默认, 如 HF Spaces):** 凭证是 `PASSWORD` 环境变量中配置的**某个**值。例如，如果 `PASSWORD="123,abc"`，则可以使用 `Bearer 123` 或 `Bearer abc`。
-- **文件模式 (`CONTEXT_DB_PATH` 已设置):** 凭证是数据库 `proxy_keys` 表中有效的代理 Key (可通过 `/manage/keys` Web UI 管理)。
+- **内存模式 (默认, 如 HF Spaces部署):** 凭证是 `PASSWORD` 环境变量中配置的**某个**值。每个值对应一个独立的用户和上下文。例如，如果 `PASSWORD="123,abc"`，则可以使用 `Bearer 123` 或 `Bearer abc`。
+- **文件模式 (`CONTEXT_DB_PATH` 已设置):** 凭证是数据库 `proxy_keys` 表中有效的代理 Key。这些 Key 主要通过 `/manage/keys` Web UI 进行管理（添加、删除、启用/禁用、配置上下文状态）。**尽管推荐通过 Web UI 管理，但在代码层面，代理仍然支持直接使用这些 Key 字符串进行认证和获取相关信息。**
 
 ### Web UI 认证
 
@@ -412,6 +420,15 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 2. 使用 `PASSWORD` 环境变量中配置的**某个**值作为密码进行登录。
 3. 登录成功后，浏览器会存储一个 JWT (JSON Web Token) 用于后续的会话认证。
 4. **此功能需要设置 `SECRET_KEY` 环境变量**，用于 JWT 的签名和加密。
+
+### Web UI 功能详情
+
+本项目提供 Web 用户界面，方便用户管理代理服务和查看报告。
+
+- **`/manage` 主页**: 提供代理服务的概览信息，包括当前运行状态、配置信息等。
+- **`/manage/context` 页面**: 用于管理对话上下文。用户可以查看与特定认证凭证（Key）关联的对话历史，并可以选择删除不需要的上下文记录。
+- **`/manage/keys` 页面 (文件模式)**: 在文件存储模式下 (`CONTEXT_DB_PATH` 已设置) 用于管理代理 Key。管理员可以通过此页面添加、删除、启用/禁用 Key，以及配置每个 Key 是否启用上下文补全功能。
+- **`/manage/report` 报告页**: 展示详细的 API 使用情况报告。包括每个 Key 对不同模型的 RPM, RPD, TPD_Input, TPM_Input 使用统计，以及基于用量趋势的 Key 池数量调整建议。此页面提供了可视化的方式来监控和优化 Key 的使用。
 
 ## ⚠️ 注意事项
 
