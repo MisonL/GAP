@@ -11,7 +11,7 @@
 <form id="ttl-form" class="form-group"> {# 添加 id, 移除 method/action #} {# TTL 设置表单，使用 JS 提交 #}
     <label for="ttl_days">上下文保留天数 (0 表示禁用自动清理):</label> {# 输入框标签 #}
     {# 使用 id="ttl_days_input" 以便 JS 更新, 确保初始值为 7 #}
-    <input type="number" id="ttl_days_input" name="ttl_days" value="7" min="0" required> {# TTL 天数输入框 #}
+    <input type="number" id="ttl_days_input" name="ttl_days" value="7" min="0" required style="width: 80px;"> {# TTL 天数输入框 #}
     {# 再次确认添加 margin-top 样式 #}
     {# CSRF input removed #}
     <button type="submit" class="primary" style="margin-top: 0.75rem; display: inline-block;">更新 TTL</button> {# 增加边距并确保是 inline-block #} {# 更新 TTL 按钮 #}
@@ -40,7 +40,13 @@
 
     document.addEventListener('DOMContentLoaded', async function() {
         console.log('Manage Context: DOMContentLoaded event fired.'); // 确认脚本开始执行
+
+        // --- 获取 Token ---
         const token = localStorage.getItem('access_token'); // 从 localStorage 获取 token
+        // 不再在没有 token 时立即重定向，而是允许页面加载，并在需要认证的 API 调用失败时处理
+        // No longer redirect immediately if no token, allow page to load and handle authentication failure on API calls
+        console.log('Manage Context: Token status -', token ? 'Found' : 'Not found');
+
         const contextListContainer = document.getElementById('context-list-container'); // 获取上下文列表容器
         const ttlInput = document.getElementById('ttl_days_input'); // 获取 TTL 输入框
         const ttlForm = document.getElementById('ttl-form'); // 获取 TTL 表单
@@ -52,29 +58,41 @@
         if (!ttlForm) console.error('Manage Context: ttlForm not found!');
         if (!ttlStatusSpan) console.error('Manage Context: ttlStatusSpan not found!');
 
+        // 如果没有 token，显示提示并禁用需要认证的功能
+        if (!token) {
+            contextListContainer.innerHTML = '<p>请登录以查看和管理上下文数据。</p>'; // 显示登录提示
+            console.log('Manage Context: No token found, displaying login prompt and disabling authenticated features.');
+            // 禁用 TTL 表单和刷新按钮
+            if (ttlInput) ttlInput.disabled = true;
+            if (ttlForm) {
+                const ttlSubmitButton = ttlForm.querySelector('button[type="submit"]');
+                if (ttlSubmitButton) ttlSubmitButton.disabled = true;
+            }
+            const refreshButton = document.getElementById('refresh-context-btn');
+            if (refreshButton) refreshButton.disabled = true;
 
-        // --- 数据加载逻辑 ---
-        if (!token) { // 如果没有 token
-            console.error('Manage Context: 未找到 access_token，重定向到登录页。');
-            window.location.href = '/'; // 重定向到登录页
-            return; // 必须 return 阻止后续代码执行
+            // 不执行后续的数据加载逻辑
+            return;
         }
+
+        // 如果有 token，继续加载数据
         console.log('Manage Context: Token found, attempting to fetch data...');
         contextListContainer.innerHTML = '<p>正在加载上下文数据...</p>'; // 确保显示加载状态
 
         try {
-            // Use standard fetch with Authorization header
-            // 使用标准 fetch 并带 Authorization header
-            const response = await fetch('/api/manage/context/data', { // 发送请求获取上下文数据
-                 headers: {
-                     'Authorization': `Bearer ${token}` // 添加 Authorization header
-                 }
-             });
+            // 添加 Authorization Header
+            const response = await fetch('/api/manage/context/data', {
+                headers: { 'Authorization': `Bearer ${token}` } // 添加 Authorization header
+            }); // 发送请求获取上下文数据
             console.log('Manage Context: Fetch response status:', response.status);
 
             if (response.ok) { // 如果响应成功
                 const data = await response.json(); // 解析 JSON 数据
                 console.log('Manage Context: 成功获取上下文数据:', data);
+                console.log('Manage Context: Received data:', data); // 添加调试输出
+                console.log('Manage Context: data.is_admin:', data.is_admin); // 添加调试输出
+                console.log('Manage Context: Received data:', data); // 添加调试输出
+                console.log('Manage Context: data.is_admin:', data.is_admin); // 添加调试输出
                 if (ttlInput && data.current_ttl_days !== undefined) { // 如果 TTL 输入框存在且数据中包含 TTL
                     ttlInput.value = data.current_ttl_days; // 更新 TTL 输入框的值
                     console.log('Manage Context: TTL input updated to', data.current_ttl_days);
@@ -85,7 +103,7 @@
 
                  // --- 新增：根据管理员状态禁用 TTL 表单 ---
                  // --- New: Disable TTL form based on admin status ---
-                 const isAdmin = data.is_admin === true; // 明确检查布尔值 true
+                 const isAdmin = !!data.is_admin; // 检查是否为真值 (truthy)
                  const ttlSubmitButton = ttlForm ? ttlForm.querySelector('button[type="submit"]') : null; // 获取 TTL 提交按钮
                  console.log('Manage Context: Is Admin:', isAdmin);
                  if (!isAdmin) { // 如果不是管理员
@@ -115,11 +133,11 @@
                  renderContextList(data.contexts_info || []); // 渲染上下文列表
                  console.log('Manage Context: Context list rendered.');
              } else if (response.status === 401 || response.status === 403) { // 如果认证失败
-                 console.error('Manage Context: 认证失败 (401/403)，清除 token 并重定向到登录页。');
-                localStorage.removeItem('access_token'); // 清除 token
-                window.location.href = '/'; // 重定向到登录页
-            } else { // 其他错误
-                const errorText = await response.text(); // 获取原始错误文本
+                 console.error('Manage Context: 认证失败 (401/403)，提示用户并重定向到登录页。');
+                 alert('认证失败，请重新登录。'); // 提示用户
+                 window.location.href = '/'; // 重定向到登录页
+             } else { // 其他错误
+                 const errorText = await response.text(); // 获取原始错误文本
                 console.error(`Manage Context: 获取上下文数据失败: ${response.status} ${response.statusText}`, errorText);
                 contextListContainer.innerHTML = `<p style="color: red;">加载上下文数据失败 (${response.status})，请检查后台日志。</p>`; // 显示错误消息
             }
@@ -138,32 +156,23 @@
                 ttlStatusSpan.textContent = '正在更新...'; // 显示更新状态
                 ttlStatusSpan.style.color = 'orange';
 
-                const currentToken = localStorage.getItem('access_token'); // 重新获取最新的token，以防万一
-                if (!currentToken) { // 如果没有 token
-                    ttlStatusSpan.textContent = '错误：未登录'; // 显示错误消息
-                    ttlStatusSpan.style.color = 'red';
-                    console.error('Manage Context: Token missing during TTL update.');
-                    // 可选：稍后重定向到登录页
-                    // window.location.href = '/';
-                    return;
-                }
-
                 const ttlValue = ttlInput.value; // 获取 TTL 值
                 const formData = new FormData(); // 创建 FormData 对象
-                formData.append('ttl_days', ttlValue); // 添加 TTL 值到 FormData
-                console.log('Manage Context: Sending TTL update with value:', ttlValue, 'and token:', currentToken.substring(0, 10) + '...');
+                formData.append('ttl', ttlValue); // 添加 TTL 值到 FormData，匹配后端期望的参数名
+                formData.append('key', 'global'); // 添加一个占位符 key，匹配后端期望的参数
+                console.log('Manage Context: Sending TTL update with value:', ttlValue);
 
                 // CSRF token check removed
 
                 try {
-                    // Use standard fetch with Authorization header
-                    // 使用标准 fetch 并带 Authorization header
-                    const response = await fetch('/manage/context/update_ttl', { // 发送 POST 请求更新 TTL
+                    // Use standard fetch, browser will send HTTP-only cookie automatically
+                    // 使用标准 fetch，浏览器会自动发送 HTTP-only cookie
+                    // 发送 POST 请求更新 TTL，添加 Authorization Header
+                    // 发送 POST 请求更新 TTL，添加 Authorization Header
+                    // 修复：移除硬编码的占位符，假设后端路由为全局 TTL 更新 /api/manage/context/update_ttl
+                    const response = await fetch('/api/manage/context/update_ttl', {
                         method: 'POST',
-                        headers: {
-                             'Authorization': `Bearer ${currentToken}` // 添加 Authorization header
-                             // Content-Type for FormData is set automatically by browser
-                         },
+                        headers: { 'Authorization': `Bearer ${token}` }, // 添加 Authorization header
                         body: formData // 发送表单数据
                     });
                     console.log('Manage Context: TTL update response status:', response.status);
@@ -193,10 +202,8 @@
                          ttlStatusSpan.textContent = '错误：认证失败'; // 显示错误消息
                          ttlStatusSpan.style.color = 'red';
                          console.error('Manage Context: TTL update authentication failed (401/403).');
-                         localStorage.removeItem('access_token'); // 清除 token
-                         // 可选：稍后重定向
-                         // Optional: Redirect later
-                         // setTimeout(() => { window.location.href = '/'; }, 2000);
+                         alert('认证失败，请重新登录。'); // 提示用户
+                         window.location.href = '/'; // 重定向到登录页
                     } else { // 其他错误
                         let errorDetail = `更新失败 (${response.status})`; // 默认错误详情
                          try {
@@ -332,13 +339,6 @@
 
                 if (confirm(`确定要删除 Key "${proxyKey}" 的上下文吗？`)) { // 确认删除
                     console.log(`Manage Context: User confirmed deletion for key: ${proxyKey}`);
-                    const currentToken = localStorage.getItem('access_token'); // 获取 token
-                    if (!currentToken) { // 如果没有 token
-                        alert('错误：未登录或 Token 已过期。'); // 显示错误提示
-                        console.error('Manage Context: Token missing during delete action.');
-                        window.location.href = '/'; // 重定向到登录
-                        return;
-                    }
 
                     // 显示加载状态（例如，禁用按钮）
                     // Show loading state (e.g., disable button)
@@ -348,13 +348,11 @@
                     // CSRF token check removed
 
                     try {
-                        // Use standard fetch with Authorization header
-                        // 使用标准 fetch 并带 Authorization header
+                        // Use standard fetch, browser will send HTTP-only cookie automatically
+                        // 使用标准 fetch，添加 Authorization Header
                         const response = await fetch(`/manage/context/delete/${encodeURIComponent(proxyKey)}`, { // 确保 key 被正确编码 (Ensure key is correctly encoded) // 发送 POST 请求删除上下文
                             method: 'POST', // 后端路由是 POST (Backend route is POST)
-                            headers: {
-                                 'Authorization': `Bearer ${currentToken}` // 添加 Authorization header
-                             }
+                            headers: { 'Authorization': `Bearer ${token}` } // 添加 Authorization header
                         });
                         console.log(`Manage Context: Delete request for ${proxyKey} status: ${response.status}`);
 
@@ -368,7 +366,6 @@
                         } else if (response.status === 401 || response.status === 403) { // 如果认证失败
                             alert('错误：认证失败，请重新登录。'); // 显示错误提示
                             console.error(`Manage Context: Delete authentication failed for key ${proxyKey} (401/403).`);
-                            localStorage.removeItem('access_token'); // 清除 token
                             window.location.href = '/'; // 重定向到登录
                         } else { // 其他错误
                             let errorDetail = `删除失败 (${response.status})`; // 默认错误详情
@@ -403,30 +400,31 @@
     // Add a function to reload data
     async function reloadContextData() {
         console.log('Manage Context: Reloading context data...');
-        const token = localStorage.getItem('access_token'); // 获取 token
+        const token = localStorage.getItem('access_token'); // 从 localStorage 获取 token
         const contextListContainer = document.getElementById('context-list-container'); // 获取容器
         const ttlInput = document.getElementById('ttl_days_input'); // 也可能需要更新 TTL (Might also need to update TTL)
 
-        if (!token) { // 如果没有 token
-            console.error('Manage Context: Token missing during reload.');
-            window.location.href = '/'; // 重定向到登录
-            return;
-        }
         if (!contextListContainer) { // 如果容器不存在
              console.error('Manage Context: contextListContainer not found during reload.');
              return;
         }
 
+        // 如果没有 token，显示提示并返回
+        if (!token) {
+            contextListContainer.innerHTML = '<p>请登录以查看和管理上下文数据。</p>'; // 显示登录提示
+            console.log('Manage Context: No token found during reload, displaying login prompt.');
+            // 不重定向，仅显示提示，因为页面加载时已经处理了无 token 的情况
+            return;
+        }
+
         contextListContainer.innerHTML = '<p>正在重新加载数据...</p>'; // 显示加载状态
 
         try {
-            // Use standard fetch with Authorization header
-            // 使用标准 fetch 并带 Authorization header
-            const response = await fetch('/api/manage/context/data', { // 发送请求获取数据
-                 headers: {
-                     'Authorization': `Bearer ${token}` // 添加 Authorization header
-                 }
-             });
+            // Use standard fetch, browser will send HTTP-only cookie automatically
+            // 使用标准 fetch，添加 Authorization Header
+            const response = await fetch('/api/manage/context/data', {
+                 headers: { 'Authorization': `Bearer ${token}` } // 添加 Authorization header
+            }); // 发送请求获取数据
             if (response.ok) { // 如果响应成功
                 const data = await response.json(); // 解析 JSON 数据
                 console.log('Manage Context: Data reloaded successfully:', data);
@@ -438,7 +436,7 @@
                  console.error(`Manage Context: Reload data failed: ${response.status}`);
                  contextListContainer.innerHTML = `<p style="color: red;">重新加载数据失败 (${response.status})。</p>`; // 显示错误消息
                  if (response.status === 401 || response.status === 403) { // 如果认证失败
-                     localStorage.removeItem('access_token'); // 清除 token
+                     alert('认证失败，请重新登录。'); // 提示用户
                      window.location.href = '/'; // 重定向到登录
                  }
             }

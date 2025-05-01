@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {# CSRF meta tag removed #}
     <!-- 页面标题 -->
     <title>登录 - Gemini API 代理</title>
     <!-- 基础样式 -->
@@ -11,7 +10,6 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             line-height: 1.6;
-            /* padding: 20px; Remove padding to allow alert to span full width */
             background-color: #f8f9fa;
             color: #343a40;
             display: flex;
@@ -85,28 +83,22 @@
              text-decoration: underline;
         }
 footer {
-    /* text-align is handled by inner div */
-    margin-top: 2rem; /* Add margin to separate from content */
-    padding: 1rem;
-    font-size: 0.9em;
-    color: #6c757d;
-    /* background-color: #e9ecef; */ /* Removed background */
-    /* width: 100%; */ /* Removed width */
-    box-sizing: border-box;
+   margin-top: 2rem;
+   padding: 1rem;
+   font-size: 0.9em;
+   color: #6c757d;
+   box-sizing: border-box;
 }
-    </style>
-    <!-- Add alert styles specifically for this page -->
+   </style>
     <style>
-/* Modify alert style for full width */
 .alert {
     padding: 1rem;
-    margin-bottom: 1rem; /* Space below alert */
+    margin-bottom: 1rem;
     border: 1px solid transparent;
-    border-radius: 0; /* Remove border-radius for full width */
-    text-align: center; /* Center text within the alert */
-    width: 100%; /* Make alert full width */
-    box-sizing: border-box; /* Include padding in width */
-    /* Remove margin-left and margin-right auto */
+    border-radius: 0;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
 }
         .alert-error {
             color: #721c24;
@@ -116,7 +108,6 @@ footer {
     </style>
 </head>
 <body>
-    {# Add the warning message at the very top #}
     <!-- 管理员 Key 缺失警告，显示在页面顶部 -->
     {% if admin_key_missing %}
     <div class="alert alert-error" role="alert">
@@ -124,54 +115,25 @@ footer {
     </div>
     {% endif %}
 
-    {# Keep the login container centered using flexbox alignment on body #}
     <!-- 登录容器，居中显示 -->
     <div class="login-container">
         <h1>🚀 登录</h1>
-        <!-- 如果需要登录 -->
         {% if not login_required %}
         <p style="color: #6c757d;">Web UI 密码未设置，无需登录。</p>
         {% else %}
-        {# The admin_key_missing check was already added in the previous step, ensure it's outside the login-container #}
         <!-- 登录表单 -->
         <form id="login-form" class="login-form">
             <label for="password">请输入访问密码:</label>
             <input type="password" id="password" name="password" required>
-            {# Remove incorrect helper: {{ csrf_token_input }} #}
             <!-- 登录按钮 -->
             <button type="submit">登录</button>
         </form>
-        <!-- 错误消息显示区域 -->
         <div id="error-message" class="error-message"></div>
         {% endif %}
         <!-- API 文档链接已移除 -->
     </div>
-    {# Ensure the script tag is at the end of the body #}
     <!-- 页面底部的脚本 -->
     <script>
-        // --- Helper Functions (Copied from _base.html as login.html doesn't extend it) ---
-        // 获取 Cookie 的辅助函数
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    // Does this cookie string begin with the name we want?
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
-
-        // --- CSRF Helper Functions Removed ---
-        // function getCsrfToken() { ... }
-        // async function fetchWithCsrf(url, options = {}) { ... }
-        // --- End CSRF Helper Functions ---
-
         // 获取登录表单和错误消息元素
         const loginForm = document.getElementById('login-form');
         const errorMessageDiv = document.getElementById('error-message');
@@ -180,76 +142,71 @@ footer {
         if (loginForm) {
             // 监听表单提交事件
             loginForm.addEventListener('submit', async function(event) {
-                event.preventDefault(); // 阻止表单的默认提交行为 (Prevent default form submission behavior)
-                errorMessageDiv.textContent = ''; // 清除之前的错误信息 (Clear previous error message)
+                event.preventDefault(); // 阻止表单的默认提交行为
+                errorMessageDiv.textContent = ''; // 清除之前的错误信息
 
                 const passwordInput = document.getElementById('password');
                 const password = passwordInput.value;
 
                 if (!password) {
-                    errorMessageDiv.textContent = '请输入密码。'; // 显示错误消息 (Display error message)
+                    errorMessageDiv.textContent = '请输入密码。'; // 显示错误消息
                     return;
                 }
 
                 try {
-                    const formData = new FormData(); // 创建 FormData 对象 (Create FormData object)
-                    formData.append('password', password); // 添加密码到 FormData (Append password to FormData)
+                    const formData = new FormData(); // 创建 FormData 对象
+                    formData.append('password', password); // 添加密码到 FormData
 
                     // Use standard fetch, as CSRF is no longer needed for login
                     // 使用标准 fetch，因为登录不再需要 CSRF
-                    const response = await fetch('/login', { // 发送 POST 请求到 /login (Send POST request to /login)
+                    const response = await fetch('/login', { // 发送 POST 请求到 /login
                         method: 'POST',
-                        body: formData // 发送表单数据 (Send form data)
+                        body: formData // 发送表单数据
                         // No need for credentials: 'include' as CSRF cookie is gone
                         // 不需要 credentials: 'include' 因为 CSRF cookie 已移除
                     });
 
                     if (response.ok) {
-                        // 登录成功
-                        // Login successful
-                        const data = await response.json(); // 解析 JSON 响应 (Parse JSON response)
-                        if (data.access_token) { // 如果响应中包含 access_token (If response contains access_token)
-                            console.log('登录成功，收到 access_token。'); // Log success
-                            // 将 token 存储到 localStorage
-                            // Store token in localStorage
-                            localStorage.setItem('access_token', data.access_token); // 存储 access_token (Store access_token)
-                            console.log('Access token 已存储到 localStorage。'); // Log token stored
-                            // 跳转到管理页面
-                            // Redirect to management page
-                            window.location.href = '/manage/context'; // 跳转 (Redirect)
+                        // 登录成功，从 JSON 响应中获取 token 并存储到 localStorage
+                        const data = await response.json(); // 解析 JSON 响应
+                        const accessToken = data.access_token; // 获取 access_token
+                        if (accessToken) {
+                            // 将 token 存储到 localStorage 中
+                            localStorage.setItem('access_token', accessToken); // 设置 localStorage
+
+                            console.log('登录成功，JWT 已存储到 localStorage，跳转到 /manage/report'); // 更新日志
+                            window.location.href = '/manage/context'; // 跳转到上下文管理页面
                         } else {
-                            console.error('登录成功，但响应中缺少 access_token。'); // Log error
-                            errorMessageDiv.textContent = '登录响应无效，请稍后重试。'; // 显示错误消息 (Display error message)
+                            // 响应 OK 但没有 token，可能是后端问题
+                            console.error('登录成功但未收到 access_token'); // Log error
+                            errorMessageDiv.textContent = '登录成功，但未收到认证令牌。'; // 显示错误消息
                         }
                     } else {
                         // 登录失败
-                        // Login failed
-                        let errorDetail = '登录失败，请检查密码或联系管理员。'; // 默认错误详情 (Default error detail)
+                        let errorDetail = '登录失败，请检查密码或联系管理员。'; // 默认错误详情
                         try {
-                            const errorData = await response.json(); // 尝试解析错误响应 JSON (Attempt to parse error response JSON)
+                            const errorData = await response.json(); // 尝试解析错误响应 JSON
                             if (errorData.detail) {
-                                errorDetail = errorData.detail; // 使用后端返回的错误信息 (Use error message from backend)
+                                errorDetail = errorData.detail; // 使用后端返回的错误信息
                             }
                         } catch (e) {
                             console.error('无法解析错误响应:', e); // Log error parsing response
                         }
                         console.warn(`登录失败: ${response.status} - ${errorDetail}`); // Log warning
-                        errorMessageDiv.textContent = errorDetail; // 显示错误消息 (Display error message)
-                        passwordInput.focus(); // 让用户重新输入密码 (Focus password input)
-                        passwordInput.select(); // 选中密码输入框内容 (Select password input content)
+                        errorMessageDiv.textContent = errorDetail; // 显示错误消息
+                        passwordInput.focus(); // 让用户重新输入密码
+                        passwordInput.select(); // 选中密码输入框内容
                     }
                 } catch (error) {
                     console.error('登录请求时发生网络错误:', error); // Log network error
-                    errorMessageDiv.textContent = '登录请求失败，请检查网络连接。'; // 显示错误消息 (Display error message)
+                    errorMessageDiv.textContent = '登录请求失败，请检查网络连接。'; // 显示错误消息
                 }
             });
         } else {
              // 如果 login_required 为 false，表单不存在，无需添加监听器
-             // If login_required is false, the form does not exist, no need to add listener
              console.log('登录表单未找到 (可能因为无需登录)。'); // Log message
         }
     </script>
-<!-- 页面底部 -->
     <footer>
         <div style="text-align: center;">
             Gemini API Proxy - &copy; {{ now.year }} | <a href="https://github.com/MisonL/GAP/" target="_blank" rel="noopener noreferrer" style="color: #6c757d; text-decoration: none;" title="GitHub Repository"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="vertical-align: -0.125em; margin-left: 5px;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"/></svg></a>
