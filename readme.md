@@ -425,7 +425,6 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 
 本项目提供 Web 用户界面，方便用户管理代理服务和查看报告。
 
-- **`/manage` 主页**: 提供代理服务的概览信息，包括当前运行状态、配置信息等。
 - **`/manage/context` 页面**: 用于管理对话上下文。用户可以查看与特定认证凭证（Key）关联的对话历史，并可以选择删除不需要的上下文记录。
 - **`/manage/keys` 页面 (文件模式)**: 在文件存储模式下 (`CONTEXT_DB_PATH` 已设置) 用于管理代理 Key。管理员可以通过此页面添加、删除、启用/禁用 Key，以及配置每个 Key 是否启用上下文补全功能。
 - **`/manage/report` 报告页**: 展示详细的 API 使用情况报告。包括每个 Key 对不同模型的 RPM, RPD, TPD_Input, TPM_Input 使用统计，以及基于用量趋势的 Key 池数量调整建议。此页面提供了可视化的方式来监控和优化 Key 的使用。
