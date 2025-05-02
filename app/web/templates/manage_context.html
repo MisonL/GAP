@@ -23,7 +23,7 @@
 <!-- 已存储的上下文列表区域 -->
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem;"> {# Flex container for heading and button #} {# 标题和刷新按钮的容器 #}
     <h3 style="margin: 0;">已存储的上下文</h3> {# Remove default margin from h3 #} {# 已存储上下文副标题 #}
-    <button id="refresh-context-btn" type="button" class="secondary" style="margin-left: 1rem;">刷新列表</button> {# Add refresh button #} {# 刷新列表按钮 #}
+    <button id="refresh-context-btn" type="button" class="primary" style="margin-left: 1rem;">刷新列表</button> {# Add refresh button #} {# 刷新列表按钮 #}
 </div>
 {# 添加一个容器用于 JS 填充表格或显示消息 #}
 <!-- 上下文列表容器，由 JS 填充 -->
@@ -235,7 +235,11 @@
                 this.textContent = '刷新中...'; // 更新按钮文本
                 await reloadContextData(); // 重新加载数据
                 this.disabled = false; // Re-enable button
-                this.textContent = '刷新列表'; // 恢复按钮文本
+                this.textContent = '列表已刷新'; // 更新按钮文本为已刷新
+                // 添加一个短暂的提示，几秒后恢复按钮文本
+                setTimeout(() => {
+                    this.textContent = '刷新列表'; // 恢复按钮文本
+                }, 2000); // 2秒后恢复
             });
         } else {
             console.error('Manage Context: Refresh button element not found.'); // Log error
