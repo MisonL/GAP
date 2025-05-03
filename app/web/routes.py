@@ -57,7 +57,7 @@ from app.web.auth import verify_jwt_token # 导入新的 JWT 验证依赖 (Impor
 
 # 导入报告相关的函数和 Key Manager 实例
 # Import report related function and Key Manager instance
-from app.core.usage_reporter import get_structured_report_data # 导入获取结构化报告数据的函数 (Import function to get structured report data)
+from app.core.usage_reporter import report_usage # 导入获取结构化报告数据的函数 (Import function to get structured report data) # 更正函数名
 from app.core.key_manager_class import key_manager_instance # 导入 Key Manager 实例 (Import Key Manager instance)
 
 from app.core.key_manager_class import APIKeyManager # 导入 APIKeyManager 类型提示
@@ -709,21 +709,43 @@ async def update_context_ttl(
 
         # 调用正确的函数来更新指定上下文的 TTL
         # Call the correct function to update the TTL for the specified context
-        # 注意：这里的逻辑是更新单个 context_key 的 TTL，而不是所有上下文
-        # Note: The logic here is to update the TTL for a single context_key, not all contexts
-        # TTL 在前端是以天为单位，后端函数需要秒，所以需要乘以 86400 (24 * 60 * 60)
-        # TTL is in days on the frontend, backend function needs seconds, so multiply by 86400 (24 * 60 * 60)
-        success = await context_store.update_ttl(context_key=key, ttl_seconds=ttl * 86400) # 调用正确的函数并传递参数 (Call the correct function and pass parameters)
+        # 导入 context_store 模块以避免循环依赖
+        from app.core import context_store
 
-        if success:
-            logger.info(f"管理员 {admin_key[:8]}... 成功更新上下文 '{key[:8]}...' 的 TTL 到 {ttl} 天。") # 修正日志消息 (Correct log message)
-            return JSONResponse(content={"message": f"上下文 '{key[:8]}...' 的 TTL 已成功更新到 {ttl} 天。"}) # 修正返回消息 (Correct return message)
+        # TTL 在前端是以天为单位，后端函数需要秒
+        ttl_seconds = ttl * 86400 if ttl > 0 else 0 # 如果 ttl 为 0 或负数，则秒数也为 0
+
+        if key == "global":
+            # 处理全局 TTL 更新
+            logger.debug(f"管理员 {admin_key[:8]}... 请求更新全局上下文 TTL 为 {ttl} 天 ({ttl_seconds} 秒)")
+            # 调用更新全局 TTL 的函数 (假设存在)
+            # 注意：需要确保 context_store 中有 update_global_ttl 函数
+            success = await context_store.update_global_ttl(ttl_seconds)
+            if success:
+                logger.info(f"管理员 {admin_key[:8]}... 成功更新全局上下文 TTL 到 {ttl} 天。")
+                return JSONResponse(content={"message": f"全局上下文 TTL 已成功更新到 {ttl} 天。"})
+            else:
+                logger.error(f"管理员 {admin_key[:8]}... 更新全局上下文 TTL 到 {ttl} 天时失败。")
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="更新全局上下文 TTL 失败")
         else:
-            logger.error(f"管理员 {admin_key[:8]}... 更新上下文 '{key[:8]}...' TTL 到 {ttl} 天失败。") # 修正日志消息 (Correct log message)
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"更新上下文 '{key[:8]}...' TTL 失败") # 修正错误详情 (Correct error detail)
-    except Exception as e:
-        logger.error(f"管理员 {admin_key[:8]}... 更新上下文 '{key[:8]}...' TTL 时发生错误: {e}", exc_info=True) # 修正日志消息 (Correct log message)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"更新上下文 '{key[:8]}...' TTL 时发生内部错误") # 修正错误详情 (Correct error detail)
+            # 处理单个 Key 的 TTL 更新
+            logger.debug(f"管理员 {admin_key[:8]}... 请求更新 Key {key[:8]}... 的上下文 TTL 为 {ttl} 天 ({ttl_seconds} 秒)")
+            update_result = await context_store.update_ttl(context_key=key, ttl_seconds=ttl_seconds)
+
+            if update_result is True: # 更新成功
+                logger.info(f"管理员 {admin_key[:8]}... 成功更新上下文 '{key[:8]}...' 的 TTL 到 {ttl} 天。")
+                return JSONResponse(content={"message": f"上下文 '{key[:8]}...' 的 TTL 已成功更新到 {ttl} 天。"})
+            elif update_result is None: # Key 未找到
+                logger.warning(f"管理员 {admin_key[:8]}... 尝试更新上下文 '{key[:8]}...' TTL，但 Key 未找到。")
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"上下文 Key '{key}' 未找到")
+            else: # 更新失败 (数据库错误)
+                logger.error(f"管理员 {admin_key[:8]}... 更新上下文 '{key[:8]}...' TTL 到 {ttl} 天时发生数据库错误。")
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"更新上下文 '{key[:8]}...' TTL 时发生数据库错误")
+    except HTTPException: # 显式重新抛出 HTTPException
+        raise
+    except Exception as e: # 捕获其他所有非 HTTPException 的异常
+        logger.error(f"管理员 {admin_key[:8]}... 更新上下文 TTL (Key: {key[:8]}..., TTL: {ttl}) 时发生意外错误: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"更新上下文 TTL 时发生内部错误")
 
 
 # 删除特定 Key 上下文的 API 端点
@@ -780,7 +802,9 @@ async def get_report_data(
     try:
         # 调用报告函数，传递 key_manager
         # Call the report function, passing key_manager
-        report_data = await get_structured_report_data(key_manager=key_manager) # 获取结构化报告数据，传入 key_manager (Get structured report data, pass key_manager)
+        # 注意：report_usage 不是异步函数，移除 await
+        # Note: report_usage is not an async function, remove await
+        report_data = report_usage(key_manager=key_manager) # 获取结构化报告数据，传入 key_manager (Get structured report data, pass key_manager) # 更正函数名并移除 await
         # 增加管理员状态
         # Add admin status
         report_data["is_admin"] = token_payload.get("admin", False) # 从 token 获取管理员状态 (Get admin status from token)

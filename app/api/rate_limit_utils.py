@@ -27,9 +27,6 @@ def check_rate_limits_and_update_counts(
     检查给定 API Key 和模型的速率限制 (RPD, TPD_Input, RPM, TPM_Input)。
     如果未达到限制，则更新 RPM 和 RPD 计数，并返回 True。
     如果达到任何限制，则记录警告并返回 False。
-    检查给定 API Key 和模型的速率限制 (RPD, TPD_Input, RPM, TPM_Input)。
-    如果未达到限制，则更新 RPM 和 RPD 计数，并返回 True。
-    如果达到任何限制，则记录警告并返回 False。
 
     Args:
         api_key: 当前尝试使用的 API Key。
@@ -50,62 +47,64 @@ def check_rate_limits_and_update_counts(
         # 使用 setdefault 确保 key 和 model 的条目存在
         key_usage = usage_data.setdefault(api_key, defaultdict(lambda: defaultdict(int)))[model_name] # 获取或创建 Key 和模型的用法条目
 
-        # 检查 RPD
-        rpd_limit = limits.get("rpd") # 获取 RPD 限制
-        if rpd_limit is not None and key_usage.get("rpd_count", 0) >= rpd_limit: # 如果达到 RPD 限制
-            logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): RPD 达到限制 ({key_usage.get('rpd_count', 0)}/{rpd_limit})。跳过此 Key。") # RPD 达到限制，跳过此 Key
-            perform_api_call = False # 不执行 API 调用
+        # 检查并更新 RPM
+        rpm_limit = limits.get("rpm")
+        if rpm_limit is not None:
+            current_rpm_count = key_usage.get("rpm_count", 0)
+            rpm_timestamp = key_usage.get("rpm_timestamp", 0)
+
+            if now - rpm_timestamp >= RPM_WINDOW_SECONDS:
+                # 窗口已过期，重置计数并增加
+                key_usage["rpm_count"] = 1 # 第一个请求在新的窗口
+                key_usage["rpm_timestamp"] = now
+                logger.debug(f"RPM 窗口过期，重置计数并增加 (Key: {api_key[:8]}, Model: {model_name}): 新 RPM=1")
+            else:
+                # 窗口未过期，检查是否达到限制
+                if current_rpm_count + 1 > rpm_limit: # 检查加上当前请求是否超限
+                     logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): RPM 达到限制 ({current_rpm_count}/{rpm_limit})。跳过此 Key。")
+                     perform_api_call = False
+                else:
+                    # 未达到限制，增加计数
+                    key_usage["rpm_count"] = current_rpm_count + 1
+                    # timestamp remains the same as it's within the window
+                    logger.debug(f"RPM 计数增加 (Key: {api_key[:8]}, Model: {model_name}): 新 RPM={key_usage['rpm_count']}")
+
+        # 检查并更新 RPD (RPD 检查和更新可以保持原样，因为它不依赖于时间窗口)
+        if perform_api_call:
+            rpd_limit = limits.get("rpd")
+            if rpd_limit is not None:
+                current_rpd_count = key_usage.get("rpd_count", 0)
+                if current_rpd_count + 1 > rpd_limit: # 检查加上当前请求是否超限
+                    logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): RPD 达到限制 ({current_rpd_count}/{rpd_limit})。跳过此 Key。")
+                    perform_api_call = False
+                else:
+                    # 未达到限制，增加计数
+                    key_usage["rpd_count"] = current_rpd_count + 1
+                    logger.debug(f"RPD 计数增加 (Key: {api_key[:8]}, Model: {model_name}): 新 RPD={key_usage['rpd_count']}")
 
         # 检查 TPD_Input (仅检查，不在此处增加，因为 token 数未知)
-        if perform_api_call: # 如果可以执行 API 调用
-            tpd_input_limit = limits.get("tpd_input") # 获取 TPD_Input 限制
-            if tpd_input_limit is not None and key_usage.get("tpd_input_count", 0) >= tpd_input_limit: # 如果达到 TPD_Input 限制
-                logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): TPD_Input 达到限制 ({key_usage.get('tpd_input_count', 0)}/{tpd_input_limit})。跳过此 Key。") # TPD_Input 达到限制，跳过此 Key
-                perform_api_call = False # 不执行 API 调用
-
-        # 检查 RPM
-        if perform_api_call: # 如果可以执行 API 调用
-            rpm_limit = limits.get("rpm") # 获取 RPM 限制
-            if rpm_limit is not None: # 如果设置了 RPM 限制
-                if now - key_usage.get("rpm_timestamp", 0) < RPM_WINDOW_SECONDS: # 如果在 RPM 窗口期内
-                    if key_usage.get("rpm_count", 0) >= rpm_limit: # 如果达到 RPM 限制
-                         logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): RPM 达到限制 ({key_usage.get('rpm_count', 0)}/{rpm_limit})。跳过此 Key。") # RPM 达到限制，跳过此 Key
-                         perform_api_call = False # 不执行 API 调用
-                else:
-                    # 窗口已过期，重置计数和时间戳（将在下面增加）
-                    key_usage["rpm_count"] = 0 # 重置 RPM 计数为 1
-                    key_usage["rpm_timestamp"] = now # 更新 RPM 时间戳
+        if perform_api_call:
+             tpd_input_limit = limits.get("tpd_input")
+             if tpd_input_limit is not None and key_usage.get("tpd_input_count", 0) >= tpd_input_limit:
+                 logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): TPD_Input 达到限制 ({key_usage.get('tpd_input_count', 0)}/{tpd_input_limit})。跳过此 Key。")
+                 perform_api_call = False
 
         # 检查 TPM_Input (仅检查，不在此处增加)
-        if perform_api_call: # 如果可以执行 API 调用
-            tpm_input_limit = limits.get("tpm_input") # 获取 TPM_Input 限制
-            if tpm_input_limit is not None: # 如果设置了 TPM_Input 限制
-                if now - key_usage.get("tpm_input_timestamp", 0) < TPM_WINDOW_SECONDS: # 如果在 TPM_Input 窗口期内
-                     if key_usage.get("tpm_input_count", 0) >= tpm_input_limit: # 如果达到 TPM_Input 限制
-                         logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): TPM_Input 达到限制 ({key_usage.get('tpm_input_count', 0)}/{tpm_input_limit})。跳过此 Key。") # TPM_Input 达到限制，跳过此 Key
-                         perform_api_call = False # 不执行 API 调用
-                else:
-                    # 窗口已过期，重置计数和时间戳
-                    key_usage["tpm_input_count"] = 0 # 重置 TPM_Input 计数
-                    key_usage["tpm_input_timestamp"] = 0 # 重置 TPM_Input 时间戳
+        if perform_api_call:
+             tpm_input_limit = limits.get("tpm_input")
+             if tpm_input_limit is not None:
+                 if now - key_usage.get("tpm_input_timestamp", 0) < TPM_WINDOW_SECONDS:
+                      if key_usage.get("tpm_input_count", 0) >= tpm_input_limit:
+                          logger.warning(f"速率限制预检查失败 (Key: {api_key[:8]}, Model: {model_name}): TPM_Input 达到限制 ({key_usage.get('tpm_input_count', 0)}/{tpm_input_limit})。跳过此 Key。")
+                          perform_api_call = False
+                 # Note: No else block here to reset TPM_Input count/timestamp if window expires,
+                 # because the update_token_counts handles the reset and increment for TPM_Input.
 
-        # --- 如果预检查通过，增加计数 ---
-        if perform_api_call: # 如果可以执行 API 调用
-            # 再次获取 key_usage 以防 setdefault 创建了新条目
-            key_usage = usage_data[api_key][model_name] # 获取 Key 和模型的用法条目
-            # 更新 RPM
-            if now - key_usage.get("rpm_timestamp", 0) >= RPM_WINDOW_SECONDS: # 如果 RPM 窗口已过期
-                key_usage["rpm_count"] = 1 # 重置 RPM 计数为 1
-                key_usage["rpm_timestamp"] = now # 更新 RPM 时间戳
-            else:
-                key_usage["rpm_count"] = key_usage.get("rpm_count", 0) + 1 # 增加 RPM 计数
-            # 更新 RPD
-            key_usage["rpd_count"] = key_usage.get("rpd_count", 0) + 1 # 增加 RPD 计数
-            # 更新最后请求时间戳
-            key_usage["last_request_timestamp"] = now # 更新最后请求时间戳
-            logger.debug(f"速率限制计数增加 (Key: {api_key[:8]}, Model: {model_name}): RPM={key_usage['rpm_count']}, RPD={key_usage['rpd_count']}") # 速率限制计数增加
+        # Update last_request_timestamp if the call is performed
+        if perform_api_call:
+            key_usage["last_request_timestamp"] = now
 
-    return perform_api_call # 返回是否执行 API 调用
+    return perform_api_call
 
 
 # --- Token 计数更新 ---

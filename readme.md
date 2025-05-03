@@ -4,7 +4,7 @@
 <!-- 例如: [![项目状态](https://img.shields.io/badge/status-active-success.svg)](...) -->
 [![许可证: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
-本项目 fork 自 [Mrjwj34](https://github.com/Mrjwj34/Hagemi) 的项目进行二次开发（全程使用 AI 编码，模型主要是 Gemini-2.5-pro-exp-03-25、gemini-2.5-flash-preview-04-17、gemini-2.0-flash-thinking-exp-01-21）。
+本项目 fork 自 [Mrjwj34](https://github.com/Mrjwj34/Hagemi) 的项目进行二次开发（全程使用 AI 编码，模型主要是 gemini-2.5-pro-exp-03-25、gemini-2.5-flash-preview-04-17、gemini-2.0-flash-thinking-exp-01-21）。
 
 这是一个基于 FastAPI 构建的 Gemini API 代理，旨在提供一个简单、安全且可配置的方式来访问 Google 的 Gemini 模型。适用于在 Hugging Face Spaces 上部署，并支持 OpenAI API 格式的工具集成，同时提供 Gemini 原生 API 的直接代理。
 
@@ -148,7 +148,7 @@
 #### 🚦 速率限制和防滥用
 
 - 通过环境变量自定义限制：
-  - `MAX_REQUESTS_PER_MINUTE`：每分钟最大请求数（默认 30）。
+  - `MAX_REQUESTS_PER_MINUTE`：每分钟最大请求数（默认 60）。
   - `MAX_REQUESTS_PER_DAY_PER_IP`：每天每个 IP 最大请求数（默认 600）。
 - 超过速率限制时返回 429 错误。
 - 修复了速率限制逻辑中的缩进错误 (v1.2.0)。

@@ -6,7 +6,8 @@
 import logging
 import asyncio # 导入 asyncio
 from typing import TYPE_CHECKING
-from apscheduler.schedulers.background import BackgroundScheduler # 导入 BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler # 导入 AsyncIOScheduler
+from apscheduler.executors.asyncio import AsyncIOExecutor # 导入 AsyncIOExecutor
 
 # 从其他模块导入必要的组件
 from app import config # 导入 config 模块
@@ -33,7 +34,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger('my_logger')
 
 # --- 调度器实例 ---
-scheduler = BackgroundScheduler() # 创建 BackgroundScheduler 实例
+scheduler = AsyncIOScheduler(
+    executors={
+        'default': {'type': 'threadpool', 'max_workers': 20},
+        'asyncio': {'type': 'asyncio'} # 添加 asyncio 执行器
+    }
+) # 创建 BackgroundScheduler 实例并配置执行器
 
 # --- 同步包装器，用于从调度器调用异步函数 ---
 def run_cleanup_memory_context(max_age_seconds: int):
@@ -72,8 +78,8 @@ def setup_scheduler(key_manager: 'APIKeyManager'):
     # (已确认 report_usage 不需要 async)
     scheduler.add_job(report_usage, 'interval', minutes=USAGE_REPORT_INTERVAL_MINUTES, args=[key_manager], id='usage_report', name='使用报告', replace_existing=True)
     # Key 得分缓存更新任务 (每 10 秒) - 从 key_management 导入
-    # (已确认 _refresh_all_key_scores 不需要 async)
-    scheduler.add_job(_refresh_all_key_scores, 'interval', seconds=CACHE_REFRESH_INTERVAL_SECONDS, args=[key_manager], id='key_score_update', name='Key 得分更新', replace_existing=True) # 注意：_refresh_all_key_scores 现在只需要 key_manager 参数
+    # (已确认 _refresh_all_key_scores 不再是 async)
+    scheduler.add_job(_refresh_all_key_scores, 'interval', seconds=CACHE_REFRESH_INTERVAL_SECONDS, args=[key_manager], id='key_score_update', name='Key 得分更新', replace_existing=True, executor='asyncio') # 注意：_refresh_all_key_scores 现在只需要 key_manager 参数
 
     # 仅在内存数据库模式下添加上下文清理任务
     if IS_MEMORY_DB:

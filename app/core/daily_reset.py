@@ -5,7 +5,7 @@
 import logging # 导入 logging 模块
 import pytz # 导入 pytz 模块
 from datetime import datetime, timedelta # 导入日期和时间相关
-
+from app.core.key_manager_class import key_manager_instance # 导入 Key Manager 实例
 from app.core.tracking import ( # 从同级 tracking 模块导入
     usage_data, usage_lock,             # 实时使用数据和锁
     daily_rpd_totals, daily_totals_lock # 每日 RPD 总量和锁
@@ -41,6 +41,9 @@ def reset_daily_counts():
                 # 2. 重置 TPD_Input (每日输入 Token 数) 计数
                 if "tpd_input_count" in usage_data[key][model]: # 检查是否存在 TPD_Input 计数
                      usage_data[key][model]["tpd_input_count"] = 0 # 将 TPD_Input 计数重置为 0
+
+    # 重置 Key Manager 中的每日配额耗尽标记
+    key_manager_instance.reset_daily_exhausted_keys() # 调用 Key Manager 的重置方法
 
     logger.info(f"所有 Key 的 RPD 和 TPD_Input 计数已重置。") # 所有 Key 的 RPD 和 TPD_Input 计数已重置
 

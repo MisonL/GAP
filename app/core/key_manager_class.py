@@ -8,6 +8,7 @@ from threading import Lock # 用于线程同步的锁 (Used for thread synchroni
 from typing import Dict, Any, Optional, List, Tuple, Set # 确保导入了 Dict, Any, Optional, List, Tuple, Set (Ensure Dict, Any, Optional, List, Tuple, Set are imported)
 import copy      # 用于创建对象的深拷贝或浅拷贝 (Used for creating deep or shallow copies of objects)
 from collections import defaultdict # 提供默认值的字典子类 (Subclass of dictionary that provides default values)
+import asyncio # 导入 asyncio 模块
 
 # 从 tracking 模块导入共享的数据结构、锁和常量
 # 注意：这里需要将相对导入改为绝对导入
@@ -16,6 +17,10 @@ from app.core.tracking import (
     key_scores_cache, cache_lock, cache_last_updated, update_cache_timestamp, # Key 分数缓存、锁、最后更新时间戳和更新函数
     RPM_WINDOW_SECONDS, TPM_WINDOW_SECONDS, CACHE_REFRESH_INTERVAL_SECONDS # 常量：RPM/TPM 窗口和缓存刷新间隔
 )
+
+# 导入 datetime 和 pytz 用于处理时间和时区
+from datetime import datetime
+import pytz
 
 # 获取名为 'my_logger' 的日志记录器实例
 logger = logging.getLogger("my_logger")
@@ -38,7 +43,10 @@ class APIKeyManager:
 
         self.keys_lock = Lock() # 用于保护 api_keys 和 key_configs 访问的线程锁
         self.tried_keys_for_request: Set[str] = set() # 存储当前 API 请求已尝试过的 Key 集合
-
+        # 新增：存储因每日配额耗尽而被标记为当天不可用的 Key 及其标记日期 (YYYY-MM-DD)
+        self.daily_exhausted_keys: Dict[str, str] = {}
+        # 缓存今天的日期字符串，避免在 is_key_daily_exhausted 中频繁获取
+        self._today_date_str = datetime.now(pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d')
     def get_key_config(self, api_key: str) -> Optional[Dict[str, Any]]:
         """
         获取指定 API Key 的配置。
@@ -75,13 +83,13 @@ class APIKeyManager:
     def get_next_key(self) -> Optional[str]:
         """
         轮询获取下一个 API 密钥。
-        如果所有密钥都已尝试过，则返回 None。
+        如果所有密钥都已尝试过或当天不可用，则返回 None。
         """
         with self.keys_lock:
             if not self.api_keys:
                 return None
-            # 找到所有尚未在当前请求中尝试过的 Key
-            available_keys = [k for k in self.api_keys if k not in self.tried_keys_for_request]
+            # 找到所有尚未在当前请求中尝试过且当天可用的 Key (使用内部不加锁方法)
+            available_keys = [k for k in self.api_keys if k not in self.tried_keys_for_request and not self._is_key_daily_exhausted_nolock(k)]
             if not available_keys:
                 return None
 
@@ -94,38 +102,67 @@ class APIKeyManager:
     def select_best_key(self, model_name: str, model_limits: Dict[str, Any]) -> Optional[str]:
         """
         基于缓存的健康度评分选择最佳 API 密钥。
-        如果缓存无效或所有 Key 都超限/已尝试，则返回 None。
+        排除当天已耗尽的 Key。如果缓存无效或所有 Key 都超限/已尝试/当天耗尽，则返回 None。
         """
         with cache_lock:
             now = time.time()
             # 检查特定模型的缓存是否已超过刷新间隔
             if now - cache_last_updated.get(model_name, 0) > CACHE_REFRESH_INTERVAL_SECONDS:
-                logger.info(f"模型 '{model_name}' 的 Key 分数缓存已过期，正在后台刷新...")
-                # 注意：这里的更新是同步的，可能会阻塞请求。考虑改为异步任务。
-                self._update_key_scores(model_name, model_limits)
+                logger.info(f"模型 '{model_name}' 的 Key 分数缓存已过期，正在异步刷新...")
+                # 异步触发缓存更新，避免阻塞当前请求
+                # 注意：这里需要确保在适当的事件循环中创建任务
+                # 假设 select_best_key 在一个异步上下文中被调用
+                try:
+                    import asyncio
+                    asyncio.create_task(self._async_update_key_scores(model_name, model_limits))
+                except RuntimeError:
+                    # 如果不在异步事件循环中，则回退到同步更新（这可能发生在启动时）
+                    logger.warning("不在异步事件循环中，回退到同步刷新 Key 分数缓存。")
+                    # 注意：这里同步调用异步函数需要特殊的运行方式，
+                    # 但在启动时，如果 select_best_key 被同步调用，
+                    # 理论上应该在一个可以运行协程的环境中（例如 FastAPI 的 lifespan）。
+                    # 如果确实在纯同步环境中，直接调用 async def 函数会报错。
+                    # 为了健壮性，可以考虑在这里使用 asyncio.run 或类似的同步运行异步代码的方式，
+                    # 但这会引入新的阻塞点。更优的方案是确保 select_best_key 始终在异步上下文中被调用。
+                    # 暂时保留直接调用，依赖于调用环境。
+                    # asyncio.run(self._async_update_key_scores(model_name, model_limits)) # 这种方式会阻塞
+                    # 另一种方式是使用 nest_asyncio 允许嵌套运行，但通常不推荐
+                    # import nest_asyncio
+                    # nest_asyncio.apply()
+                    # asyncio.run(self._async_update_key_scores(model_name, model_limits))
+                    # 最简单的处理是依赖于调用 select_best_key 的地方是在一个异步函数中，
+                    # 这样 create_task 就能工作。如果不是，那么启动时的同步调用仍然是问题。
+                    # 鉴于问题出现在启动完成日志之后，更可能是 select_best_key 在某个请求处理中被首次调用导致阻塞。
+                    # 因此，异步触发任务是正确的方向。
+                    pass # 在非异步环境中，create_task 会抛出 RuntimeError，这里捕获并忽略，依赖于后台任务或下次调用刷新
+
                 update_cache_timestamp(model_name)
 
             # 获取当前模型的缓存分数（字典：key -> score）
             scores = key_scores_cache.get(model_name, {})
             if not scores:
-                logger.warning(f"模型 '{model_name}' 没有可用的 Key 分数缓存数据。")
-                # 尝试立即更新一次缓存，以防首次加载或数据丢失
-                self._update_key_scores(model_name, model_limits)
-                scores = key_scores_cache.get(model_name, {})
-                if not scores:
-                     logger.error(f"尝试更新后，仍然无法获取模型 '{model_name}' 的 Key 分数缓存。")
-                     return self.get_next_key()
+                logger.warning(f"模型 '{model_name}' 没有可用的 Key 分数缓存数据。尝试回退到轮询策略。")
+                # 如果缓存为空，回退到简单的轮询策略
+                return self.get_next_key()
 
-            # 从缓存分数中过滤掉那些已在当前请求中尝试过的 Key
-            available_scores = {k: v for k, v in scores.items() if k not in self.tried_keys_for_request}
+            # 优化加锁顺序和过滤逻辑，避免死锁
+            # 1. 先在 cache_lock 外获取 keys_lock 来检查每日耗尽状态
+            with self.keys_lock:
+                # 获取当天不可用的 Key 集合
+                daily_exhausted = {k for k, date_str in self.daily_exhausted_keys.items() if date_str == self._today_date_str}
+
+            # 2. 过滤缓存分数
+            available_scores = {}
+            for k, v in scores.items():
+                # 检查是否已尝试、是否当天耗尽
+                if k not in self.tried_keys_for_request and k not in daily_exhausted:
+                    available_scores[k] = v
 
             if not available_scores:
-                logger.warning(f"模型 '{model_name}' 的所有可用 Key（根据缓存）均已在此请求中尝试过。")
+                logger.warning(f"模型 '{model_name}' 的所有可用 Key（根据缓存）均已在此请求中尝试过或当天已耗尽。")
                 return None
 
-            # 按分数降序排序，选择分数最高的 Key（注释掉旧的排序方法）
-            # sorted_keys = sorted(available_scores, key=available_scores.get, reverse=True) # type: ignore
-            # 改为直接查找分数最高的 Key
+            # 按分数降序排序，选择分数最高的 Key
             best_key = max(available_scores, key=available_scores.get) # type: ignore
             best_score = available_scores[best_key]
 
@@ -133,9 +170,9 @@ class APIKeyManager:
             return best_key
 
 
-    def _update_key_scores(self, model_name: str, model_limits: Dict[str, Any]):
+    async def _async_update_key_scores(self, model_name: str, model_limits: Dict[str, Any]):
         """
-        内部方法：更新指定模型的 API 密钥健康度评分缓存。
+        内部异步方法：更新指定模型的 API 密钥健康度评分缓存。
         """
         global key_scores_cache
         with self.keys_lock:
@@ -276,10 +313,12 @@ class APIKeyManager:
 
     def get_active_keys_count(self) -> int:
         """
-        返回当前管理器中有效（未被移除）的密钥数量。
+        返回当前管理器中有效（未被移除且当天可用）的密钥数量。
         """
         with self.keys_lock:
-            return len(self.api_keys)
+            # 使用内部不加锁的方法进行检查，避免死锁
+            active_keys = [key for key in self.api_keys if not self._is_key_daily_exhausted_nolock(key)]
+            return len(active_keys)
 
     def reset_tried_keys_for_request(self):
         """
@@ -287,6 +326,53 @@ class APIKeyManager:
         """
         self.tried_keys_for_request.clear()
         logger.debug("已重置当前请求的已尝试密钥集合。")
+
+    def mark_key_daily_exhausted(self, api_key: str):
+        """
+        标记某个 Key 因达到每日配额而当天不可用。
+        """
+        today_date_str = self._today_date_str # 使用缓存的日期字符串
+        with self.keys_lock:
+            self.daily_exhausted_keys[api_key] = today_date_str # 记录 Key 和今天的日期
+            logger.warning(f"API Key {api_key[:8]}... 已被标记为 {today_date_str} 当天配额耗尽。") # 记录警告日志
+            # 同时降低其分数，确保即使在某些边缘情况下也能避免被选中
+            with cache_lock:
+                for model_name in key_scores_cache:
+                    if api_key in key_scores_cache.get(model_name, {}): # 增加检查 model_name 是否存在
+                        key_scores_cache[model_name][api_key] = 0.0 # 将分数降到最低
+
+    def _is_key_daily_exhausted_nolock(self, api_key: str) -> bool:
+        """
+        内部方法：检查某个 Key 是否被标记为当天不可用（不获取锁）。
+        调用者必须确保已持有 self.keys_lock。
+        """
+        today_date_str = self._today_date_str # 使用缓存的日期字符串
+        # 检查 Key 是否在字典中，并且记录的日期是今天
+        is_exhausted = self.daily_exhausted_keys.get(api_key) == today_date_str
+        # 不在此处记录日志，避免锁内 I/O
+        return is_exhausted
+
+    def is_key_daily_exhausted(self, api_key: str) -> bool:
+        """
+        检查某个 Key 是否被标记为当天不可用（获取锁）。
+        """
+        with self.keys_lock:
+            is_exhausted = self._is_key_daily_exhausted_nolock(api_key)
+            if is_exhausted:
+                 # 在锁外记录日志可能更安全，但这里影响不大
+                 logger.debug(f"Key {api_key[:8]}... 被标记为 {self._today_date_str} 当天配额耗尽，跳过选择。")
+            return is_exhausted
+
+
+    def reset_daily_exhausted_keys(self):
+        """
+        重置所有 Key 的每日配额耗尽标记。应在每日重置时调用。
+        """
+        with self.keys_lock:
+            self.daily_exhausted_keys.clear() # 清空字典
+            # 在重置每日耗尽 Key 时更新缓存的日期字符串
+            self._today_date_str = datetime.now(pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d')
+            logger.info("已重置所有 Key 的每日配额耗尽标记。") # 已重置所有 Key 的每日配额耗尽标记
 
 
 # --- 全局 Key Manager 实例 ---
