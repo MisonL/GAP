@@ -8,6 +8,7 @@ import logging # 导入 logging 模块
 import time # 导入 time 模块
 import pytz # 导入 pytz 模块
 from datetime import datetime # 导入 datetime
+import random # 导入 random 模块 # 导入 random 模块
 from typing import Literal, List, Tuple, Dict, Any, Optional, Union # 导入类型提示
 from fastapi import HTTPException, Request, status # 导入 FastAPI 相关组件
 from fastapi.responses import StreamingResponse # 导入流式响应对象
@@ -29,6 +30,7 @@ from app.core.error_helpers import handle_gemini_error # 导入错误处理函�
 from app.core.request_helpers import get_client_ip, protect_from_abuse # 导入请求辅助函数
 
 # 导入 API 辅助模块的函数
+from app.api.request_utils import get_current_timestamps # 导入获取当前时间戳的函数
 from app.api.token_utils import estimate_token_count, truncate_context # 导入 Token 辅助函数
 from app.api.rate_limit_utils import check_rate_limits_and_update_counts, update_token_counts # 导入速率限制辅助函数
 from app.api.tool_call_utils import process_tool_calls # 导入工具调用辅助函数
@@ -199,6 +201,7 @@ async def process_request(
                     full_reply_content = "" # 新增：用于累积回复内容
                     usage_metadata_received = None # 存储接收到的使用情况元数据
                     actual_finish_reason = "stop" # 存储实际完成原因
+                    safety_issue_detail_received = None # 新增：存储接收到的安全问题详情
                     response_id = f"chatcmpl-{int(time.time() * 1000)}" # 更唯一的 ID
 
                     try:
@@ -208,14 +211,18 @@ async def process_request(
                                     usage_metadata_received = chunk['_usage_metadata'] # 提取使用情况元数据
                                     logger.debug(f"流接收到 usage metadata: {usage_metadata_received}") # 流接收到 usage metadata
                                     continue # 继续处理下一个块
-                                if '_final_finish_reason' in chunk:
+                                elif '_final_finish_reason' in chunk:
                                     actual_finish_reason = chunk['_final_finish_reason'] # 提取最终完成原因
                                     logger.debug(f"流接收到最终完成原因: {actual_finish_reason}") # 流接收到最终完成原因
+                                    continue # 继续处理下一个块
+                                elif '_safety_issue' in chunk: # 新增：处理安全问题详情块
+                                    safety_issue_detail_received = chunk['_safety_issue'] # 存储安全问题详情
+                                    logger.warning(f"流接收到安全问题详情: {safety_issue_detail_received}") # 流接收到安全问题详情
                                     continue # 继续处理下一个块
                                 # 可以添加对其他元数据块的处理
 
                             # 检查是否是错误信息（例如内部处理错误）
-                            if isinstance(chunk, str) and chunk.startswith("[ERROR]"): # 如果是错误字符串
+                            elif isinstance(chunk, str) and chunk.startswith("[ERROR]"): # 如果是错误字符串
                                 logger.error(f"流处理内部错误: {chunk}") # 流处理内部错误
                                 last_error = chunk # 记录错误供外部重试判断
                                 stream_error_occurred = True # 标记流错误发生
@@ -242,15 +249,38 @@ async def process_request(
                         if not stream_error_occurred: # 如果没有发生流错误
                             # 如果没有产生任何助手消息，根据完成原因发送结束块
                             if not assistant_message_yielded: # 如果没有产生助手消息
-                                logger.warning(f"流结束时未产生助手内容 (完成原因: {actual_finish_reason})。发送结束块。") # 流结束时未产生助手内容
-                                end_chunk = { # 构建结束块
-                                    "id": response_id,
-                                    "object": "chat.completion.chunk",
-                                    "created": int(time.time()),
-                                    "model": chat_request.model,
-                                    "choices": [{"delta": {}, "index": 0, "finish_reason": actual_finish_reason}] # delta 为空
-                                }
-                                yield f"data: {json.dumps(end_chunk)}\n\n" # Yield 结束块
+                                if actual_finish_reason == "STOP":
+                                    # 新增：如果完成原因是 STOP 但没有内容，根据是否有安全问题发送不同错误块
+                                    if safety_issue_detail_received:
+                                        error_message_detail = f"模型因安全策略停止生成内容。详情: {safety_issue_detail_received}" # 提供更具体的安全提示
+                                        logger.warning(f"流结束时未产生助手内容，完成原因是 STOP，但检测到安全问题。向客户端发送安全提示。详情: {safety_issue_detail_received}") # 记录安全提示日志
+                                        error_code = "safety_block" # 特定错误代码
+                                        error_type = "model_error" # 类型
+                                    else:
+                                        error_message_detail = f"模型返回 STOP 但未生成任何内容。可能是由于输入问题或模型内部错误。完成原因: {actual_finish_reason}"
+                                        logger.error(f"流结束时未产生助手内容，但完成原因是 STOP。向客户端发送错误。") # 记录通用错误日志
+                                        error_code = "empty_response" # 通用错误代码
+                                        error_type = "model_error" # 类型
+
+                                    error_payload = {
+                                        "error": {
+                                            "message": error_message_detail,
+                                            "type": error_type,
+                                            "code": error_code
+                                        }
+                                    }
+                                    yield f"data: {json.dumps(error_payload)}\n\n"
+                                else:
+                                    # 对于其他 finish_reason (如 SAFETY, RECITATION 等)，发送正常的结束块
+                                    logger.warning(f"流结束时未产生助手内容 (完成原因: {actual_finish_reason})。发送结束块。") # 流结束时未产生助手内容
+                                    end_chunk = { # 构建结束块
+                                        "id": response_id,
+                                        "object": "chat.completion.chunk",
+                                        "created": int(time.time()),
+                                        "model": chat_request.model,
+                                        "choices": [{"delta": {}, "index": 0, "finish_reason": actual_finish_reason}] # delta 为空
+                                    }
+                                    yield f"data: {json.dumps(end_chunk)}\n\n" # Yield 结束块
                             else:
                                 # 如果已产生内容，发送一个只有 finish_reason 的结束块
                                 end_chunk = { # 构建结束块
@@ -330,10 +360,35 @@ async def process_request(
                             error_message = "请求频率过高或超出配额，请稍后重试。" # 错误消息
                             error_type = "rate_limit_error" # 错误类型
                             logger.warning(f"流式请求遇到 429 错误 (Key: {current_api_key[:8]}...): {error_message}") # 流式请求遇到 429 错误
+
+                            # 尝试解析 429 错误详情，判断是否为每日配额耗尽
+                            try:
+                                error_detail = http_err.response.json() # 获取 JSON 格式的错误详情
+                                is_daily_quota_error = False # 初始化标记
+                                if error_detail and "error" in error_detail and "details" in error_detail["error"]: # 检查结构
+                                    for detail in error_detail["error"]["details"]: # 遍历详情列表
+                                        if detail.get("@type") == "type.googleapis.com/google.rpc/QuotaFailure": # 检查类型
+                                            quota_id = detail.get("quotaId", "") # 获取 quotaId
+                                            if "PerDay" in quota_id: # 检查是否包含 "PerDay"
+                                                is_daily_quota_error = True # 标记为每日配额错误
+                                                break # 找到即停止
+
+                                if is_daily_quota_error and current_api_key: # 如果是每日配额错误且有当前 Key
+                                    key_manager.mark_key_daily_exhausted(current_api_key) # 标记 Key 为当天耗尽
+                                    logger.warning(f"Key {current_api_key[:8]}... 因每日配额耗尽被标记为当天不可用。") # 记录日志
+                                    # 对于流式请求，标记错误后生成器会中断，外层循环会尝试下一个 Key
+
+                            except json.JSONDecodeError: # 捕获 JSON 解析错误
+                                logger.error("无法解析 429 错误的 JSON 响应体。") # 无法解析 429 错误的 JSON 响应体
+                            except Exception as parse_e: # 捕获其他解析错误
+                                logger.error(f"解析 429 错误详情时发生意外异常: {parse_e}") # 解析 429 错误详情时发生意外异常
+
                         elif status_code == 500:
                             error_message = "Gemini API 服务器内部错误，请稍后重试。" # 错误消息
                             error_type = "server_error" # 错误类型
                         elif status_code == 503:
+                            error_message = "Gemini API 服务暂时不可用，请稍后重试。" # 错误消息
+                            error_type = "service_unavailable_error" # 错误类型
                             error_message = "Gemini API 服务暂时不可用，请稍后重试。" # 错误消息
                             error_type = "service_unavailable_error" # 错误类型
                         else:
@@ -391,7 +446,34 @@ async def process_request(
                 if gemini_task.exception(): # 如果 Gemini 任务抛出异常
                     # 如果 Gemini 任务本身抛出异常（例如 API 调用失败）
                     exc = gemini_task.exception() # 获取异常
-                    raise exc # 将异常传递给外层 try-except 处理
+
+                    # 检查是否为 HTTPStatusError 且状态码为 429
+                    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 429: # 如果是 HTTPStatusError 且状态码为 429
+                        logger.warning(f"非流式请求遇到 429 错误 (Key: {current_api_key[:8]}...): {exc.response.text}") # 非流式请求遇到 429 错误
+                        # 尝试解析 429 错误详情，判断是否为每日配额耗尽
+                        try:
+                            error_detail = exc.response.json() # 获取 JSON 格式的错误详情
+                            is_daily_quota_error = False # 初始化标记
+                            if error_detail and "error" in error_detail and "details" in error_detail["error"]: # 检查结构
+                                for detail in error_detail["error"]["details"]: # 遍历详情列表
+                                    if detail.get("@type") == "type.googleapis.com/google.rpc/QuotaFailure": # 检查类型
+                                        quota_id = detail.get("quotaId", "") # 获取 quotaId
+                                        if "PerDay" in quota_id: # 检查是否包含 "PerDay"
+                                            is_daily_quota_error = True # 标记为每日配额错误
+                                            break # 找到即停止
+
+                            if is_daily_quota_error and current_api_key: # 如果是每日配额错误且有当前 Key
+                                key_manager.mark_key_daily_exhausted(current_api_key) # 标记 Key 为当天耗尽
+                                logger.warning(f"Key {current_api_key[:8]}... 因每日配额耗尽被标记为当天不可用。") # 记录日志
+                                # 对于非流式请求，标记错误后，外层循环会尝试下一个 Key
+                                continue # 跳到下一次循环尝试下一个 Key
+
+                        except json.JSONDecodeError: # 捕获 JSON 解析错误
+                            logger.error("无法解析 429 错误的 JSON 响应体。") # 无法解析 429 错误的 JSON 响应体
+                        except Exception as parse_e: # 捕获其他解析错误
+                            logger.error(f"解析 429 错误详情时发生意外异常: {parse_e}") # 解析 429 错误详情时发生意外异常
+
+                    raise exc # 将异常传递给外层 try-except 处理 (对于非每日配额的 429 或其他错误)
 
                 # 获取 Gemini 任务结果
                 response_content: ResponseWrapper = gemini_task.result() # 获取任务结果
@@ -481,26 +563,38 @@ async def process_request(
                 # 如果成功，返回响应
                 return response # 返回响应
 
-        except Exception as e: # 捕获 API 调用尝试中的异常
+        except httpx.HTTPStatusError as http_err: # 捕获 API 调用尝试中的 HTTP 错误
+            status_code = http_err.response.status_code # 获取状态码
+            error_message = handle_gemini_error(http_err, current_api_key, key_manager) # 处理错误并获取消息
+            last_error = error_message # 记录最后错误
+
+            if status_code == 429: # 如果是速率限制错误
+                logger.warning(f"API 请求遇到 429 错误 (Key: {current_api_key[:8]}..., 尝试 {attempt}/{retry_attempts})。等待后重试...") # 记录 429 警告
+                # 计算等待时间（指数退避 + 随机抖动）
+                wait_time = min(60, 2 ** attempt) + random.uniform(0, 1) # 最大等待 60 秒
+                logger.info(f"等待 {wait_time:.2f} 秒后重试...") # 记录等待时间
+                await asyncio.sleep(wait_time) # 等待
+                continue # 继续下一次重试循环
+            else:
+                # 非 429 错误，重新抛出让外层处理
+                raise http_err
+
+        except Exception as e: # 捕获 API 调用尝试中的其他异常
             error_message = handle_gemini_error(e, current_api_key, key_manager) # 处理错误并获取消息
             last_error = error_message # 记录最后错误
             logger.warning(f"API 调用尝试 {attempt}/{retry_attempts} 失败 (Key: {current_api_key[:8]}...): {error_message}")
 
             # 如果是最后一个 Key 尝试失败，或者 Key Manager 中已经没有 Key 了，则不再重试
-            if attempt == retry_attempts or key_manager.get_active_keys_count() == 0:
-                 logger.error(f"所有 API 密钥尝试失败或无可用密钥。最后错误: {last_error}") # Log final failure
-                 # 抛出 HTTPException 返回给客户端
-                 raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"所有可用 API 密钥尝试失败或无可用密钥。请联系管理员。最后错误: {last_error}") # Raise 500 exception
-            else:
-                logger.info(f"尝试下一个 API 密钥...") # Log trying next key
-                # 继续循环，尝试下一个 Key
-
-    # 如果循环结束但没有返回响应（理论上不应发生，除非所有 Key 都被移除且没有抛出异常）
-    # If the loop finishes but no response is returned (should theoretically not happen unless all keys are removed and no exception is raised)
-    logger.error("请求处理循环结束，但未返回响应。") # Log unexpected state
-    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="请求处理失败，请联系管理员。") # Raise 500 exception
-
-# 注意：原 request_processor.py 中没有明确需要拆分到 request_processing.py 的其他函数。
-# process_request 是核心逻辑，保留在此文件中。
-# Note: There are no other functions in the original request_processor.py that need to be split into request_processing.py.
-# process_request is the core logic and remains in this file.
+    # 如果所有重试都失败了
+    if last_error:
+        logger.error(f"所有重试尝试失败。最后错误: {last_error}") # 所有重试尝试失败
+        # 如果最后一个错误是 429，抛出特定的 HTTPException
+        if "429" in last_error:
+             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="API 请求频率过高或超出配额，请稍后重试。") # 引发 429 异常
+        else:
+             # 对于其他错误，抛出通用的 500 异常
+             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"API 请求失败: {last_error}") # 引发 500 异常
+    else:
+        # 这不应该发生，除非 active_keys_count 为 0 且没有进入循环
+        logger.error("请求处理结束，但没有成功响应且没有记录错误。") # 请求处理结束，但没有成功响应且没有记录错误
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="请求处理失败，没有可用的 API 密钥或发生未知错误。") # 引发 500 异常

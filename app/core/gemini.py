@@ -108,6 +108,12 @@ class GeminiClient:
                                             safety_issue_detected = f"安全问题: {rating['category']}" # 记录安全问题详情
                                             if final_finish_reason == "STOP": final_finish_reason = "SAFETY" # 如果最终原因是 STOP，则更新为 SAFETY
 
+                                            # 新增：如果检测到安全问题且尚未产生文本，yield 安全详情块
+                                            if not text_yielded:
+                                                yield {'_safety_issue': safety_issue_detected}
+                                                # 标记已发送安全提示，避免重复发送
+                                                safety_issue_detected = None # 清空，表示已处理
+
                     except json.JSONDecodeError:
                         logger.debug(f"JSON 解析错误, 当前缓冲区: {buffer}") # JSON 解析错误
                         continue # 继续处理下一行
@@ -131,6 +137,7 @@ class GeminiClient:
             logger.info(f"流式请求结束 (Key: {self.api_key[:8]}..., Model: {request.model}) ←") # 流式请求结束
             # 如果流结束但从未产生文本且检测到安全问题，记录错误但不在此处抛出异常，
             # 让调用者根据最终的 finish_reason 和 usage_metadata 来处理这种情况
+            # 这里的 safety_issue_detected 在上面 yield 后可能已经被清空，但保留日志以防万一
             if not text_yielded and safety_issue_detected:
                 logger.error(f"流结束但未产生文本，检测到安全问题 ({safety_issue_detected}), Key: {self.api_key[:8]}...") # 流结束但未产生文本，检测到安全问题
 

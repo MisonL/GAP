@@ -109,6 +109,14 @@ def convert_messages(messages: List[Message], use_system_prompt=False) -> Union[
             # 遍历内容列表中的每个项目
             for item_index, item in enumerate(content):
                 item_type = item.get('type')
+
+                # --- 新增：处理可能只包含 'text' 键的项目 (例如来自某些客户端的上下文格式) ---
+                if item_type is None and isinstance(item, dict) and 'text' in item and isinstance(item.get('text'), str):
+                    logger.debug(f"消息 {i} 项目 {item_index}: 检测到无类型的文本部分，直接处理。")
+                    parts.append({"text": item['text']})
+                    continue # 处理下一个项目
+                # --- 新增结束 ---
+
                 if item_type == 'text':
                     # 添加文本部分
                     parts.append({"text": item.get('text', '')}) # 使用 get 提供默认空字符串，防止 None
@@ -153,6 +161,19 @@ def convert_messages(messages: List[Message], use_system_prompt=False) -> Union[
 
             # 如果成功解析出 parts 且当前多部分消息没有错误
             if parts and not has_error_in_item:
+                # --- BEGIN: 新增的多文本 parts 合并逻辑 ---
+                text_parts = [p['text'] for p in parts if 'text' in p and len(p) == 1] # 提取所有纯文本 parts 的内容
+                non_text_parts = [p for p in parts if 'text' not in p or len(p) > 1] # 保留所有非文本 parts (如图像)
+
+                if len(text_parts) > 1:
+                    merged_text = "\n".join(text_parts) # 使用换行符合并文本
+                    # 记录合并操作
+                    logger.debug(f"消息 {i}: 检测到 {len(text_parts)} 个文本 parts，合并为一个。")
+                    # 构建新的 parts 列表，合并后的文本在前，后面跟非文本 parts
+                    merged_parts = [{"text": merged_text}] + non_text_parts
+                    parts = merged_parts # 使用合并后的 parts 列表
+                # --- END: 新增的多文本 parts 合并逻辑 ---
+
                 # 映射角色
                 if role in ['user', 'system']:
                     role_to_use = 'user'

@@ -9,6 +9,7 @@ from fastapi import FastAPI # 导入 FastAPI 类
 from dotenv import load_dotenv # 用于加载 .env 文件中的环境变量
 from contextlib import asynccontextmanager # 导入 asynccontextmanager
 from typing import AsyncGenerator # 导入 AsyncGenerator
+from asyncio import TimeoutError # 导入 TimeoutError
 from fastapi.staticfiles import StaticFiles # 导入 StaticFiles
 
 # 加载 .env 文件 (如果存在)
@@ -113,20 +114,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
          try:
              if key_manager.api_keys: # 检查列表是否不为空
                  key_to_use = key_manager.api_keys[0] # 选择第一个有效的 API 密钥用于获取模型列表
-                 all_models = await GeminiClient.list_available_models(key_to_use, app.state.http_client) # 调用 Gemini 客户端获取所有可用模型，并传递 http_client
+                 # 使用 asyncio.wait_for 设置超时
+                 all_models = await asyncio.wait_for(
+                     GeminiClient.list_available_models(key_to_use, app.state.http_client),
+                     timeout=60.0 # 设置 60 秒超时
+                 ) # 调用 Gemini 客户端获取所有可用模型，并传递 http_client
                  GeminiClient.AVAILABLE_MODELS = [model.replace("models/", "") for model in all_models] # 存储清理后的模型名称列表
                  logger.info(f"成功预获取可用模型: {GeminiClient.AVAILABLE_MODELS}") # 记录成功预获取
              else:
                  logger.warning("没有可用的有效密钥来预取模型列表。") # 记录警告
                  GeminiClient.AVAILABLE_MODELS = [] # 设置可用模型列表为空
-         except Exception as e: # 捕获异常
-             logger.error(f"启动时预获取模型列表失败: {e}. 将在第一次 /v1/models 请求时再次尝试。") # 记录错误
+         except TimeoutError: # 捕获超时异常
+             logger.error("启动时预获取模型列表超时 (超过 60 秒)。将在第一次 /v1/models 请求时再次尝试。") # 记录超时错误
+             GeminiClient.AVAILABLE_MODELS = [] # 设置可用模型列表为空
+         except Exception as e: # 捕获其他异常
+             logger.error(f"启动时预获取模型列表失败: {e}. 将在第一次 /v1/models 请求时再次尝试。", exc_info=True) # 记录其他错误
              GeminiClient.AVAILABLE_MODELS = [] # 设置可用模型列表为空
 
-    # 使用在 lifespan 中创建的 key_manager 实例设置并启动后台任务
-    logger.info("设置并启动后台调度器...") # 记录设置和启动调度器
+    # 使用在 lifespan 中创建的 key_manager 实例设置并启动后台调度器
+    logger.info("设置后台调度器...") # 记录设置调度器
     reporting.setup_scheduler(key_manager) # 设置后台任务调度器，传入密钥管理器实例
-    reporting.start_scheduler() # 启动后台任务调度器
 
     # 为未捕获的异常设置全局异常钩子
     logger.info("注册自定义 sys.excepthook...") # 记录注册钩子
@@ -136,18 +143,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("正在初始化数据库表...") # 记录初始化数据库表
 
     try:
-        await db_utils.initialize_db_tables() # 调用异步数据库工具函数来创建或验证所需的数据库表
-    except Exception as e: # 捕获异常
-        logger.error(f"数据库表初始化失败，应用可能无法正常运行: {e}", exc_info=True) # 记录初始化失败错误
+        # 使用 asyncio.wait_for 设置超时
+        await asyncio.wait_for(
+            db_utils.initialize_db_tables(),
+            timeout=60.0 # 设置 60 秒超时
+        ) # 调用异步数据库工具函数来创建或验证所需的数据库表
+    except TimeoutError: # 捕获超时异常
+        logger.error("数据库表初始化超时 (超过 60 秒)，应用可能无法正常运行。", exc_info=True) # 记录超时错误
         # 根据需要决定是否阻止应用启动 (对于数据库错误，通常应该阻止)
+    except Exception as e: # 捕获其他异常
+        logger.error(f"数据库表初始化失败，应用可能无法正常运行: {e}", exc_info=True) # 记录其他初始化失败错误
     #     raise # 如果数据库是关键依赖项，取消注释此行以在初始化失败时停止应用启动
 
     logger.info("应用程序启动完成。") # 记录应用启动完成
+
+    # 启动调度器
+    logger.info("启动后台调度器...") # 记录启动调度器
+    reporting.start_scheduler() # 启动后台任务调度器
 
     yield # 应用在此处运行，直到接收到关闭信号
 
     # --- 关闭逻辑 ---
     logger.info("正在关闭应用程序...") # 记录关闭应用
+    # 关闭调度器
     reporting.shutdown_scheduler() # 优雅地关闭后台任务调度器
     # 关闭 httpx.AsyncClient
     await app.state.http_client.aclose()
@@ -172,7 +190,7 @@ logger.info("已注册全局异常处理器。") # 记录已注册异常处理�
 # API 路由
 # 包含 OpenAI 兼容 API (v1) 端点的路由
 app.include_router(api_endpoints.router, tags=["OpenAI Compatible API v1"]) # 包含 OpenAI 兼容 API (v1) 端点的路由
-logger.info("已包含 API 端点路由器。") # 记录已包含 API 路由器
+logger.info("已包含 OpenAI Compatible API (v1) 端点路由器。") # 记录已包含 v1 API 路由器
 
 # 包含 Gemini 原生 API (v2) 端点的路由
 from app.api import v2_endpoints # 导入 v2 路由模块

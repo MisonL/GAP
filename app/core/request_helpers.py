@@ -6,7 +6,7 @@ import pytz      # 用于处理不同的时区（例如太平洋时间） (Used 
 from fastapi import Request, HTTPException # FastAPI 框架的请求对象和 HTTP 异常 (Request objects and HTTP exceptions for FastAPI framework)
 from collections import defaultdict # 提供默认值的字典子类 (Subclass of dictionary that provides default values)
 from threading import Lock # 用于线程同步的锁 (Used for thread synchronization locks)
-from typing import Dict # 类型提示 (Type hints)
+from typing import Dict, Union, List # 类型提示 (Type hints)
 
 # 获取名为 'my_logger' 的日志记录器实例
 # Get the logger instance named 'my_logger'
@@ -17,7 +17,7 @@ logger = logging.getLogger("my_logger")
 
 # 用于存储每个 IP 地址的每日请求计数
 # Dictionary to store daily request counts for each IP address
-ip_daily_request_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: {"count": 0, "timestamp": 0})
+ip_request_data: Dict[str, Dict[str, Union[int, List[float]]]] = defaultdict(lambda: {"daily_count": 0, "timestamps": []})
 # 用于保护 ip_daily_request_counts 访问的线程锁
 # Thread lock to protect access to ip_daily_request_counts
 ip_daily_counts_lock = Lock()
@@ -84,22 +84,22 @@ def protect_from_abuse(request: Request, max_rpm: int, max_rpd: int):
     today_pacific = datetime.now(pacific_tz).date()
 
     with ip_daily_counts_lock: # 获取 IP 计数锁 (Acquire IP count lock)
-        ip_data = ip_daily_request_counts[ip] # 获取该 IP 的数据 (Get data for this IP)
-        last_request_time = ip_data.get("timestamp", 0) # 获取上次请求时间戳 (Get last request timestamp)
-        daily_count = ip_data.get("count", 0) # 获取当日请求计数 (Get daily request count)
-        # 获取上次请求的太平洋日期
-        # Get the Pacific date of the last request
-        last_request_date_pacific = datetime.fromtimestamp(last_request_time, pacific_tz).date() if last_request_time > 0 else None
+        ip_data = ip_request_data[ip] # 获取该 IP 的数据 (Get data for this IP)
+        daily_count = ip_data.get("daily_count", 0) # 获取当日请求计数 (Get daily request count)
+        timestamps = ip_data.get("timestamps", []) # 获取请求时间戳列表 (Get request timestamps list)
 
         # --- 检查每日请求限制 (RPD) ---
         # --- Check Daily Request Limit (RPD) ---
-        # 如果上次请求不是今天（太平洋时间），则重置每日计数
-        # If the last request was not today (Pacific Time), reset the daily count
+        # 如果上次请求不是今天（太平洋时间），则重置每日计数和时间戳列表
+        # If the last request was not today (Pacific Time), reset the daily count and timestamps list
+        # 检查时间戳列表是否为空，如果不为空，则获取最早的时间戳对应的日期
+        last_request_date_pacific = datetime.fromtimestamp(timestamps[0], pacific_tz).date() if timestamps else None
+
         if last_request_date_pacific != today_pacific:
             daily_count = 0 # 重置计数 (Reset count)
-            ip_data["count"] = 0 # 更新存储中的计数 (Update stored count)
-            # 注意：这里不更新时间戳，因为时间戳用于 RPM 检查
-            # Note: Timestamp is not updated here as it's used for RPM check
+            timestamps = [] # 重置时间戳列表 (Reset timestamps list)
+            ip_data["daily_count"] = 0 # 更新存储中的计数 (Update stored count)
+            ip_data["timestamps"] = [] # 更新存储中的时间戳列表 (Update stored timestamps list)
 
         # 检查是否超过每日限制
         # Check if the daily limit is exceeded
@@ -109,22 +109,32 @@ def protect_from_abuse(request: Request, max_rpm: int, max_rpd: int):
 
         # --- 检查每分钟请求限制 (RPM) ---
         # --- Check Requests Per Minute Limit (RPM) ---
-        # 简单的 RPM 实现：如果距离上次请求不足 60/max_rpm 秒，则拒绝
-        # Simple RPM implementation: Reject if less than 60/max_rpm seconds have passed since the last request
-        time_since_last = now - last_request_time
-        min_interval = 60.0 / max_rpm if max_rpm > 0 else 0 # 计算最小请求间隔 (Calculate minimum request interval)
+        # 滑动窗口 RPM 实现：移除窗口外的旧时间戳，检查剩余数量
+        # Sliding window RPM implementation: Remove old timestamps outside the window, check remaining count
+        rpm_window_seconds = 60 # RPM 窗口为 60 秒 (RPM window is 60 seconds)
+        # 移除早于当前时间减去窗口时间的时间戳
+        # Remove timestamps older than current time minus window time
+        timestamps = [ts for ts in timestamps if now - ts < rpm_window_seconds]
 
-        if time_since_last < min_interval:
-            wait_time = min_interval - time_since_last # 计算需要等待的时间 (Calculate required wait time)
+        if len(timestamps) >= max_rpm:
+            # 如果超过 RPM 限制，计算需要等待的时间
+            # If RPM limit is exceeded, calculate wait time
+            # 需要等到最早的那个请求的时间戳加上窗口时间之后
+            # Need to wait until the timestamp of the earliest request plus window time
+            earliest_timestamp = timestamps[0] if timestamps else now
+            wait_time = earliest_timestamp + rpm_window_seconds - now
+            # 确保等待时间不为负
+            wait_time = max(0.0, wait_time)
+
             logger.warning(f"IP {ip} 请求过于频繁，触发 RPM 限制 ({max_rpm} RPM)。需要等待 {wait_time:.2f} 秒。") # Log warning
             raise HTTPException(status_code=429, detail=f"请求过于频繁。请在 {wait_time:.2f} 秒后重试。Requests are too frequent. Please try again in {wait_time:.2f} seconds.")
 
         # --- 更新计数和时间戳 ---
         # --- Update Counts and Timestamps ---
-        ip_data["count"] = daily_count + 1 # 增加每日计数 (Increment daily count)
-        ip_data["timestamp"] = now # 更新最后请求时间戳 (Update last request timestamp)
-        # ip_daily_request_counts[ip] = ip_data # 更新字典中的数据 (Update data in the dictionary - defaultdict handles this)
-        logger.debug(f"IP {ip} 请求计数更新: RPD={ip_data['count']}, LastTimestamp={now}") # Log count update (DEBUG level)
+        ip_data["daily_count"] = daily_count + 1 # 增加每日计数 (Increment daily count)
+        timestamps.append(now) # 将当前时间戳添加到列表中 (Append current timestamp to the list)
+        ip_data["timestamps"] = timestamps # 更新存储中的时间戳列表 (Update stored timestamps list)
+        logger.debug(f"IP {ip} 请求计数更新: RPD={ip_data['daily_count']}, RPM_Window_Count={len(timestamps)}") # Log count update (DEBUG level)
 def get_current_timestamps():
     """
     获取当前时间戳和太平洋时区的日期字符串。

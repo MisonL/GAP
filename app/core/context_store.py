@@ -10,8 +10,12 @@ import json # 导入 json 模块
 import uuid # 导入 uuid 模块
 import asyncio # 导入 asyncio
 from datetime import datetime, timedelta, timezone # 导入日期、时间、时区相关
-from typing import Optional, List, Dict, Any, Tuple # 导入类型提示
+from typing import Optional, List, Dict, Any, Tuple, Union # 导入类型提示, 增加 Union
 # from contextlib import contextmanager # 不再需要
+from app.core.message_converter import convert_messages # 导入消息转换函数
+
+# 导入 Message 类
+from app.api.models import Message
 
 # 导入配置以获取默认值 (现在由 db_settings 处理)
 # from .. import config as app_config
@@ -261,7 +265,8 @@ async def list_all_context_keys_info(user_key: Optional[str] = None, is_admin: b
         from app.core.db_utils import get_db_connection, DATABASE_PATH
         async with get_db_connection() as conn: # 获取异步数据库连接 (Get asynchronous database connection)
             async with conn.cursor() as cursor: # 使用异步游标 (Use asynchronous cursor)
-                sql = "SELECT proxy_key, length(contents) as content_length, last_used FROM contexts" # 构建 SQL 查询语句 (Build SQL query statement)
+                # 修改 SQL 查询语句，包含 contents 字段
+                sql = "SELECT proxy_key, contents, length(contents) as content_length, last_used FROM contexts" # 构建 SQL 查询语句 (Build SQL query statement)
                 params: Tuple = () # 初始化参数元组 (Initialize parameters tuple)
 
                 if is_admin: # 如果是管理员 (If it's an admin)
@@ -318,6 +323,7 @@ def convert_openai_to_gemini_contents(history: List[Dict]) -> List[Dict]:
             logger.warning(f"跳过无效的 OpenAI 历史消息: {message}") # 记录无效消息警告 (Log warning for invalid message)
 
     return gemini_contents # 返回转换后的 Gemini contents (Return converted Gemini contents)
+
 async def load_context_as_gemini(proxy_key: str) -> Optional[List[Dict[str, Any]]]:
     """
     加载指定代理 Key 的上下文，并将其转换为 Gemini 的 contents 格式。
@@ -332,10 +338,66 @@ async def load_context_as_gemini(proxy_key: str) -> Optional[List[Dict[str, Any]
     if openai_context is None:
         return None # 如果加载失败或未找到，返回 None (Return None if loading fails or not found)
 
-    # 将 OpenAI 格式转换为 Gemini 格式
-    # Convert OpenAI format to Gemini format
-    gemini_context = convert_openai_to_gemini_contents(openai_context) # 转换格式 (Convert format)
-    return gemini_context # 返回 Gemini 格式的上下文 (Return Gemini format context)
+    # 将加载的字典列表转换为 Message 对象列表
+    # Convert the loaded list of dictionaries to a list of Message objects
+    message_objects = []
+    for i, msg_dict in enumerate(openai_context):
+        # 确保字典包含 role 和 parts 字段，并且 parts 是一个列表
+        # Ensure the dictionary contains role and parts fields, and parts is a list
+        if 'role' in msg_dict and 'parts' in msg_dict and isinstance(msg_dict['parts'], list):
+            role = msg_dict['role']
+            parts_list = msg_dict['parts']
+
+            # 构建 content 字段，它应该是 parts 列表本身
+            # Construct the content field, which should be the parts list itself
+            content = parts_list # Message model expects content to be Union[str, List[Dict]]
+
+            # 构建符合 Message 模型期望的字典
+            # Construct a dictionary that matches the Message model's expectation
+            message_data = {'role': role, 'content': content}
+
+            try:
+                # 使用构建好的字典创建 Message 对象
+                # Create Message object using the constructed dictionary
+                message_objects.append(Message(**message_data))
+                logger.debug(f"为 Key {proxy_key[:8]}... 成功将第 {i} 条上下文字典转换为 Message 对象。") # 添加调试日志
+            except Exception as e:
+                logger.error(f"为 Key {proxy_key[:8]}... 使用构建的字典创建 Message 对象失败: {e}. 跳过此消息。", exc_info=True)
+        else:
+            # 如果字典格式异常，记录错误并跳过此消息
+            # If the dictionary format is abnormal, log error and skip this message
+            logger.error(f"为 Key {proxy_key[:8]}... 第 {i} 条上下文字典格式异常，无法处理。跳过此消息: {msg_dict}", exc_info=True)
+
+
+    # 检查转换后的消息列表是否为空
+    # Check if the converted message list is empty
+    if not message_objects:
+        logger.warning(f"为 Key {proxy_key[:8]}... 加载的上下文为空或所有消息均无效。返回 None。") # Log warning if message_objects is empty
+        return None
+
+    # 检查第一条消息的角色是否为 'assistant'，这可能导致 Gemini API 错误
+    # Check if the role of the first message is 'assistant', which might cause Gemini API errors
+    if message_objects[0].role == 'assistant':
+        logger.warning(f"为 Key {proxy_key[:8]}... 加载的上下文第一条消息角色为 'assistant'，这可能导致 Gemini API 错误。") # Log warning for first message role
+
+
+    # 使用更通用的 convert_messages 函数将 Message 对象列表转换为 Gemini 格式
+    # Use the more general convert_messages function to convert the list of Message objects to Gemini format
+    # 注意：convert_messages 函数内部会处理角色映射 ('user', 'system' -> 'user', 'assistant' -> 'model')
+    # Note: The convert_messages function internally handles role mapping ('user', 'system' -> 'user', 'assistant' -> 'model')
+    conversion_result = convert_messages(message_objects, use_system_prompt=False) # 不将历史中的 system 消息视为系统指令
+    if isinstance(conversion_result, list): # 如果转换失败，convert_messages 返回错误字符串列表
+        logger.error(f"为 Key {proxy_key[:8]}... 转换 Message 对象列表为 Gemini 格式失败: {'; '.join(conversion_result)}") # 记录转换失败错误
+        return None # 返回 None 表示加载和转换失败
+
+    gemini_context, _ = conversion_result # 忽略系统指令，因为它应该只来自当前请求
+    return gemini_context # 返回转换后的 Gemini 格式的上下文 (Return Gemini format context)
+
+
+# convert_openai_to_gemini_contents 函数不再需要，因为它已被 convert_messages 替代
+# The convert_openai_to_gemini_contents function is no longer needed as it has been replaced by convert_messages
+# def convert_openai_to_gemini_contents(history: List[Dict]) -> List[Dict]:
+#     ... (原函数内容已删除)
 
 def convert_gemini_to_storage_format(request_content: Dict, response_content: Dict) -> List[Dict]:
     """
@@ -417,27 +479,87 @@ async def cleanup_memory_context(max_age_seconds: int):
             async with conn.cursor() as cursor: # 使用异步游标 (Use asynchronous cursor)
                 # 删除 last_used 早于截止时间的记录
                 # Delete records where last_used is earlier than the cutoff time
-                # 注意：SQLite 的时间字符串比较依赖于一致的格式 (ISO 8601)
-                # Note: SQLite's time string comparison relies on a consistent format (ISO 8601)
-                await cursor.execute("DELETE FROM contexts WHERE last_used < ?", (cutoff_timestamp_str,)) # 使用 await (Use await)
-                deleted_count = cursor.rowcount # 获取 rowcount (Get rowcount)
+                await cursor.execute( # 使用 await (Use await)
+                    """
+                    DELETE FROM contexts
+                    WHERE last_used < ?
+                    """,
+                    (cutoff_timestamp_str,)
+                )
+                deleted_count = cursor.rowcount # 获取删除的行数 (Get number of deleted rows)
                 await conn.commit() # 使用 await (Use await)
-        if deleted_count > 0: # 如果删除了记录 (If records were deleted)
-            logger.info(f"成功清理了 {deleted_count} 条过期的内存上下文记录。") # Log successful cleanup
-        else:
-            logger.info("没有需要清理的过期内存上下文记录。") # Log that no expired records were found
+                logger.info(f"内存数据库清理完成，删除了 {deleted_count} 条记录。") # Log cleanup completion
     except aiosqlite.Error as e: # 捕获 aiosqlite 错误 (Catch aiosqlite error)
-        logger.error(f"清理内存上下文时出错: {e}", exc_info=True) # 记录清理错误 (Log cleanup error)
+        logger.error(f"清理内存上下文失败: {e}", exc_info=True) # Log cleanup failure
 
-async def update_ttl(context_key: str, ttl_seconds: int) -> bool:
+async def update_ttl(context_key: str, ttl_seconds: int) -> Optional[bool]:
     """
-    更新指定上下文的 TTL。
-    TODO: 在此处添加实际的数据库更新逻辑。
-    """
-    logging.info(f"Attempting to update TTL for context_key: {context_key} to {ttl_seconds} seconds.")
-    # 示例：此处应有数据库操作来更新对应记录的 TTL 字段
-    # 例如：await db.contexts.update_one({"key": context_key}, {"$set": {"ttl_seconds": ttl_seconds}})
+    更新指定上下文记录的 TTL (以秒为单位)。
 
-    # 假设更新成功，返回 True
-    # Assume update is successful for now
-    return True
+    Returns:
+        True: 如果更新成功。
+        None: 如果 Key 未找到。
+        False: 如果发生数据库错误。
+    """
+    if not context_key: return False
+    try:
+        # 延迟导入 db_utils
+        from app.core.db_utils import get_db_connection
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cursor:
+                # 检查记录是否存在
+                await cursor.execute("SELECT 1 FROM contexts WHERE proxy_key = ?", (context_key,))
+                row = await cursor.fetchone()
+                if not row:
+                    logger.warning(f"尝试更新 Key {context_key[:8]}... 的 TTL，但未找到记录。")
+                    return None # Key 未找到，返回 None
+
+                # 计算新的 last_used 时间戳
+                # 如果 ttl_seconds <= 0，表示禁用 TTL，可以将 last_used 设置为一个未来很远的时间，或者一个特殊标记
+                # 这里我们选择设置为一个未来时间，以便 load_context 中的逻辑能正确处理
+                if ttl_seconds <= 0:
+                     # 设置为一个未来很远的时间，例如 100 年后
+                     new_last_used = (datetime.now(timezone.utc) + timedelta(days=365 * 100)).isoformat()
+                else:
+                     # 计算基于当前时间的新的 last_used 时间戳
+                     new_last_used = (datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)).isoformat()
+
+
+                # 更新 last_used 字段
+                await cursor.execute("UPDATE contexts SET last_used = ? WHERE proxy_key = ?", (new_last_used, context_key))
+                await conn.commit()
+                logger.info(f"Key {context_key[:8]}... 的 TTL 已更新为 {ttl_seconds} 秒。")
+                return True
+    except aiosqlite.Error as e:
+        logger.error(f"更新 Key {context_key[:8]}... 的 TTL 失败: {e}", exc_info=True)
+        return False
+
+async def update_global_ttl(ttl_seconds: int) -> bool:
+    """
+    更新全局默认上下文 TTL (以秒为单位)。
+
+    Args:
+        ttl_seconds: 新的全局默认 TTL (秒)。
+
+    Returns:
+        True: 如果更新成功。
+        False: 如果发生错误。
+    """
+    try:
+        # 将秒转换为天数（向上取整，确保至少为 1 天，除非 ttl_seconds 为 0）
+        # Convert seconds to days (round up, ensure at least 1 day unless ttl_seconds is 0)
+        ttl_days = (ttl_seconds + 86400 - 1) // 86400 if ttl_seconds > 0 else 0 # 向上取整转换为天，0 秒仍为 0 天
+
+        # 调用 db_settings 中的函数来设置全局 TTL
+        # Call the function in db_settings to set the global TTL
+        await set_ttl_days(ttl_days) # 调用 set_ttl_days 并传递天数
+
+        # 如果 set_ttl_days 没有抛出异常，则表示成功
+        # If set_ttl_days does not raise an exception, it means success
+        logger.info(f"全局默认上下文 TTL 已成功更新到 {ttl_days} 天 ({ttl_seconds} 秒)。")
+        return True
+    except Exception as e:
+        # 捕获 set_ttl_days 可能抛出的异常
+        # Catch exceptions that set_ttl_days might throw
+        logger.error(f"更新全局默认上下文 TTL 到 {ttl_days} 天失败: {e}", exc_info=True)
+        return False

@@ -25,7 +25,7 @@ WEB_UI_PASSWORDS: List[str] = [p.strip() for p in PASSWORD.split(',') if p.strip
 
 SECRET_KEY = os.environ.get("SECRET_KEY") # 用于 Session 中间件，必须设置！
 ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY") # 管理员 API Key
-MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", "30")) # 每分钟最大请求数 (本地限制)
+MAX_REQUESTS_PER_MINUTE: int = int(os.environ.get("MAX_REQUESTS_PER_MINUTE", "60")) # 每分钟最大请求数 (本地限制)
 MAX_REQUESTS_PER_DAY_PER_IP: int = int(os.environ.get("MAX_REQUESTS_PER_DAY_PER_IP", "600")) # 每个 IP 每天最大请求数
 DISABLE_SAFETY_FILTERING: bool = os.environ.get("DISABLE_SAFETY_FILTERING", "false").lower() == "true" # 是否禁用安全过滤
 PROTECT_STATUS_PAGE: bool = os.environ.get("PROTECT_STATUS_PAGE", "false").lower() == "true" # 是否为状态页面启用密码保护

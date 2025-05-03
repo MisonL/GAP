@@ -35,14 +35,19 @@ async def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
 async def set_setting(key: str, value: str):
     """
     """
+    cursor = None # 初始化游标变量
     try:
         async with get_db_connection() as conn:
-            cursor = conn.cursor() # 获取游标
-            await asyncio.to_thread(cursor.execute, "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value)) # 在线程中执行插入或替换操作
-            await asyncio.to_thread(conn.commit) # 在线程中提交事务
+            cursor = await conn.cursor() # 正确 await 获取异步游标
+            # 直接 await 执行异步插入或替换操作
+            await cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+            await conn.commit() # 直接 await 提交事务
             logger.info(f"设置 '{key}' 已更新为 '{value}'") # 设置已更新
     except sqlite3.Error as e:
         logger.error(f"设置 '{key}' 失败: {e}", exc_info=True) # 设置失败
+    finally:
+        if cursor:
+            await cursor.close() # 确保游标在使用后关闭
 
 async def get_ttl_days() -> int:
     """
