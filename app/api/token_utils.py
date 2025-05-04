@@ -32,15 +32,17 @@ def estimate_token_count(contents: List[Dict[str, Any]]) -> int:
 
 def truncate_context(
     contents: List[Dict[str, Any]],
-    model_name: str
+    model_name: str,
+    dynamic_max_tokens_limit: Optional[int] = None # 新增可选参数，表示基于 Key 实时容量的动态限制
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """
-    根据模型限制截断对话历史 (contents)。
+    根据模型限制和可选的动态限制截断对话历史 (contents)。
     从开头成对移除消息，直到满足 Token 限制。
 
     Args:
         contents: 完整的对话历史列表 (Gemini 格式)。
         model_name: 当前请求使用的模型名称。
+        dynamic_max_tokens_limit: 可选参数，基于 Key 实时容量的动态 Token 限制。
 
     Returns:
         元组[List[Dict[str, Any]], bool]:
@@ -60,12 +62,12 @@ def truncate_context(
     # model_limits 应该从 config 模块加载，确保它在应用启动时已加载
     model_limits = getattr(app_config, 'MODEL_LIMITS', {}) # 获取已加载的模型限制字典
     limit_info = model_limits.get(model_name) # 获取特定模型的限制信息
-    max_tokens = default_max_tokens # 初始化最大 Token 数为默认值
+    static_max_tokens = default_max_tokens # 初始化静态最大 Token 数为默认值
     if limit_info and isinstance(limit_info, dict) and limit_info.get("input_token_limit"): # 如果找到限制信息且包含 input_token_limit
         try:
             limit_value = limit_info["input_token_limit"] # 获取限制值
             if limit_value is not None: # 确保值不是 None (JSON 中的 null)
-                 max_tokens = int(limit_value) # 将限制值转换为整数
+                 static_max_tokens = int(limit_value) # 将限制值转换为整数
             else:
                  logger.warning(f"模型 '{model_name}' 的 input_token_limit 值为 null，使用默认值 {default_max_tokens}") # 模型 input_token_limit 值为 null
         except (ValueError, TypeError):
@@ -73,14 +75,20 @@ def truncate_context(
     else:
         logger.warning(f"模型 '{model_name}' 或其 input_token_limit 未在 model_limits.json 中定义，使用默认值 {default_max_tokens}") # 模型或 input_token_limit 未在 model_limits.json 中定义
 
-    truncation_threshold = max(0, max_tokens - safety_margin) # 计算截断阈值，确保不为负数
+    # 2. 确定最终的最大 Token 限制：取静态限制和动态限制中的较小值
+    actual_max_tokens = static_max_tokens # 默认使用静态限制
+    if dynamic_max_tokens_limit is not None and dynamic_max_tokens_limit >= 0: # 如果提供了有效的动态限制
+        actual_max_tokens = min(static_max_tokens, dynamic_max_tokens_limit) # 取静态限制和动态限制中的较小值
+        logger.debug(f"使用动态限制 {dynamic_max_tokens_limit} 和静态限制 {static_max_tokens}，最终最大 Token 限制为 {actual_max_tokens}") # 记录动态和静态限制的使用情况
 
-    # 2. 估算当前上下文的 Token 数量
+    truncation_threshold = max(0, actual_max_tokens - safety_margin) # 计算截断阈值，确保不为负数
+
+    # 3. 估算当前上下文的 Token 数量
     estimated_tokens = estimate_token_count(contents) # 估算 Token 数量
 
-    # 3. 判断是否需要截断
+    # 4. 判断是否需要截断
     if estimated_tokens > truncation_threshold: # 如果估算 Token 数超过阈值
-        logger.info(f"上下文估算 Token ({estimated_tokens}) 超出阈值 ({truncation_threshold} for model {model_name})，开始截断...") # 上下文估算 Token 超出阈值，开始截断
+        logger.info(f"上下文估算 Token ({estimated_tokens}) 超出阈值 ({truncation_threshold} for model {model_name}, actual max tokens {actual_max_tokens})，开始截断...") # 上下文估算 Token 超出阈值，开始截断
         # 创建上下文列表的副本进行修改，避免影响原始列表
         truncated_contents = list(contents) # 创建副本
         # 循环截断，直到 Token 数量满足阈值或消息数不足以成对移除

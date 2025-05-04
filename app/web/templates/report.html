@@ -146,6 +146,38 @@
                 </div>
             </div>
         </div>
+<!-- Key 筛选原因统计 -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">密钥筛选原因统计</h5>
+                </div>
+                <div class="card-body">
+                    {% if report_data and report_data.key_selection_stats %}
+                      {# 检查 report_data 和 key_selection_stats 是否存在且不为空 #}
+                      <table class="table table-striped table-bordered">
+                        {# 使用表格展示数据，添加 Bootstrap 样式类 #}
+                        <thead>
+                          <tr>
+                            <th>筛选原因</th> {# 表头：筛选原因 #}
+                            <th>次数</th>   {# 表头：次数 #}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {# 遍历 key_selection_stats 字典中的每一项 #}
+                          {% for reason, count in report_data.key_selection_stats.items() %}
+                          <tr>
+                            <td>{{ reason }}</td> {# 显示筛选原因 #}
+                            <td>{{ count }}</td>  {# 显示对应的次数 #}
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    {% else %}
+                      {# 如果 key_selection_stats 不存在或为空，显示提示信息 #}
+                      <p class="text-center text-muted">无密钥筛选记录</p>
+                    {% endif %}
+                </div>
+            </div>
     </div> <!-- end .row -->
 
 </div>

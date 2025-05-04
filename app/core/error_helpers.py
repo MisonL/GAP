@@ -26,14 +26,19 @@ def _handle_http_status_error_and_key_removal(
     error_message = f"API 错误 (状态码 {status_code}, {key_identifier}): {api_error_message}" # 格式化错误消息
     logger.error(error_message) # 使用 ERROR 级别记录 API 返回的错误
 
-    # 根据状态码决定是否移除 Key
+    # 根据状态码决定如何处理 Key
     if api_key:
         if status_code in [401, 403, 500, 503]:
-            logger.warning(f"由于 API 错误 (状态码 {status_code})，将移除无效或有问题的 Key: {api_key[:10]}...") # 由于 API 错误，将移除无效或有问题的 Key
-            key_manager.remove_key(api_key) # 移除 Key
+            # 对于可重试或临时性错误，标记 Key 有问题，临时降权，但不移除
+            logger.warning(f"由于 API 错误 (状态码 {status_code})，将临时标记 Key 有问题: {api_key[:10]}...") # 由于 API 错误，将临时标记 Key 有问题
+            key_manager.mark_key_issue(api_key, issue_type=f"HTTP {status_code}") # 标记 Key 有问题，临时降权
         elif status_code == 400 and "API key not valid" in api_error_message:
-             logger.warning(f"API 报告 Key 无效 (400 Bad Request)，将移除 Key: {api_key[:10]}...") # API 报告 Key 无效，将移除 Key
-             key_manager.remove_key(api_key) # 移除 Key
+             # 对于明确的 Key 无效错误，标记 Key 有问题，临时降权
+             logger.warning(f"API 报告 Key 无效 (400 Bad Request)，将临时标记 Key 有问题: {api_key[:10]}...") # API 报告 Key 无效，将临时标记 Key 有问题
+             key_manager.mark_key_issue(api_key, issue_type="Invalid API Key (400)") # 标记 Key 有问题，临时降权
+        elif status_code == 429:
+             # 对于速率限制错误，仅记录日志，不移除或标记 Key，依赖重试机制
+             logger.warning(f"API 速率限制错误 (429 Too Many Requests) for Key: {api_key[:10]}...") # API 速率限制错误
 
     return error_message
 
