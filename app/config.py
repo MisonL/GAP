@@ -15,7 +15,7 @@ load_dotenv()
 logger = logging.getLogger('my_logger') # 获取日志记录器实例
 
 # --- 应用版本 ---
-__version__ = "1.7.1" # 更新版本号到 v1.7.1
+__version__ = "1.7.2" # 更新版本号到 v1.7.2
 
 
 # --- 应用配置 ---
