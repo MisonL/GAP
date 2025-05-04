@@ -47,6 +47,10 @@ class APIKeyManager:
         self.daily_exhausted_keys: Dict[str, str] = {}
         # 缓存今天的日期字符串，避免在 is_key_daily_exhausted 中频繁获取
         self._today_date_str = datetime.now(pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d')
+        # 新增：存储 Key 筛选记录
+        self.key_selection_records: List[Dict[str, Any]] = []
+        # 用于保护 key_selection_records 访问的线程锁
+        self.records_lock = Lock()
     def get_key_config(self, api_key: str) -> Optional[Dict[str, Any]]:
         """
         获取指定 API Key 的配置。
@@ -95,10 +99,19 @@ class APIKeyManager:
             # 注意：不在管理器内部将 Key 标记为已尝试，由调用 select_best_key 或 get_next_key 的函数负责标记
             return key_to_use
 
-    def select_best_key(self, model_name: str, model_limits: Dict[str, Any]) -> Optional[str]:
+    def select_best_key(self, model_name: str, model_limits: Dict[str, Any], current_request_tokens: int, request_id: Optional[str] = None) -> Tuple[Optional[str], int]:
         """
-        基于缓存的健康度评分选择最佳 API 密钥。
-        排除当天已耗尽的 Key。如果缓存无效或所有 Key 都超限/已尝试/当天耗尽，则返回 None。
+        基于缓存的健康度评分选择最佳 API 密钥，并进行 Token 预检查。
+        排除当天已耗尽的 Key。如果缓存无效或所有 Key 都超限/已尝试/当天耗尽，则返回 (None, 0)。
+
+        Args:
+            model_name: 请求的模型名称。
+            model_limits: 模型的限制信息字典。
+            current_request_tokens: 当前请求的输入 Token 估算值。
+
+        Returns:
+            一个元组，包含选中的 API Key (如果找到) 和该 Key 在本次请求中可用于上下文的剩余 Token 容量。
+            如果没有可用的 Key，则返回 (None, 0)。
         """
         # 优先获取 keys_lock
         with self.keys_lock:
@@ -127,34 +140,103 @@ class APIKeyManager:
                     logger.warning(f"模型 '{model_name}' 没有可用的 Key 分数缓存数据。尝试回退到轮询策略。")
                     # 如果缓存为空，回退到简单的轮询策略
                     # 过滤 Keys 列表，排除已尝试和当天耗尽的 Key
-                    available_keys_for_polling = [k for k in self.api_keys if k not in tried_keys and k not in daily_exhausted]
+                    # 过滤 Keys 列表，排除已尝试和当天耗尽的 Key
+                    available_keys_for_polling = []
+                    for k in self.api_keys:
+                        if k in tried_keys:
+                            self.record_selection_reason(k, "Key already tried in this request", request_id)
+                            continue
+                        if k in daily_exhausted:
+                            self.record_selection_reason(k, "Daily Quota Exhausted", request_id)
+                            continue
+                        available_keys_for_polling.append(k)
+
                     if not available_keys_for_polling:
                          logger.warning(f"模型 '{model_name}' 没有 Key 分数缓存，且所有 Key 已在此请求中尝试过或当天已耗尽。")
-                         return None # 没有 Key 可用，即使回退到轮询
+                         self.record_selection_reason("N/A", "No Key Score Cache and all keys tried or exhausted", request_id) # 记录未找到 Key 的原因
+                         return None, 0 # 没有 Key 可用，即使回退到轮询
 
                     # 简单的轮询：选择可用列表中的第一个 Key
                     key_to_use = available_keys_for_polling[0]
                     logger.info(f"模型 '{model_name}' 没有 Key 分数缓存，回退到轮询策略，选择 Key: {key_to_use[:8]}...")
-                    return key_to_use
+
+                    # 回退到轮询时，无法进行精确的 Token 预检查，返回剩余容量为 0
+                    # TODO: 在回退到轮询时，如果可能，也尝试进行 Token 预检查
+                    return key_to_use, 0
 
 
                 # 过滤缓存分数，排除已尝试和当天耗尽的 Key
+                # 过滤缓存分数，排除已尝试和当天耗尽的 Key
                 available_scores = {}
                 for k, v in scores.items():
-                    # 检查是否已尝试、是否当天耗尽
-                    if k not in tried_keys and k not in daily_exhausted:
-                        available_scores[k] = v
+                    # 检查是否已尝试
+                    if k in tried_keys:
+                        self.record_selection_reason(k, "Key already tried in this request", request_id)
+                        continue
+                    # 检查是否当天耗尽
+                    if k in daily_exhausted:
+                        self.record_selection_reason(k, "Daily Quota Exhausted", request_id)
+                        continue
+                    available_scores[k] = v
 
                 if not available_scores:
                     logger.warning(f"模型 '{model_name}' 的所有可用 Key（根据缓存）均已在此请求中尝试过或当天已耗尽。")
-                    return None
+                    return None, 0
 
-                # 按分数降序排序，选择分数最高的 Key
-                best_key = max(available_scores, key=available_scores.get) # type: ignore
-                best_score = available_scores[best_key]
+                # 按分数降序排序
+                sorted_keys_by_score = sorted(available_scores.items(), key=lambda item: item[1], reverse=True)
 
-                logger.info(f"为模型 '{model_name}' 选择的最佳 Key: {best_key[:8]}... (分数: {best_score:.2f})")
-                return best_key
+                # 实现基于上次使用时间的轮转机制 (计划 1.2)
+                # 在评分相近的 Key 中，优先选择 last_request_timestamp 最早的 Key
+                rotation_threshold = 0.95 # 定义评分相近的阈值，例如最高分的 95%
+                best_score = sorted_keys_by_score[0][1] if sorted_keys_by_score else 0 # 获取最高分
+
+                # 筛选出评分在阈值范围内的 Key
+                keys_in_rotation_range = [(k, score) for k, score in sorted_keys_by_score if score >= best_score * rotation_threshold]
+
+                with usage_lock: # 获取 usage_lock 来访问 usage_data
+                    # 在评分相近的 Key 中，按 last_request_timestamp 升序排序 (最早使用的优先)
+                    # 如果 last_request_timestamp 不存在，视为很早之前使用过 (例如使用 0.0)
+                    sorted_keys_for_rotation = sorted(keys_in_rotation_range,
+                                                      key=lambda item: usage_data.get(item[0], {}).get(model_name, {}).get('last_request_timestamp', 0.0))
+
+                    # 遍历排序后的 Key 列表，进行 Token 预检查并选择第一个通过的 Key
+                    for best_key, best_score in sorted_keys_for_rotation:
+                        # --- Token 预检查 (计划 1.1) ---
+                        tpm_input_limit = model_limits.get("tpm_input")
+                        # 确保获取到正确的 key_usage，即使 key_manager_class.py 和 tracking.py 中的 key 定义不同
+                        key_usage = usage_data.get(best_key, {}).get(model_name, {})
+                        tpm_input_used = key_usage.get("tpm_input_count", 0)
+
+                        if tpm_input_limit is not None and tpm_input_limit > 0:
+                            potential_tpm_input = tpm_input_used + current_request_tokens
+                            if potential_tpm_input > tpm_input_limit:
+                                # Key 在 Token 预检查中被判定为不可用
+                                logger.warning(f"Key {best_key[:8]}... (分数: {best_score:.2f}) 因 Token 预检查失败被跳过。"
+                                               f"潜在使用: {potential_tpm_input}, 限制: {tpm_input_limit}")
+                                # 记录筛选原因
+                                self.record_selection_reason(best_key, "Token Precheck Failed", request_id)
+                                continue # 跳过当前 Key，尝试下一个
+                        # --- Token 预检查结束 ---
+
+                        # 如果 Key 通过预检查，计算剩余容量
+                        remaining_tpm_input = 0
+                        if tpm_input_limit is not None and tpm_input_limit > 0:
+                             remaining_tpm_input = max(0, tpm_input_limit - tpm_input_used - current_request_tokens)
+                        else:
+                             # 如果没有 TPM 限制，则剩余容量视为无限大（或一个非常大的值）
+                             # 这里返回 0，表示没有明确的剩余限制需要传递给上下文截断
+                             remaining_tpm_input = 0 # 或者可以返回一个标志值，例如 -1
+
+                        logger.info(f"为模型 '{model_name}' 选择的最佳 Key: {best_key[:8]}... (分数: {best_score:.2f}), "
+                                    f"预估剩余 TPM_Input 容量: {remaining_tpm_input}")
+                        return best_key, remaining_tpm_input # 返回选中的 Key 和剩余容量
+
+                # 如果循环结束都没有找到合适的 Key (所有 Key 都因预检查失败被跳过)
+                logger.warning(f"模型 '{model_name}' 的所有可用 Key 在 Token 预检查中均失败。")
+                # 记录未找到 Key 的原因
+                self.record_selection_reason("N/A", "All available keys failed Token Precheck", request_id)
+                return None, 0
 
 
     async def _async_update_key_scores(self, model_name: str, model_limits: Dict[str, Any]):
@@ -219,7 +301,7 @@ class APIKeyManager:
 
 
         # 计算 TPD_Input 剩余百分比
-        tpd_input_limit = limits.get("tpd_input")
+        tpd_input_limit = limits.get("tpm_input")
         tpd_input_used = key_usage.get("tpd_input_count", 0)
         tpd_input_remaining_ratio = self._calculate_remaining_ratio(tpd_input_used, tpd_input_limit)
         if tpd_input_limit is not None and tpd_input_limit > 0:
@@ -355,6 +437,36 @@ class APIKeyManager:
             # 在重置每日耗尽 Key 时更新缓存的日期字符串
             self._today_date_str = datetime.now(pytz.timezone('Asia/Shanghai')).strftime('%Y-%m-%d')
             logger.info("已重置所有 Key 的每日配额耗尽标记。") # 已重置所有 Key 的每日配额耗尽标记
+
+
+# 新增：记录 Key 筛选原因
+    def record_selection_reason(self, key: str, reason: str, request_id: Optional[str] = None):
+        """
+        记录 Key 被跳过的原因。
+
+        Args:
+            key: 被跳过的 API Key。
+            reason: 跳过的原因描述。
+            request_id: 相关的请求 ID (可选)。
+        """
+        # 仅记录 Key 的前 8 位，保护隐私
+        key_identifier = key[:8] + "..." if key else "N/A"
+        timestamp = datetime.now(pytz.timezone('Asia/Shanghai')).isoformat() # 使用 ISO 格式时间戳
+
+        record = {
+            "key": key_identifier,
+            "reason": reason,
+            "timestamp": timestamp,
+            "request_id": request_id
+        }
+
+        with self.records_lock:
+            self.key_selection_records.append(record)
+            # 可选：限制记录数量，防止内存无限增长
+            # 例如，只保留最新的 1000 条记录
+            # if len(self.key_selection_records) > 1000:
+            #     self.key_selection_records = self.key_selection_records[-1000:]
+        logger.debug(f"记录 Key 筛选原因: Key: {key_identifier}, 原因: '{reason}', 请求ID: {request_id}")
 
 
 # --- 全局 Key Manager 实例 ---

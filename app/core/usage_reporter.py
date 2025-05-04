@@ -95,6 +95,8 @@ def report_usage(key_manager: 'APIKeyManager'):
     with key_manager.keys_lock:
         active_keys = key_manager.api_keys[:] # 获取活跃 Key 列表
         active_keys_count = len(active_keys) # 计算活跃 Key 数量
+        # 获取 Key 筛选记录的副本
+        key_selection_records_copy = copy.deepcopy(getattr(key_manager, 'key_selection_records', [])) # 使用 getattr 安全访问
 
     # Initialize report data dictionary with default structure
     report_data: Dict[str, Any] = {
@@ -129,6 +131,7 @@ def report_usage(key_manager: 'APIKeyManager'):
                 "month": []
             }
         },
+        "key_selection_stats": {}, # 添加 Key 筛选统计信息
         "timestamp": datetime.now(timezone.utc).isoformat() # Add timestamp
     }
 
@@ -478,6 +481,26 @@ def report_usage(key_manager: 'APIKeyManager'):
     # 本月 Top 5 输入 Token
     top_ips_month_input_token = get_top_ips(ip_input_token_counts_copy, start_of_month_pt.date(), today_pt.date())
     report_data["top_ips"]["tokens"]["month"] = format_top_ips(top_ips_month_input_token, "tokens") # 修正 key_name 为 "tokens"
+
+    # --- Key 筛选原因统计 ---
+    selection_reason_counts = Counter()
+    # 假设 key_selection_records_copy 是一个记录列表，每个记录是包含 'reason' 的字典
+    if isinstance(key_selection_records_copy, list):
+        for record in key_selection_records_copy:
+            if isinstance(record, dict) and 'reason' in record:
+                selection_reason_counts[record['reason']] += 1
+    elif isinstance(key_selection_records_copy, dict):
+         # 如果是字典，假设 value 是记录列表
+         for records_list in key_selection_records_copy.values():
+              if isinstance(records_list, list):
+                   for record in records_list:
+                        if isinstance(record, dict) and 'reason' in record:
+                             selection_reason_counts[record['reason']] += 1
+
+    # 将 Counter 转换为普通字典以便 JSON 序列化
+    report_data["key_selection_stats"] = dict(selection_reason_counts)
+    logger.debug("Key 筛选原因统计完成。")
+
 
     logger.debug("结构化报告数据获取完成。")
 
