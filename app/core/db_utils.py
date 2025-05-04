@@ -1,3 +1,5 @@
+# 导入类型提示
+from typing import Tuple, List, Optional, Dict, Any
 # -*- coding: utf-8 -*-
 """
 数据库相关的工具函数和常量，用于避免循环导入。
@@ -22,38 +24,43 @@ _db_path_env = os.environ.get('CONTEXT_DB_PATH') # 从环境变量获取数据�
 DATABASE_PATH: str # 数据库文件路径
 IS_MEMORY_DB: bool # 是否为内存数据库的标志
 
-if _db_path_env: # 如果设置了数据库路径环境变量
-    # 尝试使用基于文件的数据库
-    temp_db_path = _db_path_env # 临时存储路径
-    temp_is_memory = False # 临时标记为非内存数据库
-    try:
-        db_dir = os.path.dirname(temp_db_path) # 获取数据库文件所在目录
-        if db_dir: # 如果指定了目录
-             os.makedirs(db_dir, exist_ok=True) # 创建目录（如果不存在）
-             # 测试写入权限
-             perm_test_file = os.path.join(db_dir, ".perm_test") # 创建一个临时测试文件路径
-             with open(perm_test_file, "w") as f: # 尝试写入文件
-                 f.write("test")
-             os.remove(perm_test_file) # 删除测试文件
-        # 权限似乎正常，最终确定设置
-        DATABASE_PATH = temp_db_path # 设置最终数据库路径
-        IS_MEMORY_DB = temp_is_memory # 设置最终内存模式标志
-        logger.info(f"上下文存储：使用文件数据库 -> {DATABASE_PATH}") # 使用文件数据库
-    except OSError as e:
-        logger.error(f"无法创建或写入数据库目录 {os.path.dirname(temp_db_path)}: {e}。将回退到内存数据库。") # 无法创建或写入数据库目录，回退到内存数据库
-        DATABASE_PATH = "file::memory:?cache=shared" # 回退到共享内存数据库
-        IS_MEMORY_DB = True # 设置为内存数据库
-        logger.info("上下文存储：回退到共享内存数据库 (file::memory:?cache=shared)") # 回退到共享内存数据库
-    except Exception as e:
-         logger.error(f"检查数据库路径时发生错误 ({temp_db_path}): {e}。将回退到内存数据库。") # 检查数据库路径时发生错误，回退到内存数据库
-         DATABASE_PATH = "file::memory:?cache=shared" # 回退到共享内存数据库
-         IS_MEMORY_DB = True # 设置为内存数据库
-         logger.info("上下文存储：回退到共享内存数据库 (file::memory:?cache=shared)") # 回退到共享内存数据库
-else:
-    # 默认使用共享内存数据库
-    DATABASE_PATH = "file::memory:?cache=shared" # SQLite 共享内存数据库 URI
-    IS_MEMORY_DB = True # 设置为内存数据库
-    logger.info("上下文存储：使用共享内存数据库 (file::memory:?cache=shared)") # 使用共享内存数据库
+def _configure_database_path(env_path: Optional[str]) -> Tuple[str, bool]:
+    """
+    根据环境变量配置数据库路径，处理文件模式和内存模式的回退。
+    返回 (database_path, is_memory_db)。
+    """
+    if env_path: # 如果设置了数据库路径环境变量
+        # 尝试使用基于文件的数据库
+        temp_db_path = env_path # 临时存储路径
+        temp_is_memory = False # 临时标记为非内存数据库
+        try:
+            db_dir = os.path.dirname(temp_db_path) # 获取数据库文件所在目录
+            if db_dir: # 如果指定了目录
+                 os.makedirs(db_dir, exist_ok=True) # 创建目录（如果不存在）
+                 # 测试写入权限
+                 perm_test_file = os.path.join(db_dir, ".perm_test") # 创建一个临时测试文件路径
+                 with open(perm_test_file, "w") as f: # 尝试写入文件
+                     f.write("test")
+                 os.remove(perm_test_file) # 删除测试文件
+            # 权限似乎正常，最终确定设置
+            logger.info(f"上下文存储：使用文件数据库 -> {temp_db_path}") # 使用文件数据库
+            return temp_db_path, temp_is_memory # 返回文件路径和非内存标记
+        except OSError as e:
+            logger.error(f"无法创建或写入数据库目录 {os.path.dirname(temp_db_path)}: {e}。将回退到内存数据库。") # 无法创建或写入数据库目录，回退到内存数据库
+            # 回退到共享内存数据库
+            logger.info("上下文存储：回退到共享内存数据库 (file::memory:?cache=shared)") # 回退到共享内存数据库
+            return "file::memory:?cache=shared", True # 返回内存数据库路径和内存标记
+        except Exception as e:
+             logger.error(f"检查数据库路径时发生错误 ({temp_db_path}): {e}。将回退到内存数据库。") # 检查数据库路径时发生错误，回退到内存数据库
+             # 回退到共享内存数据库
+             logger.info("上下文存储：回退到共享内存数据库 (file::memory:?cache=shared)") # 回退到共享内存数据库
+             return "file::memory:?cache=shared", True # 返回内存数据库路径和内存标记
+    else:
+        # 默认使用共享内存数据库
+        logger.info("上下文存储：使用共享内存数据库 (file::memory:?cache=shared)") # 使用共享内存数据库
+        return "file::memory:?cache=shared", True # 返回内存数据库路径和内存标记
+
+DATABASE_PATH, IS_MEMORY_DB = _configure_database_path(_db_path_env) # 调用辅助函数配置数据库路径和模式
 
 DEFAULT_CONTEXT_TTL_DAYS = getattr(app_config, 'DEFAULT_CONTEXT_TTL_DAYS', 7) # 从配置获取默认 TTL 天数
 
@@ -177,7 +184,7 @@ async def initialize_db_tables():
     try:
         async with get_db_connection() as conn:
              # 对于内存数据库，这将创建/检索共享连接并确保表存在。
-             # 对于文件数据库，这将在首次连接时创建文件/表（如果它们不存在）。
+             # 对于文件数据库，这将会在首次连接时创建文件/表（如果它们不存在）。
              logger.info(f"数据库连接已获取 (类型: {'内存共享' if IS_MEMORY_DB else '文件'}, ID: {id(conn)})，初始化检查完成。") # 数据库连接已获取，初始化检查完成
              pass # 连接已获取，get_db_connection 内部的初始化逻辑已处理
         logger.info(f"显式数据库表初始化完成 ({DATABASE_PATH})。") # 显式数据库表初始化完成

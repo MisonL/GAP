@@ -14,6 +14,36 @@ from app.core.tracking import ( # 从同级 tracking 模块导入
 logger = logging.getLogger('my_logger') # 获取日志记录器实例
 
 # --- 每日重置函数 ---
+
+def _reset_key_model_counts(key: str, model: str) -> int:
+    """
+    重置指定 Key 和模型的 RPD 和 TPD_Input 计数，并返回重置前的 RPD 值。
+    """
+    rpd_value = 0
+    # 1. 重置 RPD (每日请求数) 计数
+    if "rpd_count" in usage_data[key][model]: # 检查是否存在 RPD 计数
+        rpd_value = usage_data[key][model].get("rpd_count", 0) # 获取当前的 RPD 计数
+        if rpd_value > 0:
+            logger.debug(f"重置 RPD 计数: Key={key[:8]}, Model={model}, RPD={rpd_value} -> 0") # 重置 RPD 计数
+        usage_data[key][model]["rpd_count"] = 0 # 将 RPD 计数重置为 0
+    # 2. 重置 TPD_Input (每日输入 Token 数) 计数
+    if "tpd_input_count" in usage_data[key][model]: # 检查是否存在 TPD_Input 计数
+         usage_data[key][model]["tpd_input_count"] = 0 # 将 TPD_Input 计数重置为 0
+    return rpd_value
+
+def _cleanup_daily_totals(pt_timezone: pytz.BaseTzInfo):
+    """
+    清理超过 30 天的旧每日 RPD 总量记录。
+    """
+    with daily_totals_lock: # 获取每日总量锁
+        cutoff_date = (datetime.now(pt_timezone) - timedelta(days=30)).strftime('%Y-%m-%d') # 计算 30 天前的日期
+        keys_to_delete = [d for d in daily_rpd_totals if d < cutoff_date] # 找出所有早于截止日期的记录键
+        for d in keys_to_delete:
+            del daily_rpd_totals[d] # 删除旧记录
+        if keys_to_delete:
+            logger.info(f"已清理 {len(keys_to_delete)} 条旧的每日 RPD 总量记录。") # 已清理旧的每日 RPD 总量记录
+
+
 def reset_daily_counts():
     """
     在太平洋时间午夜运行，重置所有 Key 的 RPD 和 TPD_Input 计数，
@@ -31,16 +61,8 @@ def reset_daily_counts():
         for key in keys_to_reset: # 遍历每个 Key
             models_to_reset = list(usage_data[key].keys()) # 获取该 Key 下所有需要重置的模型列表
             for model in models_to_reset: # 遍历每个模型
-                # 1. 重置 RPD (每日请求数) 计数
-                if "rpd_count" in usage_data[key][model]: # 检查是否存在 RPD 计数
-                    rpd_value = usage_data[key][model].get("rpd_count", 0) # 获取当前的 RPD 计数
-                    if rpd_value > 0:
-                        total_rpd_yesterday += rpd_value # 累加到昨天的总 RPD
-                        logger.debug(f"重置 RPD 计数: Key={key[:8]}, Model={model}, RPD={rpd_value} -> 0") # 重置 RPD 计数
-                    usage_data[key][model]["rpd_count"] = 0 # 将 RPD 计数重置为 0
-                # 2. 重置 TPD_Input (每日输入 Token 数) 计数
-                if "tpd_input_count" in usage_data[key][model]: # 检查是否存在 TPD_Input 计数
-                     usage_data[key][model]["tpd_input_count"] = 0 # 将 TPD_Input 计数重置为 0
+                # 调用辅助函数重置计数并累加 RPD
+                total_rpd_yesterday += _reset_key_model_counts(key, model)
 
     # 重置 Key Manager 中的每日配额耗尽标记
     key_manager_instance.reset_daily_exhausted_keys() # 调用 Key Manager 的重置方法
@@ -51,11 +73,9 @@ def reset_daily_counts():
         with daily_totals_lock: # 获取每日总量锁
             daily_rpd_totals[yesterday_date_str] = total_rpd_yesterday # 存储昨天的总 RPD
             logger.info(f"记录 PT 日期 {yesterday_date_str} 的总 RPD: {total_rpd_yesterday}") # 记录昨天的总 RPD
-            cutoff_date = (datetime.now(pt_timezone) - timedelta(days=30)).strftime('%Y-%m-%d') # 计算 30 天前的日期
-            keys_to_delete = [d for d in daily_rpd_totals if d < cutoff_date] # 找出所有早于截止日期的记录键
-            for d in keys_to_delete:
-                del daily_rpd_totals[d] # 删除旧记录
-            if keys_to_delete:
-                logger.info(f"已清理 {len(keys_to_delete)} 条旧的每日 RPD 总量记录。") # 已清理旧的每日 RPD 总量记录
+
+        # 清理旧的每日总量记录 - 委托给辅助函数
+        _cleanup_daily_totals(pt_timezone)
+
     else:
         logger.info(f"PT 日期 {yesterday_date_str} 没有 RPD 使用记录。") # 没有 RPD 使用记录

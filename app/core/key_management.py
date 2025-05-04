@@ -1,3 +1,5 @@
+# 导入类型提示
+from typing import List, Optional, Union
 import httpx
 import asyncio # 导入 asyncio 模块
 import logging # 导入 logging 模块
@@ -26,6 +28,51 @@ INITIAL_KEY_COUNT: int = 0 # 初始配置的 Key 总数
 INVALID_KEYS: List[str] = [] # 存储检测到的无效 Key 列表
 INVALID_KEY_COUNT_AT_STARTUP: int = 0 # 存储启动时发现的无效 Key 数量
 
+def _process_key_check_results(
+    results: List[Union[Tuple[bool, str], Exception]],
+    key_order: List[str],
+    keys_to_check_with_config: Dict[str, Dict[str, Any]]
+) -> Tuple[List[str], List[str], Dict[str, Dict[str, Any]]]:
+    """
+    处理并发 Key 检查的结果，分类有效和无效 Key，并保留有效 Key 的配置。
+    返回 (available_keys, invalid_keys, valid_keys_with_config)。
+    """
+    available_keys: List[str] = []
+    invalid_keys: List[str] = []
+    valid_keys_with_config: Dict[str, Dict[str, Any]] = {}
+
+    for i, result in enumerate(results):
+        key = key_order[i]
+        config_data = keys_to_check_with_config[key]
+        status_msg = "未知状态" # 默认状态消息
+
+        if isinstance(result, Exception):
+            # 如果检查过程中发生异常
+            logger.error(f"检查 Key {key[:10]}... 时发生异常: {result}", exc_info=result)
+            invalid_keys.append(key)
+            status_msg = f"无效 (检查时发生错误: {result})"
+        elif isinstance(result, tuple) and len(result) == 2:
+            # 正常返回结果 (is_valid, status_msg)
+            is_valid, status_msg = result
+            if is_valid:
+                available_keys.append(key)
+                valid_keys_with_config[key] = config_data # 保留配置
+            else:
+                invalid_keys.append(key)
+        else:
+             # 未知结果类型
+            logger.error(f"检查 Key {key[:10]}... 返回了未知类型的结果: {result}")
+            invalid_keys.append(key)
+            status_msg = "无效 (检查返回未知结果)"
+
+        # 记录每个 Key 的最终状态
+        # 将每个 Key 的最终状态日志级别从 INFO 调整为 DEBUG
+        log_msg = format_log_message('DEBUG', f"  - API Key {key[:10]}... {status_msg}.")
+        logger.debug(log_msg)
+
+    return available_keys, invalid_keys, valid_keys_with_config
+
+
 async def check_keys(key_manager: APIKeyManager, http_client: httpx.AsyncClient) -> Tuple[int, List[str], List[str]]: # 添加 http_client 参数
     """
     在应用启动时检查所有已配置 API 密钥的有效性。
@@ -34,8 +81,6 @@ async def check_keys(key_manager: APIKeyManager, http_client: httpx.AsyncClient)
     """
     global INITIAL_KEY_COUNT, INVALID_KEYS, INVALID_KEY_COUNT_AT_STARTUP
     initial_key_count_local = 0
-    available_keys_local = []
-    invalid_keys_local = []
     keys_to_check_with_config: Dict[str, Dict[str, Any]] = {} # 用于存储待检查的 Key 及其配置
 
     # 延迟导入 db_utils
@@ -77,7 +122,6 @@ async def check_keys(key_manager: APIKeyManager, http_client: httpx.AsyncClient)
                  keys_to_check_with_config[key] = {'enable_context_completion': True} # 回退时使用默认配置
 
 
-    valid_keys_with_config: Dict[str, Dict[str, Any]] = {}
     tasks = []
     key_order = list(keys_to_check_with_config.keys()) # 保持原始顺序以便匹配结果
 
@@ -94,40 +138,17 @@ async def check_keys(key_manager: APIKeyManager, http_client: httpx.AsyncClient)
 
     logger.info("并发 Key 检查完成，开始处理结果...") # 并发 Key 检查完成，开始处理结果
 
-    # 处理并发结果
-    for i, result in enumerate(results):
-        key = key_order[i]
-        config_data = keys_to_check_with_config[key]
-
-        if isinstance(result, Exception):
-            # 如果检查过程中发生异常
-            logger.error(f"检查 Key {key[:10]}... 时发生异常: {result}", exc_info=result)
-            invalid_keys_local.append(key)
-            status_msg = f"无效 (检查时发生错误: {result})"
-        elif isinstance(result, tuple) and len(result) == 2:
-            # 正常返回结果 (is_valid, status_msg)
-            is_valid, status_msg = result
-            if is_valid:
-                available_keys_local.append(key)
-                valid_keys_with_config[key] = config_data # 保留配置
-            else:
-                invalid_keys_local.append(key)
-        else:
-             # 未知结果类型
-            logger.error(f"检查 Key {key[:10]}... 返回了未知类型的结果: {result}")
-            invalid_keys_local.append(key)
-            status_msg = "无效 (检查返回未知结果)"
-
-        # 记录每个 Key 的最终状态
-        log_msg = format_log_message('INFO', f"  - API Key {key[:10]}... {status_msg}.")
-        logger.info(log_msg)
-
+    # 处理并发结果 - 委托给辅助函数
+    available_keys_local, invalid_keys_local, valid_keys_with_config = _process_key_check_results(
+        results,
+        key_order,
+        keys_to_check_with_config
+    )
 
     if invalid_keys_local:
         logger.warning(f"检测到 {len(invalid_keys_local)} 个无效或检查失败的 API 密钥:") # 检测到无效或检查失败的 API 密钥
-        # (日志已在上面循环中记录，这里不再重复)
-        # for invalid_key in invalid_keys_local:
-        #     logger.warning(f"  - {invalid_key[:10]}...")
+        # (日志已在辅助函数中记录，这里不再重复)
+
 
     if not available_keys_local:
         logger.error("严重错误：没有找到任何有效的 API 密钥！应用程序可能无法正常处理请求。", extra={'key': 'N/A', 'request_type': 'startup'}) # 严重错误：没有找到任何有效的 API 密钥
@@ -149,6 +170,46 @@ async def check_keys(key_manager: APIKeyManager, http_client: httpx.AsyncClient)
 
 
 # --- 新增辅助函数 ---
+
+async def _check_key_database_status(key: str) -> Tuple[bool, str]:
+    """
+    检查单个 API Key 在数据库中的状态（是否有效、是否过期）。
+    """
+    # 延迟导入 db_utils 以避免循环依赖和潜在的启动问题
+    from app.core import db_utils
+
+    if db_utils.IS_MEMORY_DB:
+        return True, "有效 (内存模式)"
+
+    try:
+        is_db_valid = await db_utils.is_valid_proxy_key(key)
+        if is_db_valid:
+            return True, "有效 (数据库检查通过)"
+        else:
+            return False, "无效 (数据库状态或已过期)"
+    except Exception as db_exc:
+        logger.error(f"检查 Key {key[:10]}... 数据库状态时出错: {db_exc}", exc_info=True)
+        return False, f"无效 (数据库检查异常: {db_exc})"
+
+
+async def _perform_api_test(key: str, http_client: httpx.AsyncClient) -> Tuple[bool, str]:
+    """
+    对单个 API Key 进行 API 测试以验证其有效性。
+    """
+    try:
+        is_api_valid = await test_api_key(key, http_client)
+        if is_api_valid:
+            return True, "有效 (API 测试通过)"
+        else:
+            return False, "无效 (API 测试失败)"
+    except httpx.RequestError as req_err:
+        logger.warning(f"测试 Key {key[:10]}... 时发生网络请求错误: {req_err}")
+        return False, f"无效 (API 测试网络错误: {req_err})"
+    except Exception as api_exc:
+        logger.error(f"测试 Key {key[:10]}... 时发生未知 API 错误: {api_exc}", exc_info=True)
+        return False, f"无效 (API 测试未知错误: {api_exc})"
+
+
 async def _check_single_key(key: str, config_data: Dict[str, Any], http_client: httpx.AsyncClient) -> Tuple[bool, str]:
     """
     异步检查单个 API Key 的有效性（包括数据库和 API 测试）。
@@ -161,37 +222,13 @@ async def _check_single_key(key: str, config_data: Dict[str, Any], http_client: 
     Returns:
         一个元组 (is_valid, status_message)，其中 is_valid 是布尔值，status_message 是描述状态的字符串。
     """
-    # 延迟导入 db_utils 以避免循环依赖和潜在的启动问题
-    from app.core import db_utils
-
-    # 1. 检查数据库状态（如果不是内存数据库）
-    is_db_valid = True
-    db_status_msg = "有效 (内存模式或数据库检查通过)"
-    if not db_utils.IS_MEMORY_DB:
-        try:
-            is_db_valid = await db_utils.is_valid_proxy_key(key)
-            if not is_db_valid:
-                db_status_msg = "无效 (数据库状态或已过期)"
-        except Exception as db_exc:
-            logger.error(f"检查 Key {key[:10]}... 数据库状态时出错: {db_exc}", exc_info=True)
-            return False, f"无效 (数据库检查异常: {db_exc})" # 数据库检查异常，直接返回无效
-
+    # 1. 检查数据库状态
+    is_db_valid, db_status_msg = await _check_key_database_status(key)
     if not is_db_valid:
-        return False, db_status_msg # 数据库检查未通过
+        return False, db_status_msg # 数据库检查未通过，直接返回
 
     # 2. 数据库有效，进行 API 测试
-    try:
-        is_api_valid = await test_api_key(key, http_client)
-        if is_api_valid:
-            return True, "有效"
-        else:
-            return False, "无效 (API 测试失败)"
-    except httpx.RequestError as req_err:
-        logger.warning(f"测试 Key {key[:10]}... 时发生网络请求错误: {req_err}")
-        return False, f"无效 (API 测试网络错误: {req_err})"
-    except Exception as api_exc:
-        logger.error(f"测试 Key {key[:10]}... 时发生未知 API 错误: {api_exc}", exc_info=True)
-        return False, f"无效 (API 测试未知错误: {api_exc})"
+    return await _perform_api_test(key, http_client)
 
 
 async def _refresh_all_key_scores(key_manager: 'APIKeyManager'):

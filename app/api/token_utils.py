@@ -37,7 +37,6 @@ def truncate_context(
     """
     根据模型限制截断对话历史 (contents)。
     从开头成对移除消息，直到满足 Token 限制。
-    从开头成对移除消息，直到满足 Token 限制。
 
     Args:
         contents: 完整的对话历史列表 (Gemini 格式)。
@@ -84,20 +83,12 @@ def truncate_context(
         logger.info(f"上下文估算 Token ({estimated_tokens}) 超出阈值 ({truncation_threshold} for model {model_name})，开始截断...") # 上下文估算 Token 超出阈值，开始截断
         # 创建上下文列表的副本进行修改，避免影响原始列表
         truncated_contents = list(contents) # 创建副本
-        # 循环截断，直到 Token 数量满足阈值或无法再截断
-        while estimate_token_count(truncated_contents) > truncation_threshold: # 当估算 Token 数仍超过阈值时
-            # 检查是否至少有两条消息可以成对移除
-            if len(truncated_contents) >= 2: # 如果消息数大于等于 2
-                # 从列表开头移除两个元素 (通常是 user 和 model 的消息对)
-                removed_first = truncated_contents.pop(0) # 移除第一个元素
-                removed_second = truncated_contents.pop(0) # 移除第二个元素
-                logger.debug(f"移除旧消息对: roles={removed_first.get('role')}, {removed_second.get('role')}") # 移除旧消息对
-            elif len(truncated_contents) == 1: # 如果只剩下一条消息
-                # 只剩下一条消息，但仍然超过 Token 限制
-                logger.warning("截断过程中只剩一条消息，但其 Token 数量仍然超过阈值。") # 截断过程中只剩一条消息，但其 Token 数量仍然超过阈值
-                break # 停止循环，将在下面检查最终状态
-            else: # truncated_contents 列表已为空
-                break # 无法再截断，跳出循环
+        # 循环截断，直到 Token 数量满足阈值或消息数不足以成对移除
+        while estimate_token_count(truncated_contents) > truncation_threshold and len(truncated_contents) >= 2:
+            # 从列表开头移除两个元素 (通常是 user 和 model 的消息对)
+            removed_first = truncated_contents.pop(0) # 移除第一个元素
+            removed_second = truncated_contents.pop(0) # 移除第二个元素
+            logger.debug(f"移除旧消息对: roles={removed_first.get('role')}, {removed_second.get('role')}") # 移除旧消息对
 
         final_estimated_tokens = estimate_token_count(truncated_contents) # 估算截断后的最终 Token 数
 

@@ -8,7 +8,7 @@ from threading import Lock # 用于线程同步的锁 (Used for thread synchroni
 from typing import Dict, Any, Optional, List, Tuple, Set # 确保导入了 Dict, Any, Optional, List, Tuple, Set (Ensure Dict, Any, Optional, List, Tuple, Set are imported)
 import copy      # 用于创建对象的深拷贝或浅拷贝 (Used for creating deep or shallow copies of objects)
 from collections import defaultdict # 提供默认值的字典子类 (Subclass of dictionary that provides default values)
-import asyncio # 导入 asyncio 模块
+import asyncio # 导入 asyncio模块
 
 # 从 tracking 模块导入共享的数据结构、锁和常量
 # 注意：这里需要将相对导入改为绝对导入
@@ -75,10 +75,6 @@ class APIKeyManager:
             else:
                 logger.warning(f"尝试更新不存在的 API Key 的配置: {api_key[:10]}...") # 记录警告日志 (Log warning)
 
-    # Removed get_initial_key_count as it's no longer needed here
-    # def get_initial_key_count(self) -> int:
-    #     """返回初始配置的密钥数量"""
-    #     return self.initial_key_count
 
     def get_next_key(self) -> Optional[str]:
         """
@@ -104,70 +100,61 @@ class APIKeyManager:
         基于缓存的健康度评分选择最佳 API 密钥。
         排除当天已耗尽的 Key。如果缓存无效或所有 Key 都超限/已尝试/当天耗尽，则返回 None。
         """
-        with cache_lock:
-            now = time.time()
-            # 检查特定模型的缓存是否已超过刷新间隔
-            if now - cache_last_updated.get(model_name, 0) > CACHE_REFRESH_INTERVAL_SECONDS:
-                logger.info(f"模型 '{model_name}' 的 Key 分数缓存已过期，正在异步刷新...")
-                # 异步触发缓存更新，避免阻塞当前请求
-                # 注意：这里需要确保在适当的事件循环中创建任务
-                # 假设 select_best_key 在一个异步上下文中被调用
-                try:
-                    import asyncio
-                    asyncio.create_task(self._async_update_key_scores(model_name, model_limits))
-                except RuntimeError:
-                    # 如果不在异步事件循环中，则回退到同步更新（这可能发生在启动时）
-                    logger.warning("不在异步事件循环中，回退到同步刷新 Key 分数缓存。")
-                    # 注意：这里同步调用异步函数需要特殊的运行方式，
-                    # 但在启动时，如果 select_best_key 被同步调用，
-                    # 理论上应该在一个可以运行协程的环境中（例如 FastAPI 的 lifespan）。
-                    # 如果确实在纯同步环境中，直接调用 async def 函数会报错。
-                    # 为了健壮性，可以考虑在这里使用 asyncio.run 或类似的同步运行异步代码的方式，
-                    # 但这会引入新的阻塞点。更优的方案是确保 select_best_key 始终在异步上下文中被调用。
-                    # 暂时保留直接调用，依赖于调用环境。
-                    # asyncio.run(self._async_update_key_scores(model_name, model_limits)) # 这种方式会阻塞
-                    # 另一种方式是使用 nest_asyncio 允许嵌套运行，但通常不推荐
-                    # import nest_asyncio
-                    # nest_asyncio.apply()
-                    # asyncio.run(self._async_update_key_scores(model_name, model_limits))
-                    # 最简单的处理是依赖于调用 select_best_key 的地方是在一个异步函数中，
-                    # 这样 create_task 就能工作。如果不是，那么启动时的同步调用仍然是问题。
-                    # 鉴于问题出现在启动完成日志之后，更可能是 select_best_key 在某个请求处理中被首次调用导致阻塞。
-                    # 因此，异步触发任务是正确的方向。
-                    pass # 在非异步环境中，create_task 会抛出 RuntimeError，这里捕获并忽略，依赖于后台任务或下次调用刷新
+        # 优先获取 keys_lock
+        with self.keys_lock:
+            # 获取当天不可用的 Key 集合
+            daily_exhausted = {k for k, date_str in self.daily_exhausted_keys.items() if date_str == self._today_date_str}
+            # 获取当前请求已尝试过的 Key 集合的副本
+            tried_keys = self.tried_keys_for_request.copy()
 
-                update_cache_timestamp(model_name)
+            # 然后获取 cache_lock
+            with cache_lock:
+                now = time.time()
+                # 检查特定模型的缓存是否已超过刷新间隔
+                if now - cache_last_updated.get(model_name, 0) > CACHE_REFRESH_INTERVAL_SECONDS:
+                    logger.info(f"模型 '{model_name}' 的 Key 分数缓存已过期，正在异步刷新...")
+                    try:
+                        import asyncio
+                        asyncio.create_task(self._async_update_key_scores(model_name, model_limits))
+                    except RuntimeError:
+                        logger.warning("不在异步事件循环中，回退到同步刷新 Key 分数缓存。")
+                        pass # 依赖于后台任务或下次调用刷新
+                    update_cache_timestamp(model_name)
 
-            # 获取当前模型的缓存分数（字典：key -> score）
-            scores = key_scores_cache.get(model_name, {})
-            if not scores:
-                logger.warning(f"模型 '{model_name}' 没有可用的 Key 分数缓存数据。尝试回退到轮询策略。")
-                # 如果缓存为空，回退到简单的轮询策略
-                return self.get_next_key()
+                # 获取当前模型的缓存分数（字典：key -> score）
+                scores = key_scores_cache.get(model_name, {})
+                if not scores:
+                    logger.warning(f"模型 '{model_name}' 没有可用的 Key 分数缓存数据。尝试回退到轮询策略。")
+                    # 如果缓存为空，回退到简单的轮询策略
+                    # 过滤 Keys 列表，排除已尝试和当天耗尽的 Key
+                    available_keys_for_polling = [k for k in self.api_keys if k not in tried_keys and k not in daily_exhausted]
+                    if not available_keys_for_polling:
+                         logger.warning(f"模型 '{model_name}' 没有 Key 分数缓存，且所有 Key 已在此请求中尝试过或当天已耗尽。")
+                         return None # 没有 Key 可用，即使回退到轮询
 
-            # 优化加锁顺序和过滤逻辑，避免死锁
-            # 1. 先在 cache_lock 外获取 keys_lock 来检查每日耗尽状态
-            with self.keys_lock:
-                # 获取当天不可用的 Key 集合
-                daily_exhausted = {k for k, date_str in self.daily_exhausted_keys.items() if date_str == self._today_date_str}
+                    # 简单的轮询：选择可用列表中的第一个 Key
+                    key_to_use = available_keys_for_polling[0]
+                    logger.info(f"模型 '{model_name}' 没有 Key 分数缓存，回退到轮询策略，选择 Key: {key_to_use[:8]}...")
+                    return key_to_use
 
-            # 2. 过滤缓存分数
-            available_scores = {}
-            for k, v in scores.items():
-                # 检查是否已尝试、是否当天耗尽
-                if k not in self.tried_keys_for_request and k not in daily_exhausted:
-                    available_scores[k] = v
 
-            if not available_scores:
-                logger.warning(f"模型 '{model_name}' 的所有可用 Key（根据缓存）均已在此请求中尝试过或当天已耗尽。")
-                return None
+                # 过滤缓存分数，排除已尝试和当天耗尽的 Key
+                available_scores = {}
+                for k, v in scores.items():
+                    # 检查是否已尝试、是否当天耗尽
+                    if k not in tried_keys and k not in daily_exhausted:
+                        available_scores[k] = v
 
-            # 按分数降序排序，选择分数最高的 Key
-            best_key = max(available_scores, key=available_scores.get) # type: ignore
-            best_score = available_scores[best_key]
+                if not available_scores:
+                    logger.warning(f"模型 '{model_name}' 的所有可用 Key（根据缓存）均已在此请求中尝试过或当天已耗尽。")
+                    return None
 
-            logger.info(f"为模型 '{model_name}' 选择的最佳 Key: {best_key[:8]}... (分数: {best_score:.2f})")
-            return best_key
+                # 按分数降序排序，选择分数最高的 Key
+                best_key = max(available_scores, key=available_scores.get) # type: ignore
+                best_score = available_scores[best_key]
+
+                logger.info(f"为模型 '{model_name}' 选择的最佳 Key: {best_key[:8]}... (分数: {best_score:.2f})")
+                return best_key
 
 
     async def _async_update_key_scores(self, model_name: str, model_limits: Dict[str, Any]):
@@ -197,9 +184,15 @@ class APIKeyManager:
                         current_scores[key] = score
                         logger.debug(f"计算 Key {key[:8]}... 对模型 '{model_name}' 的健康度分数: {score:.2f}")
 
-            key_scores_cache[model_name] = current_scores
-            logger.debug(f"模型 '{model_name}' 的 Key 分数缓存已更新。")
+            with cache_lock: # 在更新缓存前获取 cache_lock
+                 key_scores_cache[model_name] = current_scores
+                 logger.debug(f"模型 '{model_name}' 的 Key 分数缓存已更新。")
 
+    def _calculate_remaining_ratio(self, used: int, limit: Optional[int]) -> float:
+        """计算剩余百分比，处理 None 或 0 限制的情况。"""
+        if limit is None or limit <= 0:
+            return 1.0 # 无限制或限制为 0，视为始终可用
+        return max(0.0, 1.0 - (used / limit))
 
     def _calculate_key_health(self, key_usage: Dict[str, Any], limits: Dict[str, Any]) -> float:
         """
@@ -207,7 +200,6 @@ class APIKeyManager:
         分数越高越好。综合考虑 RPD, TPD_Input, RPM, TPM_Input 的剩余百分比。
         """
         # 定义各项指标的权重
-        # 权重可以根据实际情况调整，例如更看重日限制还是分钟限制
         weights = {
             "rpd": 0.4,
             "tpd_input": 0.3,
@@ -215,62 +207,52 @@ class APIKeyManager:
             "tpm_input": 0.1
         }
         total_score = 0.0
-        active_metrics = 0.0
+        active_weights_sum = 0.0 # 累加有有效限制的指标权重
 
         # 计算 RPD 剩余百分比
         rpd_limit = limits.get("rpd")
+        rpd_used = key_usage.get("rpd_count", 0)
+        rpd_remaining_ratio = self._calculate_remaining_ratio(rpd_used, rpd_limit)
         if rpd_limit is not None and rpd_limit > 0:
-            rpd_used = key_usage.get("rpd_count", 0)
-            rpd_remaining_ratio = max(0.0, 1.0 - (rpd_used / rpd_limit))
-            total_score += rpd_remaining_ratio * weights["rpd"]
-            active_metrics += weights["rpd"]
-        elif rpd_limit == 0:
-             pass
-        # else: RPD 限制未定义或为 None，忽略此指标
+             total_score += rpd_remaining_ratio * weights["rpd"]
+             active_weights_sum += weights["rpd"]
+
 
         # 计算 TPD_Input 剩余百分比
         tpd_input_limit = limits.get("tpd_input")
+        tpd_input_used = key_usage.get("tpd_input_count", 0)
+        tpd_input_remaining_ratio = self._calculate_remaining_ratio(tpd_input_used, tpd_input_limit)
         if tpd_input_limit is not None and tpd_input_limit > 0:
-            tpd_input_used = key_usage.get("tpd_input_count", 0)
-            tpd_input_remaining_ratio = max(0.0, 1.0 - (tpd_input_used / tpd_input_limit))
-            total_score += tpd_input_remaining_ratio * weights["tpd_input"]
-            active_metrics += weights["tpd_input"]
-        elif tpd_input_limit == 0:
-             pass
-        # else: TPD_Input 限制未定义或为 None，忽略此指标
+             total_score += tpd_input_remaining_ratio * weights["tpd_input"]
+             active_weights_sum += weights["tpd_input"]
 
         # 计算 RPM 剩余百分比 (基于当前窗口)
         rpm_limit = limits.get("rpm")
+        rpm_used = 0
+        if time.time() - key_usage.get("rpm_timestamp", 0) < RPM_WINDOW_SECONDS:
+            rpm_used = key_usage.get("rpm_count", 0)
+        rpm_remaining_ratio = self._calculate_remaining_ratio(rpm_used, rpm_limit)
         if rpm_limit is not None and rpm_limit > 0:
-            rpm_used = 0
-            if time.time() - key_usage.get("rpm_timestamp", 0) < RPM_WINDOW_SECONDS:
-                rpm_used = key_usage.get("rpm_count", 0)
-            rpm_remaining_ratio = max(0.0, 1.0 - (rpm_used / rpm_limit))
-            total_score += rpm_remaining_ratio * weights["rpm"]
-            active_metrics += weights["rpm"]
-        elif rpm_limit == 0:
-             pass
-        # else: RPM 限制未定义或为 None，忽略此指标
+             total_score += rpm_remaining_ratio * weights["rpm"]
+             active_weights_sum += weights["rpm"]
 
         # 计算 TPM_Input 剩余百分比 (基于当前窗口)
         tpm_input_limit = limits.get("tpm_input")
+        tpm_input_used = 0
+        if time.time() - key_usage.get("tpm_input_timestamp", 0) < TPM_WINDOW_SECONDS:
+            tpm_input_used = key_usage.get("tpm_input_count", 0)
+        tpm_input_remaining_ratio = self._calculate_remaining_ratio(tpm_input_used, tpm_input_limit)
         if tpm_input_limit is not None and tpm_input_limit > 0:
-            tpm_input_used = 0
-            if time.time() - key_usage.get("tpm_input_timestamp", 0) < TPM_WINDOW_SECONDS:
-                tpm_input_used = key_usage.get("tpm_input_count", 0)
-            tpm_input_remaining_ratio = max(0.0, 1.0 - (tpm_input_used / tpm_input_limit))
-            total_score += tpm_input_remaining_ratio * weights["tpm_input"]
-            active_metrics += weights["tpm_input"]
-        elif tpm_input_limit == 0:
-             pass
-        # else: TPM_Input 限制未定义或为 None，忽略此指标
+             total_score += tpm_input_remaining_ratio * weights["tpm_input"]
+             active_weights_sum += weights["tpm_input"]
+
 
         # 如果没有任何有效指标，返回一个默认值（例如 1.0，表示可用）
-        if active_metrics == 0:
+        if active_weights_sum == 0:
             return 1.0
 
         # 返回归一化的加权平均分
-        normalized_score = total_score / active_metrics if active_metrics > 0 else 1.0
+        normalized_score = total_score / active_weights_sum if active_weights_sum > 0 else 1.0
         # 确保分数在 0.0 到 1.0 之间（尽管理论上应该如此）
         return max(0.0, min(1.0, normalized_score))
 
@@ -290,7 +272,7 @@ class APIKeyManager:
                 # 同时从所有模型的缓存中移除该 Key 的分数记录
                 with cache_lock:
                     for model_name in list(key_scores_cache.keys()):
-                        if key_to_remove in key_scores_cache[model_name]:
+                        if key_to_remove in key_scores_cache.get(model_name, {}): # 增加检查 model_name 是否存在
                             del key_scores_cache[model_name][key_to_remove]
             else:
                 logger.warning(f"尝试移除不存在的 API Key: {key_to_remove[:10]}...")
@@ -302,7 +284,7 @@ class APIKeyManager:
         """
         with cache_lock:
             for model_name in key_scores_cache:
-                if api_key in key_scores_cache[model_name]:
+                if api_key in key_scores_cache.get(model_name, {}):
                     # 显著降低分数，例如降到 0.1 或更低
                     key_scores_cache[model_name][api_key] = 0.1
                     logger.warning(f"Key {api_key[:8]}... 因问题 '{issue_type}' 被标记，其在模型 '{model_name}' 的分数暂时降低。")

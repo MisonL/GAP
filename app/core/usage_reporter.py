@@ -10,19 +10,19 @@ import copy
 from datetime import datetime, timedelta, date, timezone
 from collections import Counter, defaultdict
 from typing import List, Tuple, Dict, Any, TYPE_CHECKING
+import json # 导入 json 模块
+import os # 导入 os 模块
 
 # 从其他模块导入必要的组件
 from app.core.tracking import ( # 同级目录导入
     usage_data, usage_lock, RPM_WINDOW_SECONDS, TPM_WINDOW_SECONDS,
     daily_rpd_totals, daily_totals_lock,
     key_scores_cache, cache_lock,
-    # ip_daily_counts, ip_counts_lock, # 移除 tracking 中的 IP 请求计数
     ip_daily_input_token_counts, ip_input_token_counts_lock # IP 输入 token 计数和锁
 )
-# 从 utils 导入实际使用的 IP 请求计数变量和锁
 from app.core.request_helpers import ip_request_data, ip_daily_counts_lock as ip_rate_limit_lock # 从 request_helpers 导入 IP 计数和锁
 from app import config # 导入 config 模块
-from app.config import REPORT_LOG_LEVEL_INT # 导入日志级别配置
+# from app.config import REPORT_LOG_LEVEL_INT # 导入日志级别配置 (移除未使用的导入以解决循环依赖)
 from app.core.key_management import INITIAL_KEY_COUNT, INVALID_KEY_COUNT_AT_STARTUP # 同级目录导入
 
 # 条件导入用于类型提示
@@ -83,7 +83,7 @@ def report_usage(key_manager: 'APIKeyManager'):
 
     # 复制并转换 IP 请求计数数据格式
     ip_counts_copy = defaultdict(lambda: defaultdict(int)) # 初始化目标格式字典
-    with ip_rate_limit_lock: # 使用 utils 中的锁
+    with ip_rate_limit_lock: # 使用锁
         ip_daily_request_counts_raw = copy.deepcopy(ip_request_data) # 复制原始数据
         # 将原始格式 (date_str, ip): count 转换为 date_str: {ip: count}
         for date_str, ip_counts_for_date in ip_daily_request_counts_raw.items():
@@ -138,8 +138,6 @@ def report_usage(key_manager: 'APIKeyManager'):
     model_total_rpd = defaultdict(int) # 初始化模型总 RPD 字典
     model_total_tpd_input = defaultdict(int) # 初始化模型总 TPD 输入字典
 
-    # Use the correctly calculated invalid key count from key_management
-    # invalid_keys_count = INITIAL_KEY_COUNT - active_keys_count
 
     # 添加 ANSI 转义码以增加颜色和样式
     # 新配色方案 New Color Scheme
@@ -251,11 +249,8 @@ def report_usage(key_manager: 'APIKeyManager'):
 
 
     # --- 总体统计与预测 ---
-    # report_data["overall_stats"]["active_keys_count"] = active_keys_count # 已在初始化时设置
-    # report_data["overall_stats"]["invalid_keys_at_startup"] = INVALID_KEY_COUNT_AT_STARTUP # 已在初始化时设置
 
     # RPD 容量
-    # report_data["overall_stats"]["rpd_capacity_estimation"] = [] # 已在初始化时设置
     rpd_groups = defaultdict(list) # 按 RPD 限制分组模型
     model_rpd_usage_count = defaultdict(int) # 统计使用每个模型的 Key 数量
     for model, limits in config.MODEL_LIMITS.items():
@@ -308,7 +303,6 @@ def report_usage(key_manager: 'APIKeyManager'):
                   })
 
     # TPD 输入容量
-    # report_data["overall_stats"]["tpd_input_capacity_estimation"] = [] # 已在初始化时设置
     target_tpd_input_capacity_total = 0 # 初始化目标模型的总 TPD 输入容量
     for target_model in target_models:
         target_model_limits = config.MODEL_LIMITS.get(target_model, {})
@@ -486,7 +480,8 @@ def report_usage(key_manager: 'APIKeyManager'):
     report_data["top_ips"]["tokens"]["month"] = format_top_ips(top_ips_month_input_token, "tokens") # 修正 key_name 为 "tokens"
 
     logger.debug("结构化报告数据获取完成。")
-    return report_data
+
+    return report_data # 返回报告数据
 
 def format_top_ips(raw_data: List[Tuple[str, int]], key_name: str) -> List[Dict[str, Any]]:
     """

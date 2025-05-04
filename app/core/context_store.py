@@ -10,15 +10,13 @@ import json # 导入 json 模块
 import uuid # 导入 uuid 模块
 import asyncio # 导入 asyncio
 from datetime import datetime, timedelta, timezone # 导入日期、时间、时区相关
-from typing import Optional, List, Dict, Any, Tuple, Union # 导入类型提示, 增加 Union
-# from contextlib import contextmanager # 不再需要
+from contextlib import asynccontextmanager # 改为异步上下文管理器
+from typing import Optional, List, Dict, Any, Tuple, Union, AsyncGenerator # 导入类型提示, 增加 Union, AsyncGenerator
 from app.core.message_converter import convert_messages # 导入消息转换函数
 
 # 导入 Message 类
 from app.api.models import Message
 
-# 导入配置以获取默认值 (现在由 db_settings 处理)
-# from .. import config as app_config
 # 导入新的设置管理模块
 from app.core.db_settings import get_ttl_days, set_ttl_days # 注意：这些也需要变成 async
 from app.config import MAX_CONTEXT_RECORDS_MEMORY # 导入最大记录数配置
@@ -28,24 +26,6 @@ logger = logging.getLogger('my_logger') # 获取日志记录器实例
 # 延迟导入 db_utils 以避免循环依赖
 # from app.core.db_utils import get_db_connection, DATABASE_PATH, IS_MEMORY_DB, DEFAULT_CONTEXT_TTL_DAYS
 
-# --- 数据库路径配置 (已移至 db_utils.py) ---
-# ...
-
-# --- 数据库连接 (已移至 db_utils.py) ---
-# @contextmanager
-# def get_db_connection(): ...
-
-# --- 数据库初始化 (已移至 db_utils.py) ---
-# def initialize_database(): ...
-
-# --- 设置管理 (已移至 db_settings.py) ---
-# def get_setting(...): ...
-# def set_setting(...): ...
-# def get_ttl_days(...): ...
-# def set_ttl_days(...): ...
-
-# --- 代理 Key 管理 (部分保留，用于 API 认证) ---
-# generate_proxy_key, add_proxy_key, list_proxy_keys, update_proxy_key, delete_proxy_key 已移除，因为 Web UI 已移除
 
 async def get_proxy_key(key: str) -> Optional[Dict[str, Any]]:
      """
@@ -92,7 +72,7 @@ async def save_context(proxy_key: str, contents: List[Dict[str, Any]]):
         from app.core.db_utils import get_db_connection, IS_MEMORY_DB, DATABASE_PATH
         async with get_db_connection() as conn: # 获取异步数据库连接
             async with conn.cursor() as cursor: # 使用异步游标
-                # 使用 ISO 格式存储 UTC 时间戳
+            # 使用 ISO 格式存储 UTC 时间戳
                 last_used_ts = datetime.now(timezone.utc).isoformat() # 获取当前 UTC 时间并格式化
                 # 在引用之前确保 proxy_key 存在于 proxy_keys 表中
                 # 这对于内存模式至关重要，因为 Key 可能不会预先填充
@@ -108,34 +88,9 @@ async def save_context(proxy_key: str, contents: List[Dict[str, Any]]):
                 logger.info(f"在连接 {id(conn)} 上为 Key {proxy_key[:8]}... 执行 INSERT OR REPLACE 完成。") # 移除了 "准备提交" 日志 (Removed "preparing to commit" log)
 
                 # --- 新增：内存数据库记录数限制 ---
-                if IS_MEMORY_DB and MAX_CONTEXT_RECORDS_MEMORY > 0: # 如果是内存数据库且设置了最大记录数
-                    try:
-                        # 获取当前记录数
-                        await cursor.execute("SELECT COUNT(*) FROM contexts") # 使用 await
-                        count_row = await cursor.fetchone() # 使用 await (Use await)
-                        current_count = count_row[0] if count_row else 0 # 获取当前记录数
-                        # logger.debug(f"内存数据库当前记录数: {current_count}, 限制: {MAX_CONTEXT_RECORDS_MEMORY}") # 调试日志 (Debug log)
-
-                        if current_count > MAX_CONTEXT_RECORDS_MEMORY: # 如果当前记录数超过限制
-                            num_to_delete = current_count - MAX_CONTEXT_RECORDS_MEMORY # 计算需要删除的数量
-                            logger.info(f"内存数据库记录数 ({current_count}) 已超过限制 ({MAX_CONTEXT_RECORDS_MEMORY})，将删除 {num_to_delete} 条最旧的记录...") # 内存数据库记录数超过限制，将删除最旧的记录
-                            # 删除 last_used 最早的记录
-                            # 使用 rowid 可以确保删除的是物理上最早插入（或最近未更新）的行
-                            # Using rowid ensures that the physically earliest inserted (or least recently updated) rows are deleted
-                            await cursor.execute( # 使用 await
-                                """
-                                DELETE FROM contexts
-                                WHERE rowid IN (
-                                    SELECT rowid FROM contexts ORDER BY last_used ASC LIMIT ?
-                                )
-                                """,
-                                (num_to_delete,)
-                            )
-                            rowcount = cursor.rowcount # 获取 rowcount
-                            logger.info(f"成功删除了 {rowcount} 条最旧的内存上下文记录。") # Log successful deletion
-                    except aiosqlite.Error as prune_err: # 捕获 aiosqlite 错误
-                        # 记录修剪错误，但不影响主保存操作的提交
-                        logger.error(f"修剪内存上下文记录时出错 (Key: {proxy_key[:8]}...): {prune_err}", exc_info=True) # 修剪内存上下文记录时出错
+                # 将修剪逻辑委托给辅助函数
+                if IS_MEMORY_DB and MAX_CONTEXT_RECORDS_MEMORY > 0:
+                    await _prune_memory_context(cursor)
 
             # 提交事务（包括插入/替换和可能的删除）
             logger.info(f"准备在连接 {id(conn)} 上为 Key {proxy_key[:8]}... 提交事务...") # 准备提交事务
@@ -148,63 +103,64 @@ async def save_context(proxy_key: str, contents: List[Dict[str, Any]]):
     except Exception as e: # 捕获保存期间任何其他意外错误
         logger.error(f"保存上下文时发生意外错误 (Key: {proxy_key[:8]}...): {e}", exc_info=True) # 保存上下文时发生意外错误
 
-async def load_context(proxy_key: str) -> Optional[List[Dict[str, Any]]]:
+async def _prune_memory_context(cursor: aiosqlite.Cursor):
     """
-    加载指定代理 Key 的上下文，并检查 TTL。
+    修剪内存数据库中的上下文记录，使其不超过最大限制。
+    这是一个辅助函数，应在 save_context 内部调用。
     """
-    if not proxy_key: return None
+    # 延迟导入 db_utils
+    from app.core.db_utils import IS_MEMORY_DB # 在函数开头导入
 
-    ttl_days = await get_ttl_days() # 获取 TTL 天数
-    # 如果 TTL <= 0，则禁用 TTL 检查
-    if ttl_days <= 0:
-        ttl_delta = None # TTL 时间差为 None
-    else:
-        ttl_delta = timedelta(days=ttl_days) # 计算 TTL 时间差
-
-    now_utc = datetime.now(timezone.utc) # 获取当前 UTC 时间
+    if not IS_MEMORY_DB or MAX_CONTEXT_RECORDS_MEMORY <= 0:
+        return
 
     try:
-        # 延迟导入 db_utils
-        from app.core.db_utils import get_db_connection
-        async with get_db_connection() as conn: # 获取异步数据库连接
-            async with conn.cursor() as cursor: # 使用异步游标
-                await cursor.execute("SELECT contents, last_used FROM contexts WHERE proxy_key = ?", (proxy_key,)) # 使用 await
-                row = await cursor.fetchone() # 使用 await
+        # 获取当前记录数
+        await cursor.execute("SELECT COUNT(*) FROM contexts") # 使用 await
+        count_row = await cursor.fetchone() # 使用 await (Use await)
+        current_count = count_row[0] if count_row else 0 # 获取当前记录数
 
-            if row and row['contents']: # 如果找到记录且内容不为空
-                last_used_str = row['last_used'] # 获取最后使用时间字符串
-                # 检查 TTL (仅当 ttl_delta 有效时)
-                if ttl_delta:
-                    try:
-                        # 解析存储的 ISO 格式 UTC 时间戳
-                        last_used_dt = datetime.fromisoformat(last_used_str).replace(tzinfo=timezone.utc) # 解析时间戳并设置为 UTC
-                        if now_utc - last_used_dt > ttl_delta: # 如果超过 TTL
-                            logger.info(f"Key {proxy_key[:8]}... 的上下文已超过 TTL ({ttl_days} 天)，将被删除。") # 上下文已超过 TTL，将被删除
-                            await delete_context_for_key(proxy_key) # 调用异步删除函数
-                            return None # 返回 None
-                    except (ValueError, TypeError) as dt_err:
-                         logger.error(f"解析 Key {proxy_key[:8]}... 的 last_used 时间戳 '{last_used_str}' 失败: {dt_err}") # 解析 last_used 时间戳失败
-                         # 时间戳无效，可能也需要删除？或者忽略 TTL 检查？暂时忽略 TTL 检查。
-                         pass # 继续尝试加载内容
+        if current_count > MAX_CONTEXT_RECORDS_MEMORY: # 如果当前记录数超过限制
+            num_to_delete = current_count - MAX_CONTEXT_RECORDS_MEMORY # 计算需要删除的数量
+            logger.info(f"内存数据库记录数 ({current_count}) 已超过限制 ({MAX_CONTEXT_RECORDS_MEMORY})，将删除 {num_to_delete} 条最旧的记录...") # 内存数据库记录数超过限制，将删除最旧的记录
+            # 删除 last_used 最早的记录
+            # 使用 rowid 可以确保删除的是物理上最早插入（或最近未更新）的行
+            # Using rowid ensures that the physically earliest inserted (or least recently updated) rows are deleted
+            await cursor.execute( # 使用 await
+                """
+                DELETE FROM contexts
+                WHERE rowid IN (
+                    SELECT rowid FROM contexts ORDER BY last_used ASC LIMIT ?
+                )
+                """,
+                (num_to_delete,)
+            )
+            rowcount = cursor.rowcount # 获取 rowcount
+            logger.info(f"成功删除了 {rowcount} 条最旧的内存上下文记录。") # Log successful deletion
+    except aiosqlite.Error as prune_err: # 捕获 aiosqlite 错误
+        # 记录修剪错误，但不影响主保存操作的提交
+        logger.error(f"修剪内存上下文记录时出错: {prune_err}", exc_info=True) # 修剪内存上下文记录时出错
 
-                # TTL 检查通过、被禁用或解析失败，尝试加载内容
-                try:
-                    contents = await asyncio.to_thread(json.loads, row['contents']) # 在线程中反序列化 JSON
-                    # contents = json.loads(row['contents'])
-                    logger.debug(f"上下文已为 Key {proxy_key[:8]}... 加载。") # 上下文已加载
-                    return contents # 返回加载的上下文
-                except json.JSONDecodeError as e:
-                    logger.error(f"反序列化存储的上下文时失败 (Key: {proxy_key[:8]}...): {e}", exc_info=True) # 记录反序列化错误 (Log deserialization error)
-                    # 删除损坏的数据，避免下次加载时再次出错
-                    await delete_context_for_key(proxy_key) # 调用异步删除函数
-                    return None # 返回 None
-            else:
-                logger.debug(f"未找到 Key {proxy_key[:8]}... 的上下文。") # 未找到上下文
-                return None # 返回 None
-    except aiosqlite.Error as e: # 捕获 aiosqlite 错误
-        logger.error(f"为 Key {proxy_key[:8]}... 加载上下文失败: {e}", exc_info=True) # 加载上下文失败
-        return None # 出错时返回 None
+async def _is_context_expired(last_used_str: str, ttl_delta: Optional[timedelta], proxy_key: str) -> bool:
+    """
+    检查上下文是否已过期。
+    """
+    if not ttl_delta:
+        return False # TTL 禁用，永不过期
 
+    now_utc = datetime.now(timezone.utc) # 获取当前 UTC 时间
+    try:
+        # 解析存储的 ISO 格式 UTC 时间戳
+        last_used_dt = datetime.fromisoformat(last_used_str).replace(tzinfo=timezone.utc) # 解析时间戳并设置为 UTC
+        if now_utc - last_used_dt > ttl_delta: # 如果超过 TTL
+            logger.info(f"Key {proxy_key[:8]}... 的上下文已超过 TTL，将被删除。") # 上下文已超过 TTL，将被删除
+            return True # 已过期
+        return False # 未过期
+    except (ValueError, TypeError) as dt_err:
+         logger.error(f"解析 Key {proxy_key[:8]}... 的 last_used 时间戳 '{last_used_str}' 失败: {dt_err}。视为已过期。") # 解析 last_used 时间戳失败
+         return True # 解析失败，视为已过期
+
+# 将 delete_context_for_key 函数移到这里，在其首次使用之前定义
 async def delete_context_for_key(proxy_key: str) -> bool:
     """
     删除指定代理 Key 的上下文记录。
@@ -222,12 +178,65 @@ async def delete_context_for_key(proxy_key: str) -> bool:
                 logger.info(f"上下文已为 Key {proxy_key[:8]}... 删除。") # 上下文已删除
                 return True # 返回 True
             else:
-                logger.debug(f"尝试删除 Key {proxy_key[:8]}... 的上下文，但未找到记录。") # 尝试删除上下文，但未找到记录
+                logger.warning(f"尝试删除 Key {proxy_key[:8]}... 的上下文，但未找到记录。") # 尝试删除上下文，但未找到记录
                 return False # 返回 False
     except aiosqlite.Error as e: # 捕获 aiosqlite 错误
         logger.error(f"删除 Key {proxy_key[:8]}... 的上下文失败: {e}", exc_info=True) # 删除上下文失败
         return False # 出错时返回 False
 
+
+async def _deserialize_context_contents(contents_json: str, proxy_key: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    反序列化存储的上下文 JSON 字符串，处理错误并删除损坏的数据。
+    """
+    try:
+        contents = await asyncio.to_thread(json.loads, contents_json) # 在线程中反序列化 JSON
+        logger.debug(f"上下文已为 Key {proxy_key[:8]}... 加载。") # 上下文已加载
+        return contents # 返回加载的上下文
+    except json.JSONDecodeError as e:
+        logger.error(f"反序列化存储的上下文时失败 (Key: {proxy_key[:8]}...): {e}", exc_info=True) # 记录反序列化错误 (Log deserialization error)
+        # 删除损坏的数据，避免下次加载时再次出错
+        await delete_context_for_key(proxy_key) # 调用异步删除函数
+        return None # 返回 None
+
+async def load_context(proxy_key: str) -> Optional[List[Dict[str, Any]]]:
+    """
+    加载指定代理 Key 的上下文，并检查 TTL。
+    """
+    if not proxy_key: return None
+
+    ttl_days = await get_ttl_days() # 获取 TTL 天数
+    ttl_delta = timedelta(days=ttl_days) if ttl_days > 0 else None # 计算 TTL 时间差 (如果 TTL > 0)
+
+    try:
+        # 延迟导入 db_utils
+        from app.core.db_utils import get_db_connection
+        async with get_db_connection() as conn: # 获取异步数据库连接
+            async with conn.cursor() as cursor: # 使用异步游标
+                await cursor.execute("SELECT contents, last_used FROM contexts WHERE proxy_key = ?", (proxy_key,)) # 使用 await
+                row = await cursor.fetchone() # 使用 await
+
+            if not row or not row['contents']: # 如果未找到记录或内容为空
+                logger.debug(f"未找到 Key {proxy_key[:8]}... 的上下文。") # 未找到上下文
+                return None # 返回 None
+
+            last_used_str = row['last_used'] # 获取最后使用时间字符串
+            contents_json = row['contents'] # 获取 JSON 字符串内容
+
+            # 检查 TTL
+            if await _is_context_expired(last_used_str, ttl_delta, proxy_key):
+                 await delete_context_for_key(proxy_key) # 调用异步删除函数
+                 return None # 已过期并删除，返回 None
+
+            # 反序列化内容
+            return await _deserialize_context_contents(contents_json, proxy_key)
+
+    except aiosqlite.Error as e: # 捕获 aiosqlite 错误
+        logger.error(f"为 Key {proxy_key[:8]}... 加载上下文失败: {e}", exc_info=True) # 加载上下文失败
+        return None # 出错时返回 None
+
+
+# 函数定义已移到前面
 async def get_context_info(proxy_key: str) -> Optional[Dict[str, Any]]:
      """
      获取指定代理 Key 上下文的元信息。
@@ -284,7 +293,14 @@ async def list_all_context_keys_info(user_key: Optional[str] = None, is_admin: b
 
                 await cursor.execute(sql, params) # 使用 await (Use await)
                 rows = await cursor.fetchall() # 使用 await (Use await)
-                logger.info(f"list_all_context_keys_info: Fetched {len(rows)} rows from DB for {'admin' if is_admin else user_key[:8]+'...'}. Raw rows: {rows}") # Log number of rows fetched
+                # 修正日志记录，确保在 user_key 为 None 时不会出错
+                log_key_info = 'admin' if is_admin else (user_key[:8]+'...' if user_key else 'unknown_user')
+                # 限制日志中原始行的输出长度，避免过长
+                raw_rows_str = str(rows)
+                max_log_len = 500 # 设置日志中原始行内容的最大长度
+                if len(raw_rows_str) > max_log_len:
+                    raw_rows_str = raw_rows_str[:max_log_len] + f"... (truncated, total {len(rows)} rows)"
+                logger.info(f"list_all_context_keys_info: Fetched {len(rows)} rows from DB for {log_key_info}. Raw rows: {raw_rows_str}") # Log number of rows fetched
                 contexts_info = [dict(row) for row in rows] # 将结果转换为字典列表 (Convert results to list of dictionaries)
     except aiosqlite.Error as e: # 捕获 aiosqlite 错误 (Catch aiosqlite error)
         log_prefix = f"管理员" if is_admin else f"用户 {user_key[:8]}..." if user_key else "未知用户" # 构建日志前缀 (Build log prefix)
@@ -302,7 +318,7 @@ def convert_openai_to_gemini_contents(history: List[Dict]) -> List[Dict]:
         history: OpenAI 格式的对话历史列表 (e.g., [{'role': 'user', 'content': '...'}, {'role': 'assistant', 'content': '...'}])。
 
     Returns:
-        Gemini 格式的 contents 列表 (e.g., [{'role': 'user', 'parts': [{'text': '...'}]}, {'role': 'model', 'parts': [{'text': '...'}]}]).
+        Gemini 格式的 contents 列表 (e.g., [{'role': 'user', 'parts': [{'text': '...'}]}, {'role': 'assistant', 'parts': [{'text': '...'}]}]).
     """
     gemini_contents = []
     for message in history: # 遍历 OpenAI 格式的历史记录 (Iterate through OpenAI format history)
@@ -375,10 +391,10 @@ async def load_context_as_gemini(proxy_key: str) -> Optional[List[Dict[str, Any]
         logger.warning(f"为 Key {proxy_key[:8]}... 加载的上下文为空或所有消息均无效。返回 None。") # Log warning if message_objects is empty
         return None
 
-    # 检查第一条消息的角色是否为 'assistant'，这可能导致 Gemini API 错误
+    # 检查第一条消息的角色是否为 'assistant', 这可能导致 Gemini API 错误
     # Check if the role of the first message is 'assistant', which might cause Gemini API errors
     if message_objects[0].role == 'assistant':
-        logger.warning(f"为 Key {proxy_key[:8]}... 加载的上下文第一条消息角色为 'assistant'，这可能导致 Gemini API 错误。") # Log warning for first message role
+        logger.warning(f"为 Key {proxy_key[:8]}... 加载的上下文第一条消息角色为 'assistant', 这可能导致 Gemini API 错误。") # Log warning for first message role
 
 
     # 使用更通用的 convert_messages 函数将 Message 对象列表转换为 Gemini 格式
@@ -394,21 +410,9 @@ async def load_context_as_gemini(proxy_key: str) -> Optional[List[Dict[str, Any]
     return gemini_context # 返回转换后的 Gemini 格式的上下文 (Return Gemini format context)
 
 
-# convert_openai_to_gemini_contents 函数不再需要，因为它已被 convert_messages 替代
-# The convert_openai_to_gemini_contents function is no longer needed as it has been replaced by convert_messages
-# def convert_openai_to_gemini_contents(history: List[Dict]) -> List[Dict]:
-#     ... (原函数内容已删除)
-
 def convert_gemini_to_storage_format(request_content: Dict, response_content: Dict) -> List[Dict]:
     """
     将 Gemini 的请求内容 (用户) 和响应内容 (模型) 转换为内部存储格式 (OpenAI 格式)。
-
-    Args:
-        request_content: Gemini 格式的用户请求内容 (e.g., {'role': 'user', 'parts': [{'text': '...'}]})。
-        response_content: Gemini 格式的模型响应内容 (e.g., {'role': 'model', 'parts': [{'text': '...'}]})。
-
-    Returns:
-        包含用户和模型消息的 OpenAI 格式列表 (e.g., [{'role': 'user', 'content': '...'}, {'role': 'assistant', 'content': '...'}]).
     """
     storage_format = []
 
@@ -424,7 +428,7 @@ def convert_gemini_to_storage_format(request_content: Dict, response_content: Di
         if 'text' in first_part: # 如果 part 中有文本 (If there is text in the part)
             user_text = first_part['text'] # 获取文本内容 (Get text content)
         # TODO: 未来可能需要处理其他类型的 parts (e.g., images)
-        # TODO: May need to handle other types of parts in the future (e.g., images)
+        # TODO: May need to handle other types of parts in the future
         storage_format.append({'role': 'user', 'content': user_text}) # 添加到存储格式列表 (Append to storage format list)
     else:
         logger.warning(f"转换 Gemini 用户请求内容时发现无效格式: {request_content}") # Log warning for invalid Gemini user request format
@@ -451,7 +455,6 @@ def convert_gemini_to_storage_format(request_content: Dict, response_content: Di
 
 
 # --- 内存数据库清理 ---
-# --- 内存数据库清理 ---
 from app.core.db_utils import IS_MEMORY_DB # 在函数开头导入
 
 async def cleanup_memory_context(max_age_seconds: int):
@@ -468,38 +471,27 @@ async def cleanup_memory_context(max_age_seconds: int):
     cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds) # 计算截止时间 (Calculate cutoff time)
     # 使用 ISO 格式进行比较
     # Use ISO format for comparison
-    cutoff_timestamp_str = cutoff_time.isoformat() # 格式化截止时间戳 (Format cutoff timestamp)
-    deleted_count = 0 # 初始化删除计数 (Initialize deleted count)
+    cutoff_time_iso = cutoff_time.isoformat()
 
-    logger.info(f"开始清理内存数据库中早于 {cutoff_timestamp_str} UTC 的上下文...") # Log cleanup start
     try:
-        # 延迟导入 db_utils (移除 IS_MEMORY_DB 的重复导入)
+        # 延迟导入 db_utils
         from app.core.db_utils import get_db_connection
         async with get_db_connection() as conn: # 获取异步数据库连接 (Get asynchronous database connection)
             async with conn.cursor() as cursor: # 使用异步游标 (Use asynchronous cursor)
-                # 删除 last_used 早于截止时间的记录
-                # Delete records where last_used is earlier than the cutoff time
-                await cursor.execute( # 使用 await (Use await)
-                    """
-                    DELETE FROM contexts
-                    WHERE last_used < ?
-                    """,
-                    (cutoff_timestamp_str,)
-                )
-                deleted_count = cursor.rowcount # 获取删除的行数 (Get number of deleted rows)
+                await cursor.execute("DELETE FROM contexts WHERE last_used < ?", (cutoff_time_iso,)) # 使用 await (Use await)
+                rowcount = cursor.rowcount # 获取 rowcount (Get rowcount)
                 await conn.commit() # 使用 await (Use await)
-                logger.info(f"内存数据库清理完成，删除了 {deleted_count} 条记录。") # Log cleanup completion
+            if rowcount > 0: # 如果删除了记录 (If records were deleted)
+                logger.info(f"成功清理了 {rowcount} 条超过 {max_age_seconds} 秒的内存上下文记录。") # Log successful cleanup
+            else:
+                logger.debug("内存上下文清理完成，没有找到需要删除的记录。") # Log completion with no records deleted
     except aiosqlite.Error as e: # 捕获 aiosqlite 错误 (Catch aiosqlite error)
-        logger.error(f"清理内存上下文失败: {e}", exc_info=True) # Log cleanup failure
+        logger.error(f"清理内存上下文记录失败: {e}", exc_info=True) # Log failure to cleanup memory context
+
 
 async def update_ttl(context_key: str, ttl_seconds: int) -> Optional[bool]:
     """
-    更新指定上下文记录的 TTL (以秒为单位)。
-
-    Returns:
-        True: 如果更新成功。
-        None: 如果 Key 未找到。
-        False: 如果发生数据库错误。
+    更新指定上下文记录的 TTL (通过更新 last_used 时间戳)。
     """
     if not context_key: return False
     try:
@@ -507,59 +499,32 @@ async def update_ttl(context_key: str, ttl_seconds: int) -> Optional[bool]:
         from app.core.db_utils import get_db_connection
         async with get_db_connection() as conn:
             async with conn.cursor() as cursor:
-                # 检查记录是否存在
-                await cursor.execute("SELECT 1 FROM contexts WHERE proxy_key = ?", (context_key,))
-                row = await cursor.fetchone()
-                if not row:
-                    logger.warning(f"尝试更新 Key {context_key[:8]}... 的 TTL，但未找到记录。")
-                    return None # Key 未找到，返回 None
-
-                # 计算新的 last_used 时间戳
-                # 如果 ttl_seconds <= 0，表示禁用 TTL，可以将 last_used 设置为一个未来很远的时间，或者一个特殊标记
-                # 这里我们选择设置为一个未来时间，以便 load_context 中的逻辑能正确处理
-                if ttl_seconds <= 0:
-                     # 设置为一个未来很远的时间，例如 100 年后
-                     new_last_used = (datetime.now(timezone.utc) + timedelta(days=365 * 100)).isoformat()
-                else:
-                     # 计算基于当前时间的新的 last_used 时间戳
-                     new_last_used = (datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)).isoformat()
-
-
-                # 更新 last_used 字段
-                await cursor.execute("UPDATE contexts SET last_used = ? WHERE proxy_key = ?", (new_last_used, context_key))
+                # 更新 last_used 为当前时间
+                now_utc_iso = datetime.now(timezone.utc).isoformat()
+                await cursor.execute("UPDATE contexts SET last_used = ?", (now_utc_iso, context_key))
+                rowcount = cursor.rowcount
                 await conn.commit()
-                logger.info(f"Key {context_key[:8]}... 的 TTL 已更新为 {ttl_seconds} 秒。")
+            if rowcount > 0:
+                logger.info(f"成功更新了 Key {context_key[:8]}... 的 last_used 时间戳。")
                 return True
+            else:
+                logger.warning(f"尝试更新 Key {context_key[:8]}... 的 last_used 时间戳，但未找到记录。")
+                return False
     except aiosqlite.Error as e:
-        logger.error(f"更新 Key {context_key[:8]}... 的 TTL 失败: {e}", exc_info=True)
+        logger.error(f"更新 Key {context_key[:8]}... 的 last_used 时间戳失败: {e}", exc_info=True)
         return False
 
 async def update_global_ttl(ttl_seconds: int) -> bool:
     """
-    更新全局默认上下文 TTL (以秒为单位)。
-
-    Args:
-        ttl_seconds: 新的全局默认 TTL (秒)。
-
-    Returns:
-        True: 如果更新成功。
-        False: 如果发生错误。
+    更新全局上下文 TTL 设置。
     """
+    # 延迟导入 db_settings
+    from app.core.db_settings import set_setting
     try:
-        # 将秒转换为天数（向上取整，确保至少为 1 天，除非 ttl_seconds 为 0）
-        # Convert seconds to days (round up, ensure at least 1 day unless ttl_seconds is 0)
-        ttl_days = (ttl_seconds + 86400 - 1) // 86400 if ttl_seconds > 0 else 0 # 向上取整转换为天，0 秒仍为 0 天
-
-        # 调用 db_settings 中的函数来设置全局 TTL
-        # Call the function in db_settings to set the global TTL
-        await set_ttl_days(ttl_days) # 调用 set_ttl_days 并传递天数
-
-        # 如果 set_ttl_days 没有抛出异常，则表示成功
-        # If set_ttl_days does not raise an exception, it means success
-        logger.info(f"全局默认上下文 TTL 已成功更新到 {ttl_days} 天 ({ttl_seconds} 秒)。")
+        # 将 TTL 存储为字符串，以便兼容 SQLite
+        await set_setting("context_ttl_seconds", str(ttl_seconds))
+        logger.info(f"全局上下文 TTL 已更新为 {ttl_seconds} 秒。")
         return True
     except Exception as e:
-        # 捕获 set_ttl_days 可能抛出的异常
-        # Catch exceptions that set_ttl_days might throw
-        logger.error(f"更新全局默认上下文 TTL 到 {ttl_days} 天失败: {e}", exc_info=True)
+        logger.error(f"更新全局上下文 TTL 失败: {e}", exc_info=True)
         return False

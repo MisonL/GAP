@@ -2,13 +2,13 @@ import asyncio # 导入 asyncio 模块
 import json # 导入 json 模块
 import logging # 导入 logging 模块
 import time # 导入 time 模块，用于 /v1/models 端点生成时间戳
-from typing import List, Dict, Any, Optional # 导入类型提示，Literal 和 Tuple 已不再此模块使用
+from typing import List, Dict, Any, Optional # 导入类型提示
 from fastapi import APIRouter, HTTPException, Request, Depends, status # 导入 FastAPI 相关组件：路由、HTTP异常、请求对象、依赖注入、状态码
 from fastapi.responses import StreamingResponse # 导入流式响应对象
 from app import config # 导入应用配置模块
 
 # 从其他模块导入必要的组件
-from app.api.models import ChatCompletionRequest, ChatCompletionResponse, ModelList # 导入 API 请求和响应模型 (ChatCompletionRequest, ChatCompletionResponse, ModelList) (Choice, ResponseMessage 在 processor 中使用)
+from app.api.models import ChatCompletionRequest, ChatCompletionResponse, ModelList # 导入 API 请求和响应模型
 from app.core.gemini import GeminiClient # 导入 Gemini 客户端类
 from app.core.key_manager_class import APIKeyManager # 导入类型
 import httpx # 导入 httpx 用于类型提示
@@ -16,28 +16,8 @@ from app.api.middleware import verify_proxy_key # 导入代理密钥验证中间
 # 导入处理器函数
 from app.api.request_processing import process_request # 导入核心请求处理函数
 # 导入依赖注入函数
-from fastapi import APIRouter, HTTPException, Request, Depends, status # 导入 FastAPI 相关组件：路由、HTTP异常、请求对象、依赖注入、状态码
-from fastapi.responses import StreamingResponse # 导入流式响应对象
-import asyncio # 导入 asyncio 模块
-import json # 导入 json 模块
-import logging # 导入 logging 模块
-import time # 导入 time 模块，用于 /v1/models 端点生成时间戳
-from typing import List, Dict, Any, Optional # 导入类型提示，Literal 和 Tuple 已不再此模块使用
-import httpx # 导入 httpx 用于类型提示
 
-from app import config # 导入应用配置模块
-
-# 从其他模块导入必要的组件
-from app.api.models import ChatCompletionRequest, ChatCompletionResponse, ModelList # 导入 API 请求和响应模型 (ChatCompletionRequest, ChatCompletionResponse, ModelList) (Choice, ResponseMessage 在 processor 中使用)
-from app.core.gemini import GeminiClient # 导入 Gemini 客户端类
-from app.core.key_manager_class import APIKeyManager # 导入类型
-from app.api.middleware import verify_proxy_key # 导入代理密钥验证中间件/依赖项
-# 导入处理器函数
-from app.api.request_processing import process_request # 导入核心请求处理函数
-# 导入依赖注入函数
-from app.core.dependencies import get_key_manager, get_http_client # 从新的依赖模块导入函数
-
-
+from app.core.dependencies import get_key_manager, get_http_client # 导入获取 Key Manager 和 HTTP Client 的依赖函数
 # --- 此模块内需要的全局变量 ---
 logger = logging.getLogger('my_logger') # 获取日志记录器实例
 
