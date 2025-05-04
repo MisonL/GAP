@@ -1,4 +1,3 @@
-from app.core.context_store import load_context_as_gemini
 # -*- coding: utf-8 -*-
 """
 处理 Gemini 原生 API (v2) 相关的路由。
@@ -6,12 +5,12 @@ from app.core.context_store import load_context_as_gemini
 import logging # 导入日志模块
 from fastapi import APIRouter, Request, HTTPException, status, Depends, Path # 导入 FastAPI 相关组件
 from fastapi.responses import JSONResponse # 导入 JSONResponse
-from typing import Dict, Any # 导入类型提示
+from typing import Dict, Any, Optional # 导入类型提示
 
 # 导入自定义模块
 from app.core.gemini import GeminiClient # 导入 GeminiClient
 from app.core.response_wrapper import ResponseWrapper # 导入响应包装类
-from app.core.context_store import load_context, save_context, convert_openai_to_gemini_contents, convert_gemini_to_storage_format # 导入上下文管理函数和转换函数
+from app.core.context_store import load_context, save_context, convert_openai_to_gemini_contents, convert_gemini_to_storage_format, load_context_as_gemini # 导入上下文管理函数和转换函数
 from app.core.key_manager_class import APIKeyManager # 导入类型
 import httpx # 导入 httpx 用于类型提示
 # 导入依赖注入函数
@@ -32,6 +31,63 @@ from app.api.models import GeminiGenerateContentRequestV2, GeminiGenerateContent
 logger = logging.getLogger('my_logger') # 获取日志记录器实例
 
 v2_router = APIRouter() # 创建 APIRouter 实例
+
+async def _load_and_inject_context_v2(
+    proxy_key: str,
+    request_body: GeminiGenerateContentRequestV2,
+    enable_context: bool
+):
+    """
+    加载历史上下文并注入到请求体中。
+    """
+    if not enable_context:
+        logger.debug(f"Key {proxy_key[:8]}... 的上下文补全已禁用，跳过加载和注入。")
+        return
+
+    # 加载历史上下文并转换为 Gemini 格式
+    gemini_context = await load_context_as_gemini(proxy_key) # 加载并转换历史上下文
+    if gemini_context: # 如果存在上下文历史
+        # 将上下文注入到当前请求内容的开头
+        request_body.contents = gemini_context + request_body.contents # 注入上下文
+        logger.debug(f"为 Key {proxy_key[:8]}... 注入了 {len(gemini_context)} 条上下文消息。") # 记录注入的上下文数量
+    else:
+        logger.debug(f"Key {proxy_key[:8]}... 没有找到上下文或加载失败，跳过注入。") # 没有找到上下文或加载失败
+
+
+async def _save_context_after_v2_success(
+    proxy_key: str,
+    original_contents: list,
+    gemini_response: Dict[str, Any],
+    enable_context: bool
+):
+    """
+    在 v2 API 调用成功后保存上下文。
+    """
+    if not enable_context or not gemini_response or not gemini_response.get('candidates'):
+        if enable_context:
+             logger.debug(f"为 Key {proxy_key[:8]}... 跳过上下文存储：上下文补全未启用或响应无效。")
+        return
+
+    # 提取用户请求内容和模型响应内容
+    # 假设原始请求内容的最后一条是用户消息
+    user_message_gemini = original_contents[-1] if original_contents else None # 获取用户消息
+    # 假设响应的第一个候选的 content 是模型响应
+    model_response_gemini = gemini_response['candidates'][0]['content'] if gemini_response.get('candidates') else None # 获取模型响应
+
+    if user_message_gemini and model_response_gemini: # 如果用户消息和模型响应都存在
+        # 将 Gemini 格式的用户请求和模型响应转换为存储格式 (OpenAI 格式)
+        new_context_entry = convert_gemini_to_storage_format(user_message_gemini, model_response_gemini) # 转换格式
+        if new_context_entry: # 如果转换成功
+            # 加载现有上下文，添加新条目，然后保存
+            existing_context = await load_context(proxy_key) # 重新加载现有上下文
+            updated_context = (existing_context or []) + new_context_entry # 合并新旧上下文
+            await save_context(proxy_key, updated_context) # 保存更新后的上下文
+            logger.debug(f"为 Key {proxy_key[:8]}... 存储了新的上下文回合。") # 存储了新的上下文回合
+        else:
+            logger.warning(f"为 Key {proxy_key[:8]}... 转换 Gemini 请求/响应为存储格式失败，跳过上下文存储。") # 转换 Gemini 请求/响应为存储格式失败
+    else:
+         logger.warning(f"为 Key {proxy_key[:8]}... 存储上下文失败：无法提取用户消息或模型响应。") # 存储上下文失败：无法提取用户消息或模型响应
+
 
 @v2_router.post("/models/{model}:generateContent", response_model=GeminiGenerateContentResponseV2) # 定义 POST 请求端点，指定响应模型
 async def generate_content_v2(
@@ -54,17 +110,10 @@ async def generate_content_v2(
     # 初始化 Gemini 客户端，传入共享的 http_client
     client = GeminiClient(api_key=proxy_key, http_client=http_client) # 使用代理 Key 初始化 Gemini 客户端
 
-    # 获取并注入上下文 (如果启用)
+    # 获取并注入上下文 (如果启用) - 委托给辅助函数
     original_contents = request_body.contents # 保存原始请求内容
-    if enable_context: # 如果启用了上下文补全
-        # 加载历史上下文并转换为 Gemini 格式
-        gemini_context = await load_context_as_gemini(proxy_key) # 加载并转换历史上下文
-        if gemini_context: # 如果存在上下文历史
-            # 将上下文注入到当前请求内容的开头
-            request_body.contents = gemini_context + original_contents # 注入上下文
-            logger.debug(f"为 Key {proxy_key[:8]}... 注入了 {len(gemini_context)} 条上下文消息。") # 记录注入的上下文数量
-        else:
-            logger.debug(f"Key {proxy_key[:8]}... 没有找到上下文或加载失败，跳过注入。") # 没有找到上下文或加载失败
+    await _load_and_inject_context_v2(proxy_key, request_body, enable_context)
+
 
     # --- 获取客户端 IP 和时间戳 ---
     client_ip = get_client_ip(request) # 获取客户端 IP
@@ -94,27 +143,8 @@ async def generate_content_v2(
             prompt_tokens = gemini_response['usageMetadata'].get('promptTokenCount') # 获取 promptTokenCount
         update_token_counts(proxy_key, model, limits, prompt_tokens, client_ip, today_date_str_pt) # 更新 token 计数
 
-        # 存储上下文 (如果启用)
-        if enable_context and gemini_response and gemini_response.get('candidates'): # 如果启用了上下文补全且响应有效
-            # 提取用户请求内容和模型响应内容
-            # 假设原始请求内容的最后一条是用户消息
-            user_message_gemini = original_contents[-1] if original_contents else None # 获取用户消息
-            # 假设响应的第一个候选的 content 是模型响应
-            model_response_gemini = gemini_response['candidates'][0]['content'] if gemini_response.get('candidates') else None # 获取模型响应
-
-            if user_message_gemini and model_response_gemini: # 如果用户消息和模型响应都存在
-                # 将 Gemini 格式的用户请求和模型响应转换为存储格式 (OpenAI 格式)
-                new_context_entry = convert_gemini_to_storage_format(user_message_gemini, model_response_gemini) # 转换格式
-                if new_context_entry: # 如果转换成功
-                    # 加载现有上下文，添加新条目，然后保存
-                    existing_context = await load_context(proxy_key) # 重新加载现有上下文
-                    updated_context = (existing_context or []) + new_context_entry # 合并新旧上下文
-                    await save_context(proxy_key, updated_context) # 保存更新后的上下文
-                    logger.debug(f"为 Key {proxy_key[:8]}... 存储了新的上下文回合。") # 存储了新的上下文回合
-                else:
-                    logger.warning(f"为 Key {proxy_key[:8]}... 转换 Gemini 请求/响应为存储格式失败，跳过上下文存储。") # 转换 Gemini 请求/响应为存储格式失败
-            else:
-                 logger.warning(f"为 Key {proxy_key[:8]}... 存储上下文失败：无法提取用户消息或模型响应。") # 存储上下文失败：无法提取用户消息或模型响应
+        # 存储上下文 (如果启用) - 委托给辅助函数
+        await _save_context_after_v2_success(proxy_key, original_contents, gemini_response, enable_context)
 
         # 返回 Gemini 响应
         # 直接返回原始 Gemini 响应，不进行 OpenAI 包装
@@ -130,4 +160,3 @@ async def generate_content_v2(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, # 内部服务器错误状态码
             detail=f"处理请求时发生内部错误: {e}" # 错误详情
         )
-

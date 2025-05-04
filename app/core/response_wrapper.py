@@ -1,3 +1,5 @@
+# 导入类型提示
+from typing import Any, Dict, List, Optional, Union
 # -*- coding: utf-8 -*-
 """
 封装 Gemini API 响应，提供便捷的属性访问方法。
@@ -5,7 +7,7 @@
 import json # 导入 json 模块
 import logging # 导入 logging 模块 (Import logging module)
 from dataclasses import dataclass # 导入 dataclass 装饰器 (Import dataclass decorator)
-from typing import Optional, Dict, Any, List # 导入类型提示 (Import type hints)
+from typing import Optional, Dict, Any, List, Tuple, TypeVar, Callable # 导入类型提示 (Import type hints)
 
 # 获取名为 'my_logger' 的日志记录器实例
 # Get the logger instance named 'my_logger'
@@ -16,6 +18,8 @@ from typing import Optional, Dict, Any, List # 导入类型提示 (Import type h
 # 为简单起见，暂时保留此方式，但需注意潜在的初始化问题。
 # For simplicity, this approach is kept for now, but be aware of potential initialization issues.
 logger = logging.getLogger('my_logger')
+
+T = TypeVar('T') # 定义一个类型变量
 
 @dataclass
 class GeneratedText:
@@ -53,22 +57,49 @@ class ResponseWrapper:
             logger.error(f"序列化响应数据时出错: {e}", exc_info=True)
             self._json_dumps = "{ \"error\": \"Failed to serialize response data\" }"
 
+    def _safe_get(self, path: List[Union[str, int]], default: Optional[T] = None, expected_type: Optional[type] = None) -> Optional[T]:
+        """
+        安全地从嵌套字典/列表中获取值，处理 KeyError, IndexError, TypeError, AttributeError。
+
+        Args:
+            path: 访问嵌套结构的路径，例如 ['candidates', 0, 'content', 'parts', 0, 'text']。
+            default: 获取失败时返回的默认值。
+            expected_type: 期望返回值的类型，如果类型不匹配则返回默认值。
+
+        Returns:
+            获取到的值或默认值。
+        """
+        data = self._data
+        try:
+            for key in path:
+                if isinstance(data, dict):
+                    data = data.get(key)
+                elif isinstance(data, list) and isinstance(key, int) and 0 <= key < len(data):
+                    data = data[key]
+                else:
+                    return default # 路径无效或类型不匹配
+
+            if expected_type is not None and not isinstance(data, expected_type):
+                 return default # 类型不匹配
+
+            return data # type: ignore # 返回获取到的值
+        except (KeyError, IndexError, TypeError, AttributeError):
+            return default # 捕获异常时返回默认值
+
 
     def _extract_thoughts(self) -> Optional[str]:
         """
         从响应数据中提取模型的思考过程文本（如果存在）。
         注意：此功能通常用于特定的模型或配置，并非所有响应都包含思考过程。
         """
-        try:
-            # 遍历第一个候选响应的内容部分（parts）
-            for part in self._data['candidates'][0]['content']['parts']:
-                # 如果某个部分包含 'thought' 键，则认为它是思考过程文本
-                if 'thought' in part:
-                    return part.get('text', '') # 使用 get 获取文本，增加健壮性
-            return ""  # 如果遍历完所有部分都没有找到 'thought'，返回空字符串
-        except (KeyError, IndexError, TypeError):
-            # 处理数据结构不符合预期（缺少键、索引越界、类型错误）的情况
-            return "" # 返回空字符串
+        # 使用 _safe_get 简化提取逻辑
+        # 路径: ['candidates', 0, 'content', 'parts'] -> 遍历 parts 查找包含 'thought' 的 part
+        parts = self._safe_get(['candidates', 0, 'content', 'parts'], default=[], expected_type=list)
+        for part in parts:
+            if isinstance(part, dict) and 'thought' in part:
+                return part.get('text', '') # 使用 get 获取文本，增加健壮性
+        return "" # 如果遍历完所有部分都没有找到 'thought'，返回空字符串
+
 
     def _extract_text(self) -> str:
         """
@@ -76,60 +107,47 @@ class ResponseWrapper:
         此方法会合并所有不包含 'thought' 或 'functionCall' 的部分的文本。
         """
         text_parts = []
-        try:
-            # 遍历第一个候选响应的内容部分（parts）
-            for part in self._data['candidates'][0]['content']['parts']:
-                # 仅当部分既不包含 'thought' 也不包含 'functionCall' 时，才提取其文本
-                if 'thought' not in part and 'functionCall' not in part:
-                    text_parts.append(part.get('text', '')) # 使用 get 获取文本，增加健壮性
-            return "".join(text_parts) # 将所有提取的文本部分连接成一个字符串
-        except (KeyError, IndexError, TypeError):
-            # 处理数据结构不符合预期的情况
-            return "" # 返回空字符串
+        # 使用 _safe_get 简化提取逻辑
+        # 路径: ['candidates', 0, 'content', 'parts'] -> 遍历 parts 查找文本
+        parts = self._safe_get(['candidates', 0, 'content', 'parts'], default=[], expected_type=list)
+        for part in parts:
+            # 仅当部分既不包含 'thought' 也不包含 'functionCall' 时，才提取其文本
+            if isinstance(part, dict) and 'thought' not in part and 'functionCall' not in part:
+                text_parts.append(part.get('text', '')) # 使用 get 获取文本，增加健壮性
+        return "".join(text_parts) # 将所有提取的文本部分连接成一个字符串
+
 
     def _extract_finish_reason(self) -> Optional[str]:
         """
         从响应数据中提取生成完成的原因。
         """
-        try:
-            # 尝试获取第一个候选响应的 'finishReason' 字段
-            return self._data['candidates'][0].get('finishReason')
-        except (KeyError, IndexError, TypeError):
-            # 处理数据结构不符合预期的情况
-            return None # 返回 None
+        # 使用 _safe_get 简化提取逻辑
+        return self._safe_get(['candidates', 0, 'finishReason'], default=None, expected_type=str)
+
 
     def _extract_prompt_token_count(self) -> Optional[int]:
         """
         从响应的元数据（usageMetadata）中提取输入提示（prompt）的 token 数量。
         """
-        try:
-            # 尝试获取 'usageMetadata' 中的 'promptTokenCount'
-            return self._data['usageMetadata'].get('promptTokenCount')
-        except (KeyError, AttributeError): # 添加 AttributeError 处理 _data['usageMetadata'] 不是字典的情况
-            # 处理缺少 'usageMetadata' 或其类型不正确的情况
-            return None # 返回 None
+        # 使用 _safe_get 简化提取逻辑
+        return self._safe_get(['usageMetadata', 'promptTokenCount'], default=None, expected_type=int)
+
 
     def _extract_candidates_token_count(self) -> Optional[int]:
         """
         从响应的元数据（usageMetadata）中提取生成内容（candidates）的 token 数量。
         """
-        try:
-            # 尝试获取 'usageMetadata' 中的 'candidatesTokenCount'
-            return self._data['usageMetadata'].get('candidatesTokenCount')
-        except (KeyError, AttributeError):
-            # 处理缺少 'usageMetadata' 或其类型不正确的情况
-            return None # 返回 None
+        # 使用 _safe_get 简化提取逻辑
+        return self._safe_get(['usageMetadata', 'candidatesTokenCount'], default=None, expected_type=int)
+
 
     def _extract_total_token_count(self) -> Optional[int]:
         """
         从响应的元数据（usageMetadata）中提取总的 token 数量。
         """
-        try:
-            # 尝试获取 'usageMetadata' 中的 'totalTokenCount'
-            return self._data['usageMetadata'].get('totalTokenCount')
-        except (KeyError, AttributeError):
-            # 处理缺少 'usageMetadata' 或其类型不正确的情况
-            return None # 返回 None
+        # 使用 _safe_get 简化提取逻辑
+        return self._safe_get(['usageMetadata', 'totalTokenCount'], default=None, expected_type=int)
+
 
     def _extract_tool_calls(self) -> Optional[List[Dict[str, Any]]]:
         """
@@ -137,18 +155,17 @@ class ResponseWrapper:
         Gemini API 将工具调用信息放在包含 'functionCall' 键的 'parts' 元素中。
         """
         tool_calls_list = []
-        try:
-            # 遍历第一个候选响应的内容部分（parts）
-            for part in self._data['candidates'][0]['content']['parts']:
-                # 如果某个部分包含 'functionCall' 键
-                if 'functionCall' in part:
-                    # 将 'functionCall' 字典添加到列表中
-                    tool_calls_list.append(part['functionCall'])
-            # 如果列表非空（即找到了工具调用），则返回列表，否则返回 None
-            return tool_calls_list if tool_calls_list else None
-        except (KeyError, IndexError, TypeError):
-            # 处理数据结构不符合预期的情况
-            return None # 返回 None
+        # 使用 _safe_get 简化提取逻辑
+        # 路径: ['candidates', 0, 'content', 'parts'] -> 遍历 parts 查找包含 'functionCall' 的 part
+        parts = self._safe_get(['candidates', 0, 'content', 'parts'], default=[], expected_type=list)
+        for part in parts:
+            # 如果某个部分包含 'functionCall' 键
+            if isinstance(part, dict) and 'functionCall' in part:
+                # 将 'functionCall' 字典添加到列表中
+                tool_calls_list.append(part['functionCall'])
+        # 如果列表非空（即找到了工具调用），则返回列表，否则返回 None
+        return tool_calls_list if tool_calls_list else None
+
 
     # 使用 @property 装饰器将内部提取方法的结果暴露为只读属性，方便外部调用者访问
     @property
@@ -194,7 +211,5 @@ class ResponseWrapper:
     @property
     def usage_metadata(self) -> Optional[Dict[str, Any]]:
         """直接返回原始的 usageMetadata 字典，如果存在的话。"""
-        try:
-            return self._data.get('usageMetadata')
-        except AttributeError:
-            return None
+        # 使用 _safe_get 简化提取逻辑
+        return self._safe_get(['usageMetadata'], default=None, expected_type=dict)

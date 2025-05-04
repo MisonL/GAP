@@ -1,3 +1,5 @@
+# 导入类型提示
+from typing import Any, Dict, List, Optional, Tuple, Union
 # app/core/gemini.py
 # 导入必要的库
 import json      # 用于处理 JSON 数据
@@ -28,16 +30,59 @@ class GeminiClient:
         self.api_key = api_key # 存储 API 密钥
         self.http_client = http_client # 存储共享的 HTTP 客户端
 
+    def _process_stream_chunk(self, data_chunk: Dict[str, Any]) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+        """
+        处理单个流数据块，提取文本、使用情况元数据、安全问题和完成原因。
+        返回 (text_in_chunk, usage_metadata, safety_issue_detail, finish_reason)。
+        """
+        text_in_chunk = None
+        usage_metadata = None
+        safety_issue_detail = None
+        finish_reason = None
+
+        if 'usageMetadata' in data_chunk:
+            usage_metadata = data_chunk['usageMetadata'] # 提取使用情况元数据
+            logger.debug(f"流接收到 usageMetadata: {usage_metadata}") # 流接收到 usageMetadata
+
+        if 'candidates' in data_chunk and data_chunk['candidates']:
+            candidate = data_chunk['candidates'][0] # 获取第一个候选
+            finish_reason = candidate.get("finishReason") # 获取当前完成原因
+
+            # 提取文本部分
+            text_content = ""
+            if 'content' in candidate and 'parts' in candidate['content']:
+                for part in candidate['content']['parts']:
+                    if 'text' in part:
+                        text_content += part['text'] # 累加文本
+
+            if text_content:
+                text_in_chunk = text_content
+
+            # 处理完成原因和安全问题
+            if finish_reason and finish_reason != "STOP":
+                logger.warning(f"流式响应被标记: {finish_reason}, Key: {self.api_key[:8]}...") # 流式响应被标记
+                safety_issue_detail = f"完成原因: {finish_reason}" # 记录安全问题详情
+
+            if 'safetyRatings' in candidate:
+                for rating in candidate['safetyRatings']:
+                    if rating.get('blocked') or rating.get('probability') in ['HIGH', 'MEDIUM']: # 也考虑 MEDIUM 概率
+                        log_level = logging.WARNING if rating.get('blocked') or rating.get('probability') == 'HIGH' else logging.INFO # 根据严重程度设置日志级别
+                        logger.log(log_level, f"流式响应安全评分: Category={rating['category']}, Probability={rating.get('probability', 'N/A')}, Blocked={rating.get('blocked', 'N/A')}, Key: {self.api_key[:8]}...") # 流式响应安全评分
+                        if rating.get('blocked') or rating.get('probability') == 'HIGH':
+                            safety_issue_detail = f"安全问题: {rating['category']}" # 记录安全问题详情
+
+
+        return text_in_chunk, usage_metadata, safety_issue_detail, finish_reason
+
+
     async def stream_chat(self, request: ChatCompletionRequest, contents: List[Dict[str, Any]], safety_settings: List[Dict[str, Any]], system_instruction: Optional[Dict[str, Any]]) -> AsyncGenerator[Union[str, Dict[str, Any]], None]:
         logger.info(f"流式请求开始 (Key: {self.api_key[:8]}..., Model: {request.model}) →")
         text_yielded = False # 标记是否已产生文本
-        safety_issue_detected = None # 存储检测到的安全问题
-        usage_metadata = None # 存储使用情况元数据
+        safety_issue_detail_received = None # 存储接收到的安全问题详情
+        usage_metadata_received = None # 存储使用情况元数据
         final_finish_reason = "STOP" # 存储最终完成原因，默认为 STOP
-        # 根据模型名称选择 API 版本 (这个逻辑可能需要更新或移除，取决于 Google API 的演进)
+
         api_version = "v1beta" # 默认使用 v1beta API 版本
-        # 统一使用 generateContent，流式通过 stream=true 参数控制 (如果 API 支持)
-        # 查阅最新文档，似乎 streamGenerateContent 仍然是推荐的流式端点
         url = f"https://generativelanguage.googleapis.com/{api_version}/models/{request.model}:streamGenerateContent?key={self.api_key}&alt=sse" # 构建 API 请求 URL
 
         headers = {"Content-Type": "application/json"} # 设置请求头
@@ -74,45 +119,27 @@ class GeminiClient:
                         data_chunk = json.loads(buffer.decode('utf-8')) # 尝试解析缓冲区中的 JSON
                         buffer = b"" # 清空缓冲区
 
-                        if 'usageMetadata' in data_chunk:
-                            usage_metadata = data_chunk['usageMetadata'] # 提取使用情况元数据
-                            logger.debug(f"流接收到 usageMetadata: {usage_metadata}") # 流接收到 usageMetadata
+                        # 处理单个数据块 - 委托给辅助函数
+                        text_in_chunk, usage_metadata, safety_issue_detail, finish_reason = self._process_stream_chunk(data_chunk)
 
-                        if 'candidates' in data_chunk and data_chunk['candidates']:
-                            candidate = data_chunk['candidates'][0] # 获取第一个候选
-                            current_finish_reason = candidate.get("finishReason") # 获取当前完成原因
+                        if text_in_chunk:
+                            yield text_in_chunk # Yield 文本块
+                            text_yielded = True # 标记已产生文本
 
-                            # 提取文本部分
-                            text_in_chunk = "" # 初始化块中的文本
-                            if 'content' in candidate and 'parts' in candidate['content']:
-                                for part in candidate['content']['parts']:
-                                    if 'text' in part:
-                                        text_in_chunk += part['text'] # 累加文本
+                        if usage_metadata:
+                             usage_metadata_received = usage_metadata # 存储接收到的使用情况元数据
 
-                            if text_in_chunk:
-                                yield text_in_chunk # Yield 文本块
-                                text_yielded = True # 标记已产生文本
+                        if safety_issue_detail:
+                             safety_issue_detail_received = safety_issue_detail # 存储接收到的安全问题详情
+                             # 如果检测到安全问题且尚未产生文本，yield 安全详情块
+                             if not text_yielded:
+                                 yield {'_safety_issue': safety_issue_detail_received}
+                                 # 标记已发送安全提示，避免重复发送
+                                 safety_issue_detail_received = None # 清空，表示已处理
 
-                            # 处理完成原因和安全问题
-                            if current_finish_reason and current_finish_reason != "STOP":
-                                logger.warning(f"流式响应被标记: {current_finish_reason}, Model: {request.model}, Key: {self.api_key[:8]}...") # 流式响应被标记
-                                safety_issue_detected = f"完成原因: {current_finish_reason}" # 记录安全问题详情
-                                final_finish_reason = current_finish_reason # 更新最终原因
+                        if finish_reason and finish_reason != "STOP":
+                             final_finish_reason = finish_reason # 更新最终原因
 
-                            if 'safetyRatings' in candidate:
-                                for rating in candidate['safetyRatings']:
-                                    if rating.get('blocked') or rating.get('probability') in ['HIGH', 'MEDIUM']: # 也考虑 MEDIUM 概率
-                                        log_level = logging.WARNING if rating.get('blocked') or rating.get('probability') == 'HIGH' else logging.INFO # 根据严重程度设置日志级别
-                                        logger.log(log_level, f"流式响应安全评分: Category={rating['category']}, Probability={rating.get('probability', 'N/A')}, Blocked={rating.get('blocked', 'N/A')}, Model: {request.model}, Key: {self.api_key[:8]}...") # 流式响应安全评分
-                                        if rating.get('blocked') or rating.get('probability') == 'HIGH':
-                                            safety_issue_detected = f"安全问题: {rating['category']}" # 记录安全问题详情
-                                            if final_finish_reason == "STOP": final_finish_reason = "SAFETY" # 如果最终原因是 STOP，则更新为 SAFETY
-
-                                            # 新增：如果检测到安全问题且尚未产生文本，yield 安全详情块
-                                            if not text_yielded:
-                                                yield {'_safety_issue': safety_issue_detected}
-                                                # 标记已发送安全提示，避免重复发送
-                                                safety_issue_detected = None # 清空，表示已处理
 
                     except json.JSONDecodeError:
                         logger.debug(f"JSON 解析错误, 当前缓冲区: {buffer}") # JSON 解析错误
@@ -137,13 +164,13 @@ class GeminiClient:
             logger.info(f"流式请求结束 (Key: {self.api_key[:8]}..., Model: {request.model}) ←") # 流式请求结束
             # 如果流结束但从未产生文本且检测到安全问题，记录错误但不在此处抛出异常，
             # 让调用者根据最终的 finish_reason 和 usage_metadata 来处理这种情况
-            # 这里的 safety_issue_detected 在上面 yield 后可能已经被清空，但保留日志以防万一
-            if not text_yielded and safety_issue_detected:
-                logger.error(f"流结束但未产生文本，检测到安全问题 ({safety_issue_detected}), Key: {self.api_key[:8]}...") # 流结束但未产生文本，检测到安全问题
+            # 这里的 safety_issue_detail_received 在上面 yield 后可能已经被清空，但保留日志以防万一
+            if not text_yielded and safety_issue_detail_received:
+                logger.error(f"流结束但未产生文本，检测到安全问题 ({safety_issue_detail_received}), Key: {self.api_key[:8]}...") # 流结束但未产生文本，检测到安全问题
 
             yield {'_final_finish_reason': final_finish_reason}
-            if usage_metadata:
-                yield {'_usage_metadata': usage_metadata}
+            if usage_metadata_received:
+                yield {'_usage_metadata': usage_metadata_received}
 
 
     async def complete_chat(self, request: ChatCompletionRequest, contents: List[Dict[str, Any]], safety_settings: List[Dict[str, Any]], system_instruction: Optional[Dict[str, Any]]) -> ResponseWrapper:
@@ -175,6 +202,18 @@ class GeminiClient:
         return ResponseWrapper(response.json()) # 返回 ResponseWrapper 实例
 
     @staticmethod
+    def _extract_model_name(model_info: Dict[str, Any]) -> Optional[str]:
+        """
+        从单个模型信息字典中提取模型名称，并移除 'models/' 前缀。
+        """
+        if isinstance(model_info, dict) and "name" in model_info:
+            model_name = model_info["name"]
+            if model_name.startswith("models/"):
+                model_name = model_name[len("models/"):]
+            return model_name
+        return None
+
+    @staticmethod
     async def list_available_models(api_key: str, http_client: httpx.AsyncClient) -> List[str]:
         if not api_key:
             raise ValueError("API Key 不能为空") # API Key 不能为空
@@ -193,12 +232,10 @@ class GeminiClient:
             model_names = [] # 初始化模型名称列表
             if "models" in data and isinstance(data["models"], list):
                 for model_info in data["models"]:
-                    if isinstance(model_info, dict) and "name" in model_info:
-                            # 移除 "models/" 前缀
-                            model_name = model_info["name"]
-                            if model_name.startswith("models/"):
-                                model_name = model_name[len("models/"):]
-                            model_names.append(model_name) # 添加模型名称到列表
+                    # 使用辅助函数提取模型名称
+                    model_name = GeminiClient._extract_model_name(model_info)
+                    if model_name:
+                        model_names.append(model_name) # 添加模型名称到列表
             logger.info(f"成功获取到 {len(model_names)} 个模型 (Key: {api_key[:8]}...)") # 成功获取到模型
             return model_names # 返回模型名称列表
         except httpx.HTTPStatusError as e:

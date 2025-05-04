@@ -174,11 +174,11 @@ body {
 }
 .chart-percentage {
     position: absolute;
-    top: 50%; /* 恢复垂直居中 */
+    top: 58%; /* 调整垂直位置，使其居中在半圆空白区域 */
     left: 50%; /* 恢复水平居中 */
     /* 微调垂直位置，使其向下偏移 */
     /* Finely tune vertical position to shift it downwards */
-    transform: translate(-50%, calc(-50% + 8px));
+    transform: translate(-50%, -50%); /* 调整为标准水平垂直居中 */
     font-size: 1.2rem; /* 恢复默认字体大小或更小 */
     font-weight: bold;
     color: #333; /* 恢复默认颜色 */

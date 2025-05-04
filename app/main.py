@@ -59,7 +59,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.http_client = http_client
 
     # 记录部分关键配置值（可选，注意不要记录敏感信息如 SECRET_KEY）
-    # SECRET_KEY 的检查已移除，JWT 认证会在需要时检查其是否存在
     RED = '\033[91m'
     RESET = '\033[0m'
     if not config.ADMIN_API_KEY: # 如果管理员 Key 未设置

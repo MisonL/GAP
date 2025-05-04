@@ -11,10 +11,45 @@ from app.core.key_manager_class import APIKeyManager
 logger = logging.getLogger("my_logger")
 
 # --- 错误处理辅助函数 ---
+
+def _handle_http_status_error_and_key_removal(
+    status_code: int,
+    api_error_message: str,
+    api_key: Optional[str],
+    key_manager: APIKeyManager,
+    key_identifier: str
+) -> str:
+    """
+    处理 httpx.HTTPStatusError，记录错误并根据状态码决定是否移除 Key。
+    返回格式化的错误消息。
+    """
+    error_message = f"API 错误 (状态码 {status_code}, {key_identifier}): {api_error_message}" # 格式化错误消息
+    logger.error(error_message) # 使用 ERROR 级别记录 API 返回的错误
+
+    # 根据状态码决定是否移除 Key
+    if api_key:
+        if status_code in [401, 403, 500, 503]:
+            logger.warning(f"由于 API 错误 (状态码 {status_code})，将移除无效或有问题的 Key: {api_key[:10]}...") # 由于 API 错误，将移除无效或有问题的 Key
+            key_manager.remove_key(api_key) # 移除 Key
+        elif status_code == 400 and "API key not valid" in api_error_message:
+             logger.warning(f"API 报告 Key 无效 (400 Bad Request)，将移除 Key: {api_key[:10]}...") # API 报告 Key 无效，将移除 Key
+             key_manager.remove_key(api_key) # 移除 Key
+
+    return error_message
+
+
 def handle_gemini_error(e: Exception, api_key: Optional[str], key_manager: APIKeyManager) -> str:
     """
+    处理 Gemini API 调用过程中发生的各种异常，记录错误并返回格式化的错误消息。
+    对于某些 HTTP 状态码错误，会移除对应的 API Key。
 
+    Args:
+        e: 发生的异常对象。
+        api_key: 当前使用的 API Key (可选)。
+        key_manager: APIKeyManager 实例。
 
+    Returns:
+        格式化的错误消息字符串。
     """
     key_identifier = f"Key: {api_key[:10]}..." if api_key else "Key: N/A" # 用于日志记录的 Key 标识符（部分显示）
     error_message = f"发生未知错误 ({key_identifier}): {e}" # 设置默认错误消息
@@ -28,15 +63,14 @@ def handle_gemini_error(e: Exception, api_key: Optional[str], key_manager: APIKe
         except json.JSONDecodeError:
             api_error_message = error_body # 如果不是 JSON，使用原始文本
 
-        error_message = f"API 错误 (状态码 {status_code}, {key_identifier}): {api_error_message}" # 格式化错误消息
-        logger.error(error_message) # 使用 ERROR 级别记录 API 返回的错误
-
-        if status_code in [401, 403, 500, 503] and api_key:
-            logger.warning(f"由于 API 错误 (状态码 {status_code})，将移除无效或有问题的 Key: {api_key[:10]}...") # 由于 API 错误，将移除无效或有问题的 Key
-            key_manager.remove_key(api_key) # 移除 Key
-        elif status_code == 400 and "API key not valid" in api_error_message and api_key:
-             logger.warning(f"API 报告 Key 无效 (400 Bad Request)，将移除 Key: {api_key[:10]}...") # API 报告 Key 无效，将移除 Key
-             key_manager.remove_key(api_key) # 移除 Key
+        # 将 HTTPStatusError 的处理委托给辅助函数
+        error_message = _handle_http_status_error_and_key_removal(
+            status_code,
+            api_error_message,
+            api_key,
+            key_manager,
+            key_identifier
+        )
 
     elif isinstance(e, httpx.TimeoutException):
         error_message = f"请求超时 ({key_identifier}): {e}" # 格式化超时错误消息
