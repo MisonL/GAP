@@ -36,7 +36,7 @@
                                 <div id="tpd-input-percentage" class="chart-percentage">--%</div>
                              </div>
                              <p id="tpd-input-stats" class="mt-2 small text-muted">加载中...</p>
-                        </div>
+                         </div>
                         <!-- 关键统计数据 -->
                         <div class="col-12 mt-4"> <!-- 调整为 col-12 并添加上边距 -->
                             <h6>关键指标</h6>
@@ -53,24 +53,24 @@
                                     过去 7 天平均日 RPD:
                                     <span id="avg-daily-rpd" class="badge bg-info rounded-pill">...</span>
                                 </li>
-                               <!-- RPD 容量列表容器 -->
-                               <li id="rpd-capacity-list-container" class="list-group-item">
-                                   RPD 容量估算:
-                                   {% if has_valid_keys %}
-                                   <div class="small text-muted mt-1">加载中...</div>
-                                   {% else %}
-                                   <div class="small mt-1">无有效 API Key，无法估算容量</div> {# 无有效 Key 时的提示 #}
-                                   {% endif %}
-                               </li>
-                               <!-- TPD 输入容量列表容器 -->
-                               <li id="tpd-input-capacity-list-container" class="list-group-item">
-                                   TPD 输入容量估算:
-                                   {% if has_valid_keys %}
-                                   <div class="small text-muted mt-1">加载中...</div>
-                                   {% else %}
-                                   <div class="small mt-1">无有效 API Key，无法估算容量</div> {# 无有效 Key 时的提示 #}
-                                   {% endif %}
-                               </li>
+                                <!-- RPD 容量列表容器 -->
+                                <li id="rpd-capacity-list-container" class="list-group-item">
+                                    RPD 容量估算:
+                                    {% if has_valid_keys %}
+                                         <div class="small text-muted mt-1">加载中...</div>
+                                    {% else %}
+                                         <div class="small mt-1">无有效 API Key，无法估算容量</div> {# 无有效 Key 时的提示 #}
+                                    {% endif %}
+                                </li>
+                                <!-- TPD 输入容量列表容器 -->
+                                <li id="tpd-input-capacity-list-container" class="list-group-item">
+                                    TPD 输入容量估算:
+                                    {% if has_valid_keys %}
+                                         <div class="small text-muted mt-1">加载中...</div>
+                                    {% else %}
+                                         <div class="small mt-1">无有效 API Key，无法估算容量</div> {# 无有效 Key 时的提示 #}
+                                    {% endif %}
+                                </li>
                             </ul>
                         </div>
                     </div>
@@ -83,7 +83,7 @@
                     <h5 class="mb-0">Key 使用概览</h5>
                 </div>
                 <div class="card-body">
-                    <div id="key-status-charts" class="row justify-content-center">
+                     <div id="key-status-charts" class="row justify-content-center">
                         <!-- 图表将动态添加到这里 -->
                         <p id="key-status-loading" class="text-center text-muted">正在加载 Key 状态图表...</p>
                     </div>
@@ -102,7 +102,7 @@
             <!-- Key 数量建议 -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-light">
-                     <h5 class="mb-0">Key 数量建议</h5>
+                    <h5 class="mb-0">Key 数量建议</h5>
                 </div>
                 <div class="card-body">
                     <p id="key-suggestion" class="lead">正在加载建议...</p>
@@ -124,7 +124,7 @@
                                         <tr><th>时间范围</th><th>IP 地址</th><th>次数</th></tr>
                                     </thead>
                                     <tbody id="top-ips-requests">
-                                        <tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>
+                                       <tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -145,68 +145,56 @@
                     </div>
                 </div>
             </div>
-        </div>
-<!-- Key 筛选原因统计 -->
+
+            <!-- Key 筛选原因统计 -->
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-light">
-                    <h5 class="mb-0">密钥筛选原因统计</h5>
+                    <h5 class="mb-0">Key 筛选原因统计</h5>
                 </div>
                 <div class="card-body">
-                    {% if report_data and report_data.key_selection_stats %}
-                      {# 检查 report_data 和 key_selection_stats 是否存在且不为空 #}
-                      <table class="table table-striped table-bordered">
-                        {# 使用表格展示数据，添加 Bootstrap 样式类 #}
-                        <thead>
-                          <tr>
-                            <th>筛选原因</th> {# 表头：筛选原因 #}
-                            <th>次数</th>   {# 表头：次数 #}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {# 遍历 key_selection_stats 字典中的每一项 #}
-                          {% for reason, count in report_data.key_selection_stats.items() %}
-                          <tr>
-                            <td>{{ reason }}</td> {# 显示筛选原因 #}
-                            <td>{{ count }}</td>  {# 显示对应的次数 #}
-                          </tr>
-                          {% endfor %}
-                        </tbody>
-                      </table>
-                    {% else %}
-                      {# 如果 key_selection_stats 不存在或为空，显示提示信息 #}
-                      <p class="text-center text-muted">无密钥筛选记录</p>
-                    {% endif %}
+                    <h6>按原因汇总</h6>
+                    <ul id="key-selection-reasons-summary" class="list-group list-group-flush mb-4">
+                        <li class="list-group-item text-center text-muted">正在加载...</li>
+                    </ul>
+
+                    <h6>按 Key 详细统计</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Key ID (部分)</th>
+                                    <th>筛选次数</th>
+                                    <th>主要原因</th>
+                                </tr>
+                            </thead>
+                            <tbody id="key-selection-details">
+                                <tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
-    </div> <!-- end .row -->
-
+        </div>
+    </div>
 </div>
 
-<!-- 引入 Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
-<!-- 引入 chartjs-adapter-date-fns (如果需要时间轴) -->
-<!-- <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script> -->
-
 <style>
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-}
-
-/* 在环形图中心显示百分比的样式 */
-/* Style to display percentage in the center of doughnut chart */
+/* 图表容器样式 */
+/* Chart container styles */
 .chart-container {
     position: relative;
+    width: 100%; /* 确保容器宽度为 100% */
+    max-width: 200px; /* 添加最大宽度以控制大小 */
     margin: auto;
-    max-width: 180px; /* 添加最大宽度以控制大小 */
-    /* 移除拟物化样式 */
-    box-shadow: none;
-    border-radius: 0;
-    padding: 0;
-    background-color: transparent;
+    /* 为图表添加更明显的阴影效果 */
+    /* Add a more prominent shadow effect to charts */
+    filter: drop-shadow(0px 8px 15px rgba(0, 0, 0, 0.2)) drop-shadow(0px 3px 6px rgba(0, 0, 0, 0.15)); /* 加深阴影 */
 }
+/* 图表中心显示百分比的样式 */
+/* Style to display percentage in the center of doughnut chart */
 .chart-percentage {
     position: absolute;
-    top: 58%; /* 调整垂直位置，使其居中在半圆空白区域 */
+    top: 55%; /* 调整垂直位置，使其更居中于半圆 */
     left: 50%; /* 恢复水平居中 */
     /* 微调垂直位置，使其向下偏移 */
     /* Finely tune vertical position to shift it downwards */
@@ -218,8 +206,8 @@ body {
     pointer-events: none; /* 确保不影响图表交互 */
 }
 /* 确保 Key 状态图表在列内响应式 */
-#key-status-charts .col-lg-3,
-#key-status-charts .col-md-4,
+#key-status-charts .col-lg-4,
+#key-status-charts .col-md-6,
 #key-status-charts .col-sm-6 {
     /* 可以根据需要调整图表大小 */
     max-width: 200px; /* 限制图表容器的最大宽度 */
@@ -245,10 +233,11 @@ body {
 }
 </style>
 
-<script>
-    // --- 获取 Token ---
-    const token = localStorage.getItem('access_token'); // 从 localStorage 获取 token
-    if (!token) { // 如果没有 token
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // --- 获取 Token ---
+        const token = localStorage.getItem('access_token'); // 从 localStorage 获取 token
+        if (!token) { // 如果没有 token
         console.log('Report Page: No token found, redirecting to login.');
         window.location.href = '/'; // 重定向到登录页
         // 停止执行后续代码，或者将所有逻辑包裹在 if(token) 中
@@ -293,7 +282,7 @@ body {
         // 检查 keyUsageSummaryData 是否有效且包含 models 数组
         const modelsData = keyUsageSummaryData?.models;
         if (!modelsData || !Array.isArray(modelsData) || modelsData.length === 0) {
-            if (chartsContainer) chartsContainer.innerHTML = '<p class="text-center text-muted col-12">暂无 Key 使用数据。</p>'; // No data message
+            if (chartsContainer) chartsContainer.innerHTML = '<p class="text-center text-muted col-12">暂无 Key 使用数据可供可视化。</p>'; // No data for visualization
             if (detailsContainer) detailsContainer.innerHTML = '<p class="text-center text-muted">暂无详情数据。</p>';
             return;
         }
@@ -411,12 +400,7 @@ body {
         if (Object.keys(keyStatusChartInstances).length === 0) {
              if (chartsContainer) chartsContainer.innerHTML = '<p class="text-center text-muted col-12">暂无 Key 使用数据可供可视化。</p>'; // No data for visualization
              if (detailsContainer) detailsContainer.innerHTML = '<p class="text-center text-muted">暂无详情数据。</p>';
-        } else {
-            // 如果有数据，移除详情区域的默认提示
-            // If there is data, remove the default message in the details area
-            const defaultDetailMsg = detailsContainer ? detailsContainer.querySelector('p.text-center.text-muted') : null;
-            if (defaultDetailMsg) defaultDetailMsg.remove();
-        }
+        } // 添加缺失的右花括号来闭合 renderKeyStatusCharts 函数
     }
 
 
@@ -430,7 +414,6 @@ body {
         const rpdStatsElem = document.getElementById('rpd-stats');
         const tpdInputStatsElem = document.getElementById('tpd-input-stats');
 
-
         // 销毁旧图表实例（如果存在）
         // Destroy old chart instances (if they exist)
         if (rpdChartInstance) rpdChartInstance.destroy();
@@ -438,39 +421,32 @@ body {
 
         // RPD 图表
         // RPD Chart
-        // 增加对 rpdData 及其属性的健壮性检查
         const rpdCapacity = rpdData?.capacity || 0;
         const rpdUsedToday = rpdData?.used_today || 0;
-        const rpdEstimatedToday = rpdData?.estimated_today; // 预估值可能是字符串 "N/A"
+        const rpdEstimatedToday = rpdData?.estimated_today;
 
-        if (rpdCanvas && rpdCapacity > 0) {
+        if (rpdCanvas) {
             const rpdCtx = rpdCanvas.getContext('2d');
-            // 优先使用预估值计算百分比，如果预估值为0或无效，则使用实际已用值
-            // Prioritize estimated value for percentage calculation, use actual used value if estimate is 0 or invalid
-            const rpdUsedValue = (typeof rpdEstimatedToday === 'number' && rpdEstimatedToday > 0) ? rpdEstimatedToday : rpdUsedToday; // 检查 estimated_today 是否为数字且大于0
-            const rpdUsageRatio = (rpdUsedValue / rpdCapacity) * 100;
-            const rpdRemainingRatio = Math.max(0, 100 - rpdUsageRatio); // 确保不为负 (Ensure not negative)
+            const rpdUsedValue = (typeof rpdEstimatedToday === 'number' && rpdEstimatedToday > 0) ? rpdEstimatedToday : rpdUsedToday;
+            const rpdUsageRatio = (rpdCapacity > 0) ? (rpdUsedValue / rpdCapacity) * 100 : 0;
+            const rpdRemainingRatio = Math.max(0, 100 - rpdUsageRatio);
             rpdChartInstance = new Chart(rpdCtx, {
                 type: 'doughnut',
                 data: {
-                    labels: ['已用/预估', '剩余'], // Labels
+                    labels: ['已用/预估', '剩余'],
                     datasets: [{
-                        data: [rpdUsageRatio, rpdRemainingRatio], // 使用原始比例，格式化在 tooltip 中
-                        backgroundColor: [
-                            'rgba(220, 53, 69, 0.7)', // 红色，已用/预估
-                            'rgba(40, 167, 69, 0.7)'  // 绿色，剩余
-                        ], // 恢复原始背景色
-                        borderColor: ['rgba(220, 53, 69, 1)', 'rgba(40, 167, 69, 1)'], // 保持边框色
+                        data: [rpdUsageRatio, rpdRemainingRatio],
+                        backgroundColor: ['rgba(220, 53, 69, 0.7)', 'rgba(76, 175, 80, 0.8)'], /* 使用更明亮的绿色 */
+                        borderColor: ['rgba(220, 53, 69, 1)', 'rgba(76, 175, 80, 1)'], /* 对应边框色 */
                         borderWidth: 1,
-                        circumference: 180, // 半圆 (Semicircle)
-                        rotation: -90, // 从顶部开始 (Start from top)
+                        circumference: 180,
+                        rotation: -90,
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true, // 保持宽高比
+                    maintainAspectRatio: false,
                     plugins: {
-                        shadow: {}, // Register the custom shadow plugin
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
@@ -478,58 +454,46 @@ body {
                                 }
                             }
                         },
-                        legend: { display: false } // 隐藏图例 (Hide legend)
+                        legend: { display: false }
                     },
-                    cutout: '70%' // 环形图粗细 (Doughnut thickness)
+                    cutout: '70%'
                 }
             });
-            // 更新图表中心的百分比
-            // Update percentage in the center of the chart
             if (rpdPercentageDiv) rpdPercentageDiv.textContent = `${rpdUsageRatio.toFixed(1)}%`;
-            // 更新下方的统计文本
-            // Update the stats text below
             if (rpdStatsElem) rpdStatsElem.textContent = `已用: ${formatNumber(rpdUsedToday)}, 预估: ${formatNumber(rpdEstimatedToday) || 'N/A'} / 容量: ${formatNumber(rpdCapacity)}`;
         } else {
-             // 如果没有容量数据或容量为0，更新统计文本和百分比显示为默认值
-             if (rpdStatsElem) rpdStatsElem.textContent = `已用: ${formatNumber(rpdUsedToday)}, 容量: ${formatNumber(rpdCapacity) || 'N/A'}`;
+             if (rpdStatsElem) rpdStatsElem.textContent = `已用: ${formatNumber(rpdUsedToday)} / 容量: ${formatNumber(rpdCapacity) || 'N/A'}`;
              if (rpdPercentageDiv) rpdPercentageDiv.textContent = '--%';
-             // 可以选择隐藏 Canvas 或显示无数据消息
-             // Optionally hide Canvas or show no data message
-         }
+        }
 
-         // TPD 输入图表
-         // TPD Input Chart
-        // 增加对 tpdInputData 及其属性的健壮性检查
-        const tpdInputCapacity = tpdInputData?.capacity || 0;
-        const tpdInputUsedToday = tpdInputData?.used_today || 0;
-        const tpdInputEstimatedToday = tpdInputData?.estimated_today; // 预估值可能是字符串 "N/A"
+        // TPD 输入图表
+        // TPD Input Chart
+        const tpdInputCapacity = tpdInputData?.tpd_input_capacity || 0; // 确保从 tpdInputData 获取
+        const tpdInputUsedToday = tpdInputData?.tpd_input_used_today || 0; // 确保从 tpdInputData 获取
+        const tpdInputEstimatedToday = tpdInputData?.tpd_input_estimated_today; // 确保从 tpdInputData 获取
 
-        if (tpdInputCanvas && tpdInputCapacity > 0) {
+        if (tpdInputCanvas) {
             const tpdInputCtx = tpdInputCanvas.getContext('2d');
-            const tpdInputUsedValue = (typeof tpdInputEstimatedToday === 'number' && tpdInputEstimatedToday > 0) ? tpdInputEstimatedToday : tpdInputUsedToday; // 检查 estimated_today 是否为数字且大于0
-            const tpdInputUsageRatio = (tpdInputUsedValue / tpdInputCapacity) * 100;
-            const tpdInputRemainingRatio = Math.max(0, 100 - tpdInputUsageRatio); // 确保不为负 (Ensure not negative)
+            const tpdInputUsedValue = (typeof tpdInputEstimatedToday === 'number' && tpdInputEstimatedToday > 0) ? tpdInputEstimatedToday : tpdInputUsedToday;
+            const tpdInputUsageRatio = (tpdInputCapacity > 0) ? (tpdInputUsedValue / tpdInputCapacity) * 100 : 0;
+            const tpdInputRemainingRatio = Math.max(0, 100 - tpdInputUsageRatio);
             tpdInputChartInstance = new Chart(tpdInputCtx, {
                 type: 'doughnut',
                 data: {
-                    labels: ['已用/预估', '剩余'], // Labels
+                    labels: ['已用/预估', '剩余'],
                     datasets: [{
-                        data: [tpdInputUsageRatio, tpdInputRemainingRatio], // 使用原始比例，格式化在 tooltip 中
-                        backgroundColor: [
-                            'rgba(220, 53, 69, 0.7)', // 红色，已用/预估
-                            'rgba(40, 167, 69, 0.7)'  // 绿色，剩余
-                        ], // 恢复原始背景色
-                        borderColor: ['rgba(220, 53, 69, 1)', 'rgba(40, 167, 69, 1)'], // 保持边框色
+                        data: [tpdInputUsageRatio, tpdInputRemainingRatio],
+                        backgroundColor: ['rgba(220, 53, 69, 0.7)', 'rgba(76, 175, 80, 0.8)'], /* 使用更明亮的绿色 */
+                        borderColor: ['rgba(220, 53, 69, 1)', 'rgba(76, 175, 80, 1)'], /* 对应边框色 */
                         borderWidth: 1,
-                        circumference: 180, // 半圆 (Semicircle)
-                        rotation: -90, // 从顶部开始 (Start from top)
+                        circumference: 180,
+                        rotation: -90,
                     }]
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: true, // 保持宽高比
+                    maintainAspectRatio: false,
                     plugins: {
-                        shadow: {}, // Register the custom shadow plugin
                         tooltip: {
                             callbacks: {
                                 label: function(context) {
@@ -537,406 +501,247 @@ body {
                                 }
                             }
                         },
-                        legend: { display: false } // 隐藏图例 (Hide legend)
+                        legend: { display: false }
                     },
-                    cutout: '70%' // 环形图粗细 (Doughnut thickness)
+                    cutout: '70%'
                 }
             });
-            // 更新图表中心的百分比
-            // Update percentage in the center of the chart
-            // 修正可能的 ReferenceError: 确保引用的是正确的变量名 tpdInputPercentageDiv
-            if (tpdInputPercentageDiv) {
-                tpdInputPercentageDiv.textContent = `${tpdInputUsageRatio.toFixed(1)}%`;
-            } else {
-                 console.error("Element with ID 'tpd-input-percentage' not found."); // 添加错误日志
-            }
-            // 更新下方的统计文本
-            // Update the stats text below
-            if (tpdInputStatsElem) {
-                tpdInputStatsElem.textContent = `已用: ${formatNumber(tpdInputUsedToday)}, 预估: ${formatNumber(tpdInputEstimatedToday) || 'N/A'} / 容量: ${formatNumber(tpdInputCapacity)}`;
-            } else {
-                 console.error("Element with ID 'tpd-input-stats' not found."); // 添加错误日志
-            }
+            if (tpdInputPercentageDiv) tpdInputPercentageDiv.textContent = `${tpdInputUsageRatio.toFixed(1)}%`;
+            if (tpdInputStatsElem) tpdInputStatsElem.textContent = `已用: ${formatNumber(tpdInputUsedToday)}, 预估: ${formatNumber(tpdInputEstimatedToday) || 'N/A'} / 容量: ${formatNumber(tpdInputCapacity)}`;
         } else {
-            // 如果没有容量数据，更新统计文本和百分比显示
-            // If no capacity data, update stats text and percentage display
-            if (tpdInputStatsElem) {
-                 tpdInputStatsElem.textContent = `已用: ${formatNumber(tpdInputUsedToday)}, 容量: ${formatNumber(tpdInputCapacity) || 'N/A'}`;
+            if (tpdInputStatsElem) tpdInputStatsElem.textContent = `已用: ${formatNumber(tpdInputUsedToday)} / 容量: ${formatNumber(tpdInputCapacity) || 'N/A'}`;
+            if (tpdInputPercentageDiv) tpdInputPercentageDiv.textContent = '--%';
+        }
+    }
+
+    // 渲染 Key 数量建议
+    // Render Key Suggestion
+    function renderKeySuggestion(suggestionData) {
+        const suggestionElem = document.getElementById('key-suggestion');
+        if (suggestionElem) {
+            if (suggestionData && suggestionData.suggestion) {
+                suggestionElem.textContent = suggestionData.suggestion;
             } else {
-                 console.error("Element with ID 'tpd-input-stats' not found."); // 添加错误日志
+                suggestionElem.textContent = '暂无 Key 数量建议。';
             }
-            if (tpdInputPercentageDiv) {
-                 tpdInputPercentageDiv.textContent = '--%';
-            } else {
-                 console.error("Element with ID 'tpd-input-percentage' not found."); // 添加错误日志
-            }
+        };
+    }
+
+    // 渲染 Top IP 统计
+    // Render Top IP Stats
+    function renderTopIps(topIPsData) {
+        const requestsTbody = document.getElementById('top-ips-requests');
+        const tokensTbody = document.getElementById('top-ips-tokens');
+
+        if (requestsTbody) requestsTbody.innerHTML = ''; // 清空加载提示
+        if (tokensTbody) tokensTbody.innerHTML = ''; // 清空加载提示
+
+        // Render Requests Table
+        if (topIPsData && topIPsData.requests && topIPsData.requests.length > 0) {
+            topIPsData.requests.forEach(item => {
+                const row = requestsTbody.insertRow();
+                row.insertCell().textContent = item.time_range;
+                row.insertCell().textContent = item.ip_address;
+                row.insertCell().textContent = formatNumber(item.request_count);
+            });
+        } else {
+            const row = requestsTbody.insertRow();
+            const cell = row.insertCell();
+            cell.colSpan = 3;
+            cell.className = 'text-center text-muted';
+            cell.textContent = '暂无请求统计数据。';
+        }
+
+        // Render Tokens Table
+        if (topIPsData && topIPsData.tokens && topIPsData.tokens.length > 0) {
+            topIPsData.tokens.forEach(item => {
+                const row = tokensTbody.insertRow();
+                row.insertCell().textContent = item.time_range;
+                row.insertCell().textContent = item.ip_address;
+                row.insertCell().textContent = formatNumber(item.token_count);
+            });
+        } else {
+            const row = tokensTbody.insertRow();
+            const cell = row.insertCell();
+            cell.colSpan = 3;
+            cell.className = 'text-center text-muted';
+            cell.textContent = '暂无 Token 统计数据。';
+        }
+    }
+
+    // 渲染 Key 筛选原因统计
+    // Render Key Selection Stats
+    function renderKeySelectionStats(keySelectionStatsData) {
+        const reasonsSummaryList = document.getElementById('key-selection-reasons-summary');
+        const detailsTableBody = document.getElementById('key-selection-details');
+
+        if (reasonsSummaryList) reasonsSummaryList.innerHTML = ''; // 清空加载提示
+        if (detailsTableBody) detailsTableBody.innerHTML = ''; // 清空加载提示
+
+        // 检查数据有效性
+        if (!keySelectionStatsData ||
+            (!keySelectionStatsData.total_by_reason || Object.keys(keySelectionStatsData.total_by_reason).length === 0) &&
+            (!keySelectionStatsData.details_by_key || Object.keys(keySelectionStatsData.details_by_key).length === 0))
+        {
+            if (reasonsSummaryList) reasonsSummaryList.innerHTML = '<li class="list-group-item text-center text-muted">暂无 Key 筛选原因统计数据。</li>';
+            if (detailsTableBody) detailsTableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">暂无 Key 筛选详细统计数据。</td></tr>';
+            return;
+        }
+
+        // 渲染按原因汇总
+        // Render Summary by Reason
+        const reasonsSummary = keySelectionStatsData.total_by_reason || {};
+        if (Object.keys(reasonsSummary).length > 0) {
+            // 按原因字母顺序排序
+            const sortedReasons = Object.entries(reasonsSummary).sort((a, b) => a[0].localeCompare(b[0]));
+            sortedReasons.forEach(([reason, count]) => {
+                const listItem = document.createElement('li');
+                listItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                listItem.textContent = `${reason}:`;
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-secondary rounded-pill';
+                badge.textContent = formatNumber(count);
+                listItem.appendChild(badge);
+                if (reasonsSummaryList) reasonsSummaryList.appendChild(listItem);
+            });
+        } else {
+            if (reasonsSummaryList) reasonsSummaryList.innerHTML = '<li class="list-group-item text-center text-muted">暂无按原因汇总数据。</li>';
+        }
+
+        // 渲染按 Key 详细统计
+        // Render Detailed Stats by Key
+        const keyDetails = keySelectionStatsData.details_by_key || {};
+        if (Object.keys(keyDetails).length > 0) {
+            // 按 Key ID 字母顺序排序
+            const sortedKeyDetails = Object.entries(keyDetails).sort((a, b) => a[0].localeCompare(b[0]));
+            sortedKeyDetails.forEach(([keyId, reasonsCounter]) => {
+                // 找到该 Key 最主要的原因
+                let mainReason = '未知原因';
+                let maxCount = 0;
+                let totalCountForKey = 0;
+                for (const reason in reasonsCounter) {
+                    const count = reasonsCounter[reason];
+                    totalCountForKey += count;
+                    if (count > maxCount) {
+                        maxCount = count;
+                        mainReason = reason;
+                    }
+                }
+
+                const row = detailsTableBody.insertRow();
+                // Key ID 已经是截断后的，直接显示
+                row.insertCell().textContent = keyId;
+                row.insertCell().textContent = formatNumber(totalCountForKey); // 显示该 Key 的总筛选次数
+                row.insertCell().textContent = mainReason; // 显示最主要的原因
+            });
+        } else {
+            if (detailsTableBody) detailsTableBody.innerHTML = '<tr><td colspan="3" class="text-center text-muted">暂无按 Key 详细统计数据。</td></tr>';
         }
     }
 
 
-    // 填充 Top IP 表格
-    // Populate Top IP Tables
-    function populateTopIpTables(topIps) {
-// Custom Chart.js plugin for adding shadow
-    const ShadowPlugin = {
-        id: 'shadow',
-        beforeDraw: (chart, args, options) => {
-            const { ctx } = chart;
-            ctx.save(); // Save the current canvas state
-            // 调整阴影属性以增强效果
-            // Adjust shadow properties to enhance the effect
-            ctx.shadowColor = options.shadowColor || 'rgba(0, 0, 0, 0.3)'; // 稍微增加不透明度
-            ctx.shadowBlur = options.shadowBlur || 15; // 增加模糊度
-            ctx.shadowOffsetX = options.shadowOffsetX || 0;
-            ctx.shadowOffsetY = options.shadowOffsetY || 8; // 增加垂直偏移
-        },
-        afterDraw: (chart, args, options) => {
-            const { ctx } = chart;
-            ctx.restore(); // Restore the canvas state
-        }
-    };
-
-    // Register the plugin
-    Chart.register(ShadowPlugin);
-        const requestsBody = document.getElementById('top-ips-requests');
-        const tokensBody = document.getElementById('top-ips-tokens');
-        if (!requestsBody && !tokensBody) return; // 如果两个表格体都不存在，直接返回
-
-        if (requestsBody) requestsBody.innerHTML = ''; // 清空 (Clear)
-        if (tokensBody) tokensBody.innerHTML = ''; // 清空 (Clear)
-
-        const timeRanges = ['today', 'week', 'month'];
-        const timeRangeLabels = {'today': '今日', 'week': '本周', 'month': '本月'};
-        let requestsFound = false;
-        let tokensFound = false;
-
-        timeRanges.forEach(range => {
-            // 请求次数 (Request Counts)
-            const requestsData = topIps?.requests?.[range]; // 安全访问嵌套数据
-            if (requestsBody && requestsData && Array.isArray(requestsData) && requestsData.length > 0) {
-                requestsFound = true;
-                requestsData.forEach(item => {
-                    const row = requestsBody.insertRow();
-                    row.insertCell().textContent = timeRangeLabels[range];
-                    row.insertCell().textContent = item.ip || 'N/A'; // 增加对 item.ip 的检查
-                    row.insertCell().textContent = formatNumber(item.count);
-                });
-            }
-
-            // 输入 Token (Input Tokens)
-            const tokensData = topIps?.tokens?.[range]; // 安全访问嵌套数据
-            if (tokensBody && tokensData && Array.isArray(tokensData) && tokensData.length > 0) {
-                tokensFound = true;
-                tokensData.forEach(item => {
-                    const row = tokensBody.insertRow();
-                    row.insertCell().textContent = timeRangeLabels[range];
-                    row.insertCell().textContent = item.ip || 'N/A'; // 增加对 item.ip 的检查
-                    row.insertCell().textContent = formatNumber(item.tokens);
-                });
-            }
-        });
-
-        // 如果某个表格完全没有数据，显示提示行
-        // If a table has no data at all, show a message row
-        if (requestsBody && !requestsFound) {
-            const row = requestsBody.insertRow();
-            const cell = row.insertCell();
-            cell.colSpan = 3;
-            cell.textContent = '暂无请求记录'; // No request records
-            cell.className = 'text-center text-muted';
-        }
-        if (tokensBody && !tokensFound) {
-            const row = tokensBody.insertRow();
-            const cell = row.insertCell();
-            cell.colSpan = 3;
-            cell.textContent = '暂无 Token 记录'; // No token records
-            cell.className = 'text-center text-muted';
-        }
-    }
-
-
-    // 获取并渲染报告数据
-    // Fetch and render report data
-    async function fetchAndRenderReport() {
-        // 显示加载中状态 (Show loading status)
-        const lastUpdatedElemInit = document.getElementById('last-updated-time');
-        if (lastUpdatedElemInit) lastUpdatedElemInit.textContent = '正在加载...';
-        const keyStatusLoadingP = document.getElementById('key-status-loading');
-        if (keyStatusLoadingP) keyStatusLoadingP.style.display = 'block'; // 检查元素是否存在
-        const rpdStatsElemInit = document.getElementById('rpd-stats');
-        if (rpdStatsElemInit) rpdStatsElemInit.textContent = '加载中...';
-        const tpdInputStatsElemInit = document.getElementById('tpd-input-stats');
-        if (tpdInputStatsElemInit) tpdInputStatsElemInit.textContent = '加载中...';
-        const rpdPercentageElemInit = document.getElementById('rpd-percentage');
-        if (rpdPercentageElemInit) rpdPercentageElemInit.textContent = '--%';
-        const tpdInputPercentageElemInit = document.getElementById('tpd-input-percentage');
-        if (tpdInputPercentageElemInit) tpdInputPercentageElemInit.textContent = '--%';
-        const keySuggestionElemInit = document.getElementById('key-suggestion');
-        if (keySuggestionElemInit) keySuggestionElemInit.textContent = '正在加载建议...';
-        const topIpsRequestsElemInit = document.getElementById('top-ips-requests');
-        if (topIpsRequestsElemInit) topIpsRequestsElemInit.innerHTML = '<tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>';
-        const topIpsTokensElemInit = document.getElementById('top-ips-tokens');
-        if (topIpsTokensElemInit) topIpsTokensElemInit.innerHTML = '<tr><td colspan="3" class="text-center text-muted">正在加载...</td></tr>';
-        const activeKeysCountElemInit = document.getElementById('active-keys-count');
-        if (activeKeysCountElemInit) activeKeysCountElemInit.textContent = '...';
-        const invalidKeysStartupElemInit = document.getElementById('invalid-keys-startup');
-        if (invalidKeysStartupElemInit) invalidKeysStartupElemInit.textContent = '...';
-        const avgDailyRpdElemInit = document.getElementById('avg-daily-rpd');
-        if (avgDailyRpdElemInit) avgDailyRpdElemInit.textContent = '...';
-        const rpdCapacityTargetElemInit = document.getElementById('rpd-capacity-target');
-        if (rpdCapacityTargetElemInit) rpdCapacityTargetElemInit.textContent = '...';
-        const rpdCapacityOthersElemInit = document.getElementById('rpd-capacity-others');
-        if (rpdCapacityOthersElemInit) rpdCapacityOthersElemInit.textContent = '';
-        const tpdInputCapacityTargetElemInit = document.getElementById('tpd-input-capacity-target');
-        if (tpdInputCapacityTargetElemInit) tpdInputCapacityTargetElemInit.textContent = '...';
-
-
+    // 获取报告数据
+    // Fetch report data
+    async function fetchReportData() {
+        document.getElementById('last-updated-time').textContent = '加载中...';
+        // 调用新的后端 API 端点 /api/manage/report/data
         try {
-            const accessToken = localStorage.getItem('access_token'); // 再次获取 token，确保是最新的
-            if (!accessToken) {
-                console.error('Report Page: fetchAndRenderReport called without token, redirecting.'); // Log error
-                localStorage.removeItem('access_token'); // Clear any invalid state
-                window.location.href = '/'; // Redirect to login page
-                return; // Stop further processing
-            }
-
-            console.log(`Report Page: Fetching report data with token (first 10 chars): ${accessToken.substring(0, 10)}...`); // 调试日志：记录正在发送 token
-
-            // Fetch report data from the backend API
-            const response = await fetch('/api/report/data', {
-                method: 'GET', // 明确指定方法
+            const response = await fetch('/api/manage/report/data', { // 修改这里的 URL
                 headers: {
-                    'Accept': 'application/json',
-                    'Authorization': `Bearer ${accessToken}` // 添加 Authorization 头部
+                    'Authorization': `Bearer ${token}` // 添加认证头
                 }
             });
-
-            // --- 调试日志：打印响应状态码和响应体 ---
-            console.log('Report Page: Received response status:', response.status);
-            // 注意：如果响应体很大，读取 text() 可能会消耗大量内存。
-            // 对于调试，可以先读取 text()，生产环境可能需要更谨慎处理。
-            const responseBody = await response.text(); // 先读取文本，以便后续处理
-            console.log('Report Page: Received response body (first 200 chars):', responseBody.substring(0, 200) + (responseBody.length > 200 ? '...' : '')); // 打印部分响应体
-            // --- 调试日志结束 ---
-
-
             if (!response.ok) {
-                // 处理非 200 状态码
-                console.error(`Error fetching report data: ${response.status} - ${responseBody}`);
-                // 显示错误信息给用户
-                const lastUpdatedElemError = document.getElementById('last-updated-time');
-                if (lastUpdatedElemError) lastUpdatedElemError.textContent = '加载失败';
-                const rpdStatsElemError = document.getElementById('rpd-stats');
-                if (rpdStatsElemError) rpdStatsElemError.textContent = `加载失败: ${response.status}`;
-                const tpdInputStatsElemError = document.getElementById('tpd-input-stats');
-                if (tpdInputStatsElemError) tpdInputStatsElemError.textContent = `加载失败: ${response.status}`;
-                const keyStatusLoadingPError = document.getElementById('key-status-loading');
-                if (keyStatusLoadingPError) keyStatusLoadingPError.textContent = `加载 Key 状态失败: ${response.status}`;
-                const keySuggestionElemError = document.getElementById('key-suggestion');
-                if (keySuggestionElemError) keySuggestionElemError.textContent = `加载建议失败: ${response.status}`;
-                const topIpsRequestsElemError = document.getElementById('top-ips-requests');
-                if (topIpsRequestsElemError) topIpsRequestsElemError.innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载失败: ${response.status}</td></tr>`;
-                const topIpsTokensElemError = document.getElementById('top-ips-tokens');
-                if (topIpsTokensElemError) topIpsTokensElemError.innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载失败: ${response.status}</td></tr>`;
-
-
-                // 如果是认证失败，重定向到登录页
                 if (response.status === 401 || response.status === 403) {
-                     console.error('认证失败或无权限，请重新登录。'); // Authentication failed or no permission
-                     localStorage.removeItem('access_token'); // 清除无效 Token
-                     window.location.href = '/'; // 重定向到登录页
+                    console.error('认证失败或无权限，重定向到登录页。');
+                    window.location.href = '/'; // 认证失败或无权限，重定向到登录页
+                    return; // 停止执行
                 }
-
-                return; // 停止执行
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-
-            // const data = await response.json(); // 需要重新解析 JSON，因为 text() 已经消费了 body
-            let data;
-            try {
-                data = JSON.parse(responseBody);
-            } catch (jsonError) {
-                console.error('Report Page: Failed to parse response body as JSON:', jsonError);
-                const lastUpdatedElemJsonError = document.getElementById('last-updated-time');
-                if (lastUpdatedElemJsonError) lastUpdatedElemJsonError.textContent = '加载失败';
-                const rpdStatsElemJsonError = document.getElementById('rpd-stats');
-                if (rpdStatsElemJsonError) rpdStatsElemJsonError.textContent = `加载失败: JSON 解析错误`;
-                const tpdInputStatsElemJsonError = document.getElementById('tpd-input-stats');
-                if (tpdInputStatsElemJsonError) tpdInputStatsElemJsonError.textContent = `加载失败: JSON 解析错误`;
-                const keyStatusLoadingPJsonError = document.getElementById('key-status-loading');
-                if (keyStatusLoadingPJsonError) keyStatusLoadingPJsonError.textContent = `加载 Key 状态失败: JSON 解析错误`;
-                const keySuggestionElemJsonError = document.getElementById('key-suggestion');
-                if (keySuggestionElemJsonError) keySuggestionElemJsonError.textContent = `加载建议失败: JSON 解析错误`;
-                const topIpsRequestsElemJsonError = document.getElementById('top-ips-requests');
-                if (topIpsRequestsElemJsonError) topIpsRequestsElemJsonError.innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载失败: JSON 解析错误</td></tr>`;
-                const topIpsTokensElemJsonError = document.getElementById('top-ips-tokens');
-                if (topIpsTokensElemJsonError) topIpsTokensElemJsonError.innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载失败: JSON 解析错误</td></tr>`;
-
-                // 在 JSON 解析失败时，仍然尝试渲染部分已知结构的数据，以显示默认值
-                data = {
-                    overall_stats: {},
-                    key_usage_summary: {},
-                    top_ips: { requests: {}, tokens: {} },
-                    key_suggestion: '加载建议失败',
-                    timestamp: new Date().toLocaleString()
-                };
-            }
-
+            const data = await response.json();
+            console.log('报告数据获取成功:', data); // Log fetched data
 
             // 更新最后更新时间
-            const lastUpdatedElem = document.getElementById('last-updated-time');
-            if (lastUpdatedElem) {
-                lastUpdatedElem.textContent = data.timestamp || new Date().toLocaleString(); // 使用后端时间戳或当前时间
-            }
+            // Update last updated time
+            const now = new Date();
+            document.getElementById('last-updated-time').textContent = now.toLocaleString();
 
-            // 准备容量图表数据
-            // 增加对 overall_stats 存在的检查
-            const overallStats = data.overall_stats || {};
-            const rpdChartData = {
-                used_today: overallStats.current_rpd_today || 0, // 提供默认值 0
-                estimated_today: overallStats.estimated_rpd_today, // 可能是数字或字符串 "N/A"
-                // 计算总 RPD 容量 (简单求和，或选择一个主要模型的容量)
-                capacity: overallStats.rpd_capacity_estimation?.reduce((sum, item) => sum + (item.capacity || 0), 0) || 0 // 提供默认值 0
-            };
-            const tpdInputChartData = {
-                used_today: overallStats.current_tpd_input_today || 0, // 提供默认值 0
-                estimated_today: overallStats.estimated_tpd_input_today, // 可能是数字或字符串 "N/A"
-                 // 计算总 TPD 输入容量
-                capacity: overallStats.tpd_input_capacity_estimation?.reduce((sum, item) => sum + (item.capacity || 0), 0) || 0 // 提供默认值 0
-            };
+            // 渲染容量图表 (RPD 和 TPD 输入)
+            // Render Capacity Charts (RPD and TPD Input)
+            // 确保传递正确的数据结构
+            renderCapacityCharts(data.overall_stats, data.overall_stats); // 假设 overall_stats 包含 RPD 和 TPD 数据
 
-            // 渲染容量图表和统计数据
-            renderCapacityCharts(rpdChartData, tpdInputChartData);
+            // 渲染 Key 使用概览图表和详情
+            // Render Key Usage Summary Charts and Details
+            renderKeyStatusCharts(data.key_usage_summary); // 假设 key_usage_summary 包含 models 数组
 
-            // 更新关键统计数据
-            const activeKeysCountElem = document.getElementById('active-keys-count');
-            if (activeKeysCountElem) {
-                // 增加对 overallStats.active_keys_count 的检查
-                activeKeysCountElem.textContent = formatNumber(overallStats.active_keys_count);
-            }
-            const invalidKeysStartupElem = document.getElementById('invalid-keys-startup');
-            if (invalidKeysStartupElem) {
-                // 增加对 overallStats.invalid_keys_at_startup 的检查
-                invalidKeysStartupElem.textContent = formatNumber(overallStats.invalid_keys_at_startup);
-            }
-            const avgDailyRpdElem = document.getElementById('avg-daily-rpd');
-            if (avgDailyRpdElem) {
-                // 增加对 overallStats.historical_average_usage 及其属性的检查
-                avgDailyRpdElem.textContent = formatNumber(overallStats.historical_average_usage?.avg_daily_rpd);
-            }
+            // 渲染 Key 数量建议
+            // Render Key Suggestion
+            renderKeySuggestion(data.key_suggestion);
 
-            // 更新 RPD 容量估算列表
-            const rpdCapacityContainer = document.getElementById('rpd-capacity-list-container');
-            const rpdCapacityEstimation = overallStats.rpd_capacity_estimation; // 使用 overallStats
-            if (rpdCapacityContainer && rpdCapacityEstimation && Array.isArray(rpdCapacityEstimation) && rpdCapacityEstimation.length > 0) { // 增加数组检查
-                rpdCapacityContainer.innerHTML = 'RPD 容量估算:'; // 重置标题
-                const listDiv = document.createElement('div');
-                listDiv.className = 'small mt-1';
-                rpdCapacityEstimation.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                    // 增加对 item 及其属性的检查
-                    if (item && item.based_on && item.limit !== undefined && item.capacity !== undefined) {
-                        itemDiv.innerHTML = `&nbsp;&nbsp;- <strong>${item.based_on}:</strong> ${formatNumber(item.capacity)}/天 (基于 ${formatNumber(item.limit)} RPD)`;
-                    } else if (item && item.based_on) {
-                         itemDiv.innerHTML = `&nbsp;&nbsp;- <strong>${item.based_on}:</strong> <span class="text-danger">${item.message || '限制或容量数据缺失'}</span>`; // 更新错误信息
-                    } else {
-                         itemDiv.innerHTML = `&nbsp;&nbsp;- <span class="text-danger">无效的容量估算项</span>`; // 处理无效项
-                    }
-                    listDiv.appendChild(itemDiv);
-                });
-                rpdCapacityContainer.appendChild(listDiv);
-            } else if (rpdCapacityContainer) {
-                rpdCapacityContainer.innerHTML = 'RPD 容量估算: <div class="small text-muted mt-1">N/A</div>';
-            }
+            // 渲染 Top IP 统计
+            // Render Top IP Stats
+            renderTopIps(data.top_ips);
 
-            // 更新 TPD 输入容量估算列表
-            const tpdInputCapacityContainer = document.getElementById('tpd-input-capacity-list-container');
-            const tpdInputCapacityEstimation = overallStats.tpd_input_capacity_estimation; // 使用 overallStats
-            if (tpdInputCapacityContainer && tpdInputCapacityEstimation && Array.isArray(tpdInputCapacityEstimation) && tpdInputCapacityEstimation.length > 0) { // 增加数组检查
-                tpdInputCapacityContainer.innerHTML = 'TPD 输入容量估算:'; // 重置标题
-                const listDiv = document.createElement('div');
-                listDiv.className = 'small mt-1';
-                tpdInputCapacityEstimation.forEach(item => {
-                    const itemDiv = document.createElement('div');
-                     // 增加对 item 及其属性的检查
-                    if (item && item.based_on && item.limit !== undefined && item.capacity !== undefined) {
-                        itemDiv.innerHTML = `&nbsp;&nbsp;- <strong>${item.based_on}:</strong> ${formatNumber(item.capacity)}/天 (基于 ${formatNumber(item.limit)} TPD_In)`;
-                    } else if (item && item.based_on) {
-                         itemDiv.innerHTML = `&nbsp;&nbsp;- <strong>${item.based_on}:</strong> <span class="text-danger">${item.message || '限制或容量数据缺失'}</span>`; // 更新错误信息
-                    } else {
-                         itemDiv.innerHTML = `&nbsp;&nbsp;- <span class="text-danger">无效的容量估算项</span>`; // 处理无效项
-                    }
-                    listDiv.appendChild(itemDiv);
-                });
-                tpdInputCapacityContainer.appendChild(listDiv);
-            } else if (tpdInputCapacityContainer) {
-                tpdInputCapacityContainer.innerHTML = 'TPD 输入容量估算: <div class="small text-muted mt-1">N/A</div>';
-            }
+             // 渲染 Key 筛选原因统计
+            // Render Key Selection Reasons Stats
+            renderKeySelectionStats(data.key_selection_tracking);
 
 
-            // 渲染 Key 状态图表
-            // 增加对 data.key_usage_summary 的检查
-            renderKeyStatusCharts(data.key_usage_summary);
-
-            // 更新 Key 数量建议
-            const keySuggestionElem = document.getElementById('key-suggestion');
-            const keySuggestionDetailsElem = document.getElementById('key-suggestion-details');
-            if (keySuggestionElem) {
-                // 提取建议的主要部分（例如，"警告: ..." 或 "提示: ..." 或 "保持...")
-                // 增加对 data.key_suggestion 的检查
-                const suggestionText = data.key_suggestion || '暂无建议。';
-                const mainSuggestion = suggestionText.split('。')[0] + '。'; // 取第一句
-                keySuggestionElem.textContent = mainSuggestion;
-
-                // 设置建议文本的颜色
-                if (suggestionText.startsWith('错误:')) {
-                    keySuggestionElem.className = 'lead text-danger';
-                } else if (suggestionText.startsWith('警告:')) {
-                    keySuggestionElem.className = 'lead text-warning';
-                } else if (suggestionText.startsWith('提示:')) {
-                     keySuggestionElem.className = 'lead text-info';
-                } else {
-                    keySuggestionElem.className = 'lead text-success'; // 默认或“保持”
-                }
-
-                // 显示详细信息（如果存在）
-                if (keySuggestionDetailsElem) {
-                    const details = suggestionText.substring(mainSuggestion.length).trim();
-                    keySuggestionDetailsElem.textContent = details;
-                }
-            }
-
-
-            // 填充 Top IP 表格
-            // 增加对 data.top_ips 的检查
-            populateTopIpTables(data.top_ips || {}); // 提供空对象作为默认值
         } catch (error) {
-            // --- 调试日志：打印捕获到的错误 ---
-            console.error('Report Page: Error fetching and rendering report:', error);
-            // --- 调试日志结束 ---
-            // 显示错误信息给用户
-            const lastUpdatedElemCatch = document.getElementById('last-updated-time');
-            if (lastUpdatedElemCatch) lastUpdatedElemCatch.textContent = '加载失败';
-            const rpdStatsElemCatch = document.getElementById('rpd-stats');
-            if (rpdStatsElemCatch) rpdStatsElemCatch.textContent = `加载失败: ${error.message}`;
-            const tpdInputStatsElemCatch = document.getElementById('tpd-input-stats');
-            if (tpdInputStatsElemCatch) tpdInputStatsElemCatch.textContent = `加载失败: ${error.message}`;
-            const keyStatusLoadingPCatch = document.getElementById('key-status-loading');
-            if (keyStatusLoadingPCatch) keyStatusLoadingPCatch.textContent = `加载 Key 状态失败: ${error.message}`;
-            const keySuggestionElemCatch = document.getElementById('key-suggestion');
-            if (keySuggestionElemCatch) keySuggestionElemCatch.textContent = `加载建议失败: ${error.message}`;
-            const topIpsRequestsElemCatch = document.getElementById('top-ips-requests');
-            if (topIpsRequestsElemCatch) topIpsRequestsElemCatch.innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载失败: ${error.message}</td></tr>`;
-            const topIpsTokensElemCatch = document.getElementById('top-ips-tokens');
-            if (topIpsTokensElemCatch) topIpsTokensElemCatch.innerHTML = `<tr><td colspan="3" class="text-center text-danger">加载失败: ${error.message}</td></tr>`;
+            console.error('获取报告数据失败:', error);
+            document.getElementById('last-updated-time').textContent = '加载失败';
+            // 显示错误信息或加载失败状态
+            // Display error message or loading failed status
+            document.getElementById('rpd-stats').textContent = '数据加载失败';
+            document.getElementById('tpd-input-stats').textContent = '数据加载失败';
+            document.getElementById('key-status-loading').textContent = '数据加载失败';
+            document.getElementById('key-status-details').innerHTML = '<p class="text-center text-danger">数据加载失败。</p>';
+            document.getElementById('key-suggestion').textContent = '数据加载失败。';
+            document.getElementById('top-ips-requests').innerHTML = '<tr><td colspan="3" class="text-center text-danger">数据加载失败。</td></tr>';
+            document.getElementById('top-ips-tokens').innerHTML = '<tr><td colspan="3" class="text-center text-danger">数据加载失败。</td></tr>';
+            document.getElementById('key-selection-reasons-summary').innerHTML = '<li class="list-group-item text-center text-danger">数据加载失败。</li>';
+             document.getElementById('key-selection-details').innerHTML = '<tr><td colspan="3" class="text-center text-danger">数据加载失败。</td></tr>';
         }
     }
 
-    // 在 DOM 完全加载后再获取并渲染报告数据，确保元素存在
-    // Fetch and render report data after the DOM is fully loaded to ensure elements exist
-    document.addEventListener('DOMContentLoaded', fetchAndRenderReport);
+    // 页面加载完成后获取数据
+    // Fetch data after page load is complete
+    document.addEventListener('DOMContentLoaded', fetchReportData);
 
-    // 可选：设置定时刷新 (Optional: Set interval refresh)
-    // setInterval(fetchAndRenderReport, 60000); // 每分钟刷新一次 (Refresh every minute)
+    // 可选：每隔一段时间刷新数据
+    // Optional: Refresh data periodically
+    // setInterval(fetchReportData, 60000); // 每 60 秒刷新一次 (Refresh every 60 seconds)
 
+    // Chart.js 插件：绘制半圆图中心的文本
+    // Chart.js Plugin: Draw text in the center of the semicircle chart
+    Chart.register({
+        id: 'centerText',
+        beforeDraw: function(chart) {
+            if (chart.config.options.cutout !== '70%' || chart.config.options.circumference !== 180) {
+                 return; // Only apply to semicircle doughnut charts with 70% cutout
+            }
+
+            const ctx = chart.ctx;
+            const width = chart.width;
+            const height = chart.height;
+            const centerX = width / 2;
+            // Adjust centerY to be slightly lower to account for the semicircle
+            const centerY = height * 0.7; // Adjust this value as needed
+
+            ctx.restore();
+            const fontSize = (height / 114).toFixed(2);
+            ctx.font = `${fontSize}em sans-serif`;
+            ctx.textBaseline = "middle";
+
+            const text = chart.config.options.plugins.centerText?.text || ''; // Get text from options
+            const textX = centerX;
+            const textY = centerY; // Use adjusted centerY
+
+            ctx.fillText(text, textX, textY);
+            ctx.save();
+        }
+    });
 </script>
 {% endblock %}

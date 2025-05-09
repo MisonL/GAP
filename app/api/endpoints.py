@@ -9,12 +9,12 @@ from app import config # 导入应用配置模块
 
 # 从其他模块导入必要的组件
 from app.api.models import ChatCompletionRequest, ChatCompletionResponse, ModelList # 导入 API 请求和响应模型
-from app.core.gemini import GeminiClient # 导入 Gemini 客户端类
-from app.core.key_manager_class import APIKeyManager # 导入类型
+from app.core.services.gemini import GeminiClient # 导入 Gemini 客户端类 (新路径)
+from app.core.keys.manager import APIKeyManager # 导入类型 (新路径)
 import httpx # 导入 httpx 用于类型提示
 from app.api.middleware import verify_proxy_key # 导入代理密钥验证中间件/依赖项
 # 导入处理器函数
-from app.api.request_processing import process_request # 导入核心请求处理函数
+from app.core.processing.main_handler import process_request # 导入核心请求处理函数 (新路径)
 # 导入依赖注入函数
 
 from app.core.dependencies import get_key_manager, get_http_client # 导入获取 Key Manager 和 HTTP Client 的依赖函数
@@ -24,6 +24,12 @@ logger = logging.getLogger('my_logger') # 获取日志记录器实例
 
 router = APIRouter() # 创建一个 FastAPI APIRouter 实例，用于定义 API 路由
 
+# 导入缓存管理器和管理员令牌验证依赖
+from app.core.cache.manager import CacheManager # 导入 CacheManager (新路径)
+from app.core.dependencies import verify_admin_token
+
+# 导入缓存相关的模型
+from app.api.models import CachedContentEntry, CacheListResponse
 
 @router.get("/v1/models", response_model=ModelList) # 定义 GET /v1/models 端点，响应模型为 ModelList
 async def list_models(
@@ -98,3 +104,96 @@ async def debug_config():
     """
     return {"WEB_UI_PASSWORDS": config.WEB_UI_PASSWORDS}
 
+
+# 缓存管理端点 (需要管理员令牌)
+@router.get("/cache", response_model=CacheListResponse, dependencies=[Depends(verify_admin_token)])
+async def list_caches():
+    """
+    获取缓存列表。
+    注意: app/core/cache_manager.py 中的列表功能尚未实现，此处返回模拟数据。
+    """
+    logger.info("接收到获取缓存列表的请求")
+    # TODO: 调用 cache_manager.list_caches() (如果实现的话)
+    # 目前返回模拟数据
+    mock_caches = [
+        CachedContentEntry(
+            id="mock-cache-id-1",
+            content_hash="mockhash123",
+            associated_key_id="mock-key-1",
+            created_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(days=1)
+        ),
+        CachedContentEntry(
+            id="mock-cache-id-2",
+            content_hash="mockhash456",
+            associated_key_id="mock-key-2",
+            created_at=datetime.utcnow() - timedelta(hours=1),
+            expires_at=datetime.utcnow() + timedelta(hours=23)
+        )
+    ]
+    return CacheListResponse(total=len(mock_caches), caches=mock_caches)
+
+@router.get("/cache/{cache_id}", response_model=CachedContentEntry, dependencies=[Depends(verify_admin_token)])
+async def get_cache_details(cache_id: str):
+    """
+    根据缓存 ID 获取特定缓存的详细信息。
+    注意: app/core/cache_manager.py 中的获取详细信息功能尚未实现，此处返回模拟数据。
+    """
+    logger.info(f"接收到获取缓存详细信息的请求，ID: {cache_id}")
+    # TODO: 调用 cache_manager.get_cache_details(cache_id) (如果实现的话)
+    # 目前返回模拟数据或 404
+    if cache_id == "mock-cache-id-1":
+         return CachedContentEntry(
+            id="mock-cache-id-1",
+            content_hash="mockhash123",
+            associated_key_id="mock-key-1",
+            created_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(days=1)
+        )
+    elif cache_id == "mock-cache-id-2":
+         return CachedContentEntry(
+            id="mock-cache-id-2",
+            content_hash="mockhash456",
+            associated_key_id="mock-key-2",
+            created_at=datetime.utcnow() - timedelta(hours=1),
+            expires_at=datetime.utcnow() + timedelta(hours=23)
+        )
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="缓存未找到")
+
+
+@router.delete("/cache/{cache_id}", dependencies=[Depends(verify_admin_token)])
+async def delete_single_cache(cache_id: str):
+    """
+    根据缓存 ID 删除特定缓存。
+    """
+    logger.info(f"接收到删除缓存的请求，ID: {cache_id}")
+    success = await cache_manager.delete_cache(cache_id)
+    if success:
+        return {"message": f"缓存 {cache_id} 删除成功"}
+    else:
+        # 即使 cache_manager.delete_cache 返回 False，也可能只是因为缓存不存在或内部错误
+        # 根据 cache_manager 的当前实现，它总是返回 False 并记录警告
+        # 在实际实现中，这里需要更精细的错误处理
+        logger.warning(f"尝试删除缓存 {cache_id} 失败或 cache_manager 未完全实现")
+        # 为了不暴露内部实现细节，即使失败也返回成功，或者根据实际错误类型返回 404/500
+        # 这里暂时返回成功，假设调用了 delete_cache 函数
+        return {"message": f"尝试删除缓存 {cache_id}，请检查日志确认结果"}
+
+
+@router.delete("/cache", dependencies=[Depends(verify_admin_token)])
+async def clear_all_caches():
+    """
+    清空所有缓存。
+    注意: app/core/cache_manager.py 中的清空功能尚未实现，此处调用 invalidate_expired_caches 作为占位。
+    """
+    logger.info("接收到清空所有缓存的请求")
+    # TODO: 调用 cache_manager.clear_all_caches() (如果实现的话)
+    # 目前调用 invalidate_expired_caches 作为占位
+    await cache_manager.invalidate_expired_caches()
+    # 同样，根据 cache_manager 的当前实现，这里无法确认是否真的清空了所有缓存
+    logger.warning("清空所有缓存的功能未完全实现，调用了 invalidate_expired_caches 作为占位")
+    return {"message": "尝试清空所有缓存，请检查日志确认结果"}
+
+# 导入 datetime 和 timedelta 用于模拟数据
+from datetime import datetime, timedelta

@@ -8,18 +8,18 @@ from fastapi.responses import JSONResponse # 导入 JSONResponse
 from typing import Dict, Any, Optional # 导入类型提示
 
 # 导入自定义模块
-from app.core.gemini import GeminiClient # 导入 GeminiClient
-from app.core.response_wrapper import ResponseWrapper # 导入响应包装类
-from app.core.context_store import load_context, save_context, convert_openai_to_gemini_contents, convert_gemini_to_storage_format, load_context_as_gemini # 导入上下文管理函数和转换函数
-from app.core.key_manager_class import APIKeyManager # 导入类型
+from app.core.services.gemini import GeminiClient # 导入 GeminiClient (新路径)
+from app.core.utils.response_wrapper import ResponseWrapper # 导入响应包装类 (新路径)
+from app.core.context.store import load_context, save_context, convert_openai_to_gemini_contents, convert_gemini_to_storage_format, load_context_as_gemini # 导入上下文管理函数和转换函数 (新路径)
+from app.core.keys.manager import APIKeyManager # 导入类型 (新路径)
 import httpx # 导入 httpx 用于类型提示
 # 导入依赖注入函数
 from app.core.dependencies import get_key_manager, get_http_client
-# 导入请求工具函数
-from app.api.rate_limit_utils import check_rate_limits_and_update_counts, update_token_counts
-from app.core.request_helpers import get_client_ip, get_current_timestamps
+# 导入请求工具函数和处理工具函数
+from app.core.utils.request_helpers import get_client_ip, get_current_timestamps # (新路径)
+from app.core.processing.utils import check_rate_limits_and_update_counts, update_token_counts # (新路径)
 from app import config as app_config # 导入应用配置
-from app.core.db_utils import IS_MEMORY_DB # 导入数据库模式标志
+from app.core.database.utils import IS_MEMORY_DB # 导入数据库模式标志 (新路径)
 from app.config import ENABLE_CONTEXT_COMPLETION # 导入全局上下文补全配置
 
 # 导入认证依赖项

@@ -90,9 +90,11 @@
                 const data = await response.json(); // 解析 JSON 数据
                 console.log('Manage Context: 成功获取上下文数据:', data);
                 console.log('Manage Context: Received data:', data); // 添加调试输出
-                console.log('Manage Context: data.is_admin:', data.is_admin); // 添加调试输出
-                console.log('Manage Context: Received data:', data); // 添加调试输出
-                console.log('Manage Context: data.is_admin:', data.is_admin); // 添加调试输出
+                console.log('Manage Context: data.is_admin (raw):', data.is_admin); // 添加调试输出
+                console.log('Manage Context: data.is_admin (typeof):', typeof data.is_admin); // 添加调试输出
+                const isAdmin = !!data.is_admin; // 检查是否为真值 (truthy)
+                const ttlSubmitButton = ttlForm ? ttlForm.querySelector('button[type="submit"]') : null; // 获取 TTL 提交按钮
+                console.log('Manage Context: Is Admin (boolean):', isAdmin);
                 if (ttlInput && data.current_ttl_days !== undefined) { // 如果 TTL 输入框存在且数据中包含 TTL
                     ttlInput.value = data.current_ttl_days; // 更新 TTL 输入框的值
                     console.log('Manage Context: TTL input updated to', data.current_ttl_days);
@@ -103,8 +105,6 @@
 
                  // --- 新增：根据管理员状态禁用 TTL 表单 ---
                  // --- New: Disable TTL form based on admin status ---
-                 const isAdmin = !!data.is_admin; // 检查是否为真值 (truthy)
-                 const ttlSubmitButton = ttlForm ? ttlForm.querySelector('button[type="submit"]') : null; // 获取 TTL 提交按钮
                  console.log('Manage Context: Is Admin:', isAdmin);
                  if (!isAdmin) { // 如果不是管理员
                      if (ttlInput) {
@@ -156,10 +156,13 @@
                 ttlStatusSpan.textContent = '正在更新...'; // 显示更新状态
                 ttlStatusSpan.style.color = 'orange';
 
-                const ttlValue = ttlInput.value; // 获取 TTL 值
-                const formData = new FormData(); // 创建 FormData 对象
-                formData.append('ttl', ttlValue); // 添加 TTL 值到 FormData，匹配后端期望的参数名
-                formData.append('key', 'global'); // 添加一个占位符 key，匹配后端期望的参数
+                const ttlValue = parseInt(ttlInput.value, 10); // 获取 TTL 值并转换为整数
+                if (isNaN(ttlValue)) {
+                    ttlStatusSpan.textContent = '错误: TTL 值无效';
+                    ttlStatusSpan.style.color = 'red';
+                    console.error('Manage Context: Invalid TTL value:', ttlInput.value);
+                    return;
+                }
                 console.log('Manage Context: Sending TTL update with value:', ttlValue);
 
                 // CSRF token check removed
@@ -169,11 +172,14 @@
                     // 使用标准 fetch，浏览器会自动发送 HTTP-only cookie
                     // 发送 POST 请求更新 TTL，添加 Authorization Header
                     // 发送 POST 请求更新 TTL，添加 Authorization Header
-                    // 修复：移除硬编码的占位符，假设后端路由为全局 TTL 更新 /api/manage/context/update_ttl
-                    const response = await fetch('/api/manage/context/update_ttl', {
+                    // 发送 POST 请求更新 TTL，使用 JSON 请求体
+                    const response = await fetch('/api/manage/context/update_ttl', { // 修改 URL，假设全局 TTL key 是 'global'
                         method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` }, // 添加 Authorization header
-                        body: formData // 发送表单数据
+                        headers: {
+                            'Content-Type': 'application/json', // 设置 Content-Type 为 JSON
+                            'Authorization': `Bearer ${token}` // 添加 Authorization header
+                        },
+                        body: JSON.stringify({ ttl_seconds: ttlValue }) // 发送 JSON 数据，字段名为 ttl_seconds
                     });
                     console.log('Manage Context: TTL update response status:', response.status);
 
