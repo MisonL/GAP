@@ -1,0 +1,117 @@
+{% extends "_base.html" %}
+{% block title %}缓存管理{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>缓存管理</h2>
+    <p>在这里查看和管理您的缓存条目。</p>
+
+    <table class="table table-striped table-bordered" id="cachesTable">
+        <thead>
+            <tr>
+                <th>缓存 ID</th>
+                <th>用户 ID</th>
+                <th>内容哈希</th>
+                <th>创建时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- 缓存数据将通过 JavaScript 加载 -->
+            <!-- Cache data will be loaded via JavaScript -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            // 如果没有 token，重定向到登录页面
+            // If no token, redirect to login page
+            window.location.href = '/';
+            return;
+        }
+
+        fetch('/api/v1/caches', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 401) {
+                    // Token 无效或过期，重定向到登录页面
+                    // Invalid or expired token, redirect to login page
+                    window.location.href = '/';
+                }
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            const tableBody = document.querySelector('#cachesTable tbody');
+            tableBody.innerHTML = ''; // 清空现有内容 (Clear existing content)
+            data.forEach(cache => {
+                const row = tableBody.insertRow();
+                row.innerHTML = `
+                    <td>${cache.id}</td>
+                    <td>${cache.user_id}</td>
+                    <td>${cache.content_hash.substring(0, 10)}...</td> <!-- 显示哈希前10位 -->
+                    <td>${new Date(cache.created_at).toLocaleString()}</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm delete-cache" data-cache-id="${cache.id}">删除</button>
+                    </td>
+                `;
+            });
+
+            // 添加删除按钮的事件监听器
+            // Add event listeners to delete buttons
+            document.querySelectorAll('.delete-cache').forEach(button => {
+                button.addEventListener('click', function() {
+                    const cacheId = this.getAttribute('data-cache-id');
+                    if (confirm(`确定要删除缓存条目 ${cacheId} 吗？`)) {
+                        deleteCache(cacheId);
+                    }
+                });
+            });
+        })
+        .catch(error => {
+            console.error('获取缓存数据时出错:', error);
+            // 可以在页面上显示错误消息
+            // Optionally display an error message on the page
+        });
+
+        function deleteCache(cacheId) {
+            fetch(`/api/v1/caches/${cacheId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                     if (response.status === 401) {
+                        // Token 无效或过期，重定向到登录页面
+                        // Invalid or expired token, redirect to login page
+                        window.location.href = '/';
+                    }
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('缓存删除成功:', data);
+                // 刷新页面或从表格中移除该行
+                // Refresh the page or remove the row from the table
+                location.reload(); // 简单起见，直接刷新页面
+            })
+            .catch(error => {
+                console.error('删除缓存时出错:', error);
+                // 可以在页面上显示错误消息
+                // Optionally display an error message on the page
+            });
+        }
+    });
+</script>
+{% endblock %}
