@@ -154,10 +154,10 @@
 #### 🔒 API 密钥保护（可选）
 
 - **服务认证凭证**: 通过 `PASSWORD` 环境变量设置。这些凭证用于：
-  - **API 请求认证 (内存模式)**: 当 `KEY_STORAGE_MODE` 设置为 `'memory'` 时，API 请求 (`/v1`, `/v2`) 需要使用 `PASSWORD` 中定义的某个值作为 `Bearer` Token 进行认证。
-  - **Web UI 登录**: 访问 Web 管理界面 (`/manage/*`, `/report`) 需要使用 `PASSWORD` 中定义的某个值进行登录。
+  - **Web UI 登录**: 访问 Web 管理界面 (`/manage/*`) 需要使用 `PASSWORD` 中定义的某个值进行登录。
+  - **API 请求认证 (内存模式)**: 当 `KEY_STORAGE_MODE` 设置为 `'memory'` 时，对 `/v1` 和 `/v2` 接口的 API 请求也需要使用 `PASSWORD` 中定义的某个值作为 `Bearer` Token 进行认证。
 - **多凭证支持**: `PASSWORD` 环境变量支持配置多个凭证，用逗号分隔。每个凭证在内存模式下可以关联独立的对话上下文。
-- **重要**: 如果 `KEY_STORAGE_MODE='memory'` 且 `PASSWORD` 未设置，则 API 请求将无法通过认证。如果 `PASSWORD` 未设置，Web UI 登录功能也将无法使用。
+- **重要**: 如果 `PASSWORD` 未设置，Web UI 登录功能将无法使用。在 `KEY_STORAGE_MODE='memory'` 模式下，如果 `PASSWORD` 未设置，API 请求也将无法通过认证。
 
 #### 🚦 速率限制和防滥用
 
@@ -205,15 +205,12 @@
 
     | 环境变量                                | 说明                                                                                                                               | 默认值/示例                               |
     | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------- |
-    | 环境变量                                | 说明                                                                                                                               | 默认值/示例                               |
-    | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------- |
-
     | `GEMINI_API_KEYS`                       | **（内存模式必需）** 你的 Gemini API 密钥，逗号分隔。仅在 `KEY_STORAGE_MODE='memory'` 时从此加载初始 Key。数据库模式下此变量可选。             | `key1,key2`                               |
     | `ADMIN_API_KEY`                         | （可选）中转服务管理员 API Key，用于访问管理界面和执行管理操作。                                                                         | `your_admin_api_key_here`                 |
     | `SECRET_KEY`                            | **（必需）** 用于 Web UI Session 和 JWT 加密的密钥。**请务必设置一个强随机且唯一的字符串！**                                                 | `a_very_strong_and_random_secret_key`     |
-    | `PASSWORD`                              | （可选）用于 Web UI 登录的密码。支持逗号分隔配置多个。如果未设置，Web UI 登录功能将受限。                                                       | `"web_ui_password1,another_password"`     |
+    | `PASSWORD`                              | （可选）用于 Web UI 登录的密码，以及在 `KEY_STORAGE_MODE='memory'` 时作为 API 请求的认证凭证。支持逗号分隔配置多个。如果未设置，Web UI 登录功能将受限，且内存模式下的 API 请求可能无法认证。 | `"web_ui_password1,another_password"`     |
     | `KEY_STORAGE_MODE`                      | （可选）控制 **API Key** 的存储方式。可选值：`database` (持久化) 或 `memory` (临时, 重启丢失)。                                       | `memory`                                  |
-    | `CONTEXT_DB_PATH`                       | （可选）SQLite **上下文、缓存元数据及 API Key (数据库模式下)** 数据库文件路径。未设置则相关功能使用内存模式。                                | `app/data/gemini_proxy.db`                |
+    | `CONTEXT_DB_PATH`                       | （可选）指定 SQLite 数据库文件的自定义绝对或相对路径。此数据库用于存储**对话上下文（使用 `DialogContext` 模型）、缓存元数据（使用 `CachedContent` 模型），以及当 `KEY_STORAGE_MODE='database'` 时存储 API 密钥信息**。  - 如果设置了此环境变量，并且程序未被其他配置强制为内存数据库模式（例如，非 Hugging Face Spaces 环境、`APP_DB_MODE` 未设为 `memory`、且 `KEY_STORAGE_MODE` 不是 `memory`），程序将**优先尝试使用此路径**。  - 如果提供的路径包含目录，程序会尝试创建这些目录。请确保程序对此路径有读写权限。  - 如果未设置此环境变量，或者设置的路径无效/无权限访问，程序会首先尝试项目根目录下的 `app/data/context_store.db`，然后尝试用户主目录下的 `~/.gemini_api_proxy/data/context_store.db`。  - 若所有文件路径尝试均失败，程序将自动回退到使用**内存数据库**，此时数据在应用重启后会丢失。  - 示例: `/opt/gemini_proxy/data/my_proxy.db` 或 `data/gemini_proxy.db`。 | `app/data/context_store.db` (如果未设置，则尝试 `~/.gemini_api_proxy/data/context_store.db`，然后回退到内存) |
     | `ENABLE_NATIVE_CACHING`                 | （可选）全局默认是否启用 Gemini API 的原生缓存功能。                                                                                         | `false`                                   |
     | `ENABLE_CONTEXT_COMPLETION`             | （可选）全局默认是否启用传统上下文补全功能。若 `ENABLE_NATIVE_CACHING` 为 `true`，此设置通常被忽略。                                          | `true`                                    |
     | `ENABLE_STICKY_SESSION`                 | （可选）Key 选择器是否优先尝试用户上次使用的 Key。                                                                                       | `false`                                   |
@@ -229,8 +226,8 @@
     | `MEMORY_CONTEXT_CLEANUP_INTERVAL_SECONDS` | （可选）内存数据库模式下，上下文清理任务的运行间隔（秒）。                                                                                 | `3600`                                    |
     | `MAX_CONTEXT_RECORDS_MEMORY`            | （可选）内存数据库模式下，允许存储的最大上下文记录数量。                                                                                   | `5000`                                    |
     | `CONTEXT_STORAGE_MODE`                  | （可选）控制对话上下文的存储方式 (`database` 或 `memory`)。若为 `database` 但 `CONTEXT_DB_PATH` 未设置，则强制为 `memory`。                 | `memory`                                  |
-    | `MAX_REQUESTS_PER_MINUTE`               | （可选，可能已废弃）基于 IP 的每分钟最大请求数限制。                                                                                       | `60`                                      |
-    | `MAX_REQUESTS_PER_DAY_PER_IP`           | （可选，可能已废弃）基于 IP 的每日最大请求数限制。                                                                                         | `600`                                     |
+    | `MAX_REQUESTS_PER_MINUTE`               | （可选）基于 IP 的每分钟最大请求数限制。                                                                                                 | `60`                                      |
+    | `MAX_REQUESTS_PER_DAY_PER_IP`           | （可选）基于 IP 的每日最大请求数限制。                                                                                                   | `600`                                     |
     | `PROTECT_STATUS_PAGE`                   | （可选，可能已废弃）是否为状态页面启用密码保护。                                                                                           | `false`                                   |
     | `STREAM_SAVE_REPLY`                     | （可选，可能已废弃）是否在流式响应结束后尝试保存模型回复到上下文。                                                                           | `false`                                   |
 
@@ -262,6 +259,43 @@
 6. Space 将会自动构建并运行。
 
 ### 💻 本地运行
+
+#### 🐳 Docker一键部署（推荐）
+
+**Linux/macOS:**
+```bash
+# 一键部署
+./deploy-local.sh
+
+# 指定端口部署
+./deploy-local.sh 8080
+
+# 超简版部署
+./deploy-simple.sh
+
+# 清理部署（重新构建）
+./deploy-simple.sh clean
+```
+
+**Windows:**
+```cmd
+# 双击运行或命令行执行
+deploy-windows.bat
+```
+
+**清理命令:**
+```bash
+# 软清理（仅容器）
+./cleanup.sh
+
+# 硬清理（容器+镜像）
+./cleanup.sh --hard
+
+# 完全清理（所有资源）
+./cleanup.sh --all
+```
+
+#### 🔧 传统方式运行
 
 1. 克隆项目代码到本地。
 2. 安装依赖：`pip install -r requirements.txt`
@@ -332,7 +366,7 @@
         # (可选) JWT 访问令牌过期时间 (分钟)
         # ACCESS_TOKEN_EXPIRE_MINUTES=30
 
-        # --- 可能已废弃的旧版速率限制 ---
+        # --- 用户IP速率限制 (仍然有效) ---
         # MAX_REQUESTS_PER_MINUTE=60
         # MAX_REQUESTS_PER_DAY_PER_IP=600
         ```
@@ -341,9 +375,36 @@
 
 5. 运行：
 
+    **后端服务:**
     ```bash
+    # 在项目根目录运行
     uvicorn app.main:app --reload --host 0.0.0.0 --port 7860
     ```
+    这将启动 FastAPI 后端服务。
+
+    **前端服务 (开发模式):**
+    你需要单独启动 Vite 开发服务器来查看和开发新的 Vue.js 前端。
+    ```bash
+    # 进入前端目录
+    cd app/frontend
+    # 安装依赖 (如果尚未安装)
+    npm install
+    # 启动 Vite 开发服务器 (通常在 http://localhost:5173)
+    npm run dev
+    ```
+    Vite 开发服务器通常会配置代理将 API 请求转发到后端服务 (端口 7860)。请检查 `app/frontend/vite.config.js` 中的代理配置。
+
+    **前端服务 (生产构建预览):**
+    如果你想测试 FastAPI 服务生产构建的前端文件：
+    ```bash
+    # 进入前端目录
+    cd app/frontend
+    # 安装依赖 (如果尚未安装)
+    npm install
+    # 构建前端应用
+    npm run build
+    ```
+    构建完成后，之前启动的 Uvicorn 后端服务 (在 `http://localhost:7860`) 将会自动服务 `app/frontend/dist` 目录下的静态文件。
 
 ## 🌐 API 接口说明
 
@@ -476,7 +537,7 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 
 ### Web UI 认证
 
-访问 Web 管理界面 (`/`, `/manage/context`, `/manage/keys`, `/report`) 需要进行登录认证：
+访问 Web 管理界面 (`/`, `/manage/context`, `/manage/keys`, `/manage/report`) 需要进行登录认证：
 
 1. 访问 `/login` 页面。
 2. 使用 `PASSWORD` 环境变量中配置的**某个**值作为密码进行登录。
@@ -485,16 +546,27 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 
 ### Web UI 功能详情
 
-- **`/manage/context` 页面**: 管理对话上下文。
+- **整体界面优化与单页应用 (SPA) 体验**:
+  - **SPA 导航**: Web UI 管理界面已升级为单页应用 (SPA)，显著提升了页面间的导航速度和流畅性。内容动态加载，无需整页刷新。
+  - **第三方库全局加载**: Chart.js (用于报告图表) 和 Flatpickr (用于日期时间选择) 的相关资源已在基础模板中全局加载，确保在SPA导航到相应页面时功能正常。
+  - **用户体验细节优化**:
+    - 在“代理Key管理”页面，编辑或删除Key后，页面会尝试保持当前的滚动位置，避免自动跳转到页面顶部。
+    - 调整了“代理Key管理”页面中 Flatpickr 日期时间选择控件的CSS样式，使其日历下拉框的宽度与输入框更加协调。
+  - 导航栏左上角的品牌标识已更新为更具设计感的 "GAP" 艺术字样式。
+  - 登录页面 (`/login`) 的输入框和整体布局已调整，视觉效果更大气。
+  - 页脚的版权信息和 GitHub 链接已实现水平对齐。
+- **`/manage/context` 页面**: 管理对话上下文。页面中的“刷新列表”按钮位置已调整，更贴近其管理的列表内容。TTL表单提交现在通过AJAX处理，不会导致页面刷新。
 - **`/manage/keys` 页面**:
   - **数据库模式**: 管理持久化的代理 Key (添加、删除、启用/禁用、配置上下文补全)。
   - **内存模式**: 临时管理从环境变量加载的 Key (操作不持久)。
+  - 日期时间选择器功能已恢复。
 - **`/manage/caches` 页面**: 查看和删除当前登录用户自己的缓存条目。
-- **`/manage/report` 报告页**: 展示详细的 API 使用情况报告，包括 Key 使用统计和缓存命中信息。
+- **`/manage/report` 报告页**: 展示详细的 API 使用情况报告，包括 Key 使用统计和缓存命中信息。图表加载问题已修复。
+- **错误页面**: 应用现在会为常见的HTTP错误（如401未授权、403禁止访问、404未找到）渲染用户友好的HTML页面。
 
 ## ⚠️ 注意事项
 
-- **强烈建议在生产环境中设置 `PASSWORD` 环境变量（作为 API 密钥），并使用强密钥。**
+- **强烈建议在生产环境中设置 `PASSWORD` 环境变量（用于 Web UI 登录和内存模式下的 API 认证），并使用强随机字符串。**
 - 根据你的使用情况调整速率限制相关的环境变量。
 - 确保你的 Gemini API 密钥具有足够的配额。
 - 日志文件存储在项目根目录的 `logs` 文件夹中（如果权限允许，否则在临时目录），定期检查以确保磁盘空间充足。
@@ -502,7 +574,7 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 - 谨慎使用 `DISABLE_SAFETY_FILTERING` 选项，了解禁用安全过滤的潜在风险。
 - **API 使用情况跟踪和上下文截断功能依赖 `app/data/model_limits.json` 文件，请确保该文件存在且为相关模型配置了 `input_token_limit`。**
 - **Web UI 认证需要设置 `SECRET_KEY` 环境变量。**
-- **API 上下文管理 (文件模式):** 需要通过 `/manage/keys` Web UI 管理代理 Key 的添加、删除、启用/禁用，**以及配置每个 Key 的上下文补全状态**。
+- **API 密钥与上下文配置 (数据库模式):** 当 `KEY_STORAGE_MODE='database'` 时，代理 Key 的添加、删除、启用/禁用，以及配置每个 Key 的上下文补全状态，均通过 `/manage/keys` Web UI 进行管理。
 - **存储模式:**
   - **上下文存储:** 默认使用内存数据库，上下文在重启时丢失。可通过 `CONTEXT_DB_PATH` 环境变量启用基于 SQLite 文件的持久化存储。
   - **API Key 存储:** 通过 `KEY_STORAGE_MODE` 环境变量控制。
@@ -510,6 +582,7 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
     - `'database'`: Key 信息存储在 SQLite 数据库中，所有通过 `/manage/keys` 界面的更改都会被持久化。
 - **多进程/Worker 注意:** 在使用内存数据库（包括共享内存模式）且部署环境使用多个工作进程（如默认的 Uvicorn 或 Gunicorn 配置）时，为确保数据库状态一致性，**建议配置为仅使用单个工作进程** (例如 `uvicorn ... --workers 1`)。否则，不同进程可能无法看到一致的数据库状态。
 - **⚠️ 上下文管理关键点:** 上下文与认证凭证 (API Key/代理 Key) 绑定。**切勿对不同的对话/任务使用相同的 Key，否则会导致上下文错乱！** 请为每个独立上下文分配唯一的 Key。**上下文补全的启用/禁用状态也与 Key 绑定，可在数据库模式下通过 `/manage/keys` 界面配置，内存模式下默认为启用且临时修改无效。**
+- **直接URL访问受保护页面**: 如果您在登录后，直接通过浏览器地址栏输入受保护页面的URL（例如 `/manage/keys`）进行访问，浏览器不会自动发送您之前登录时获取的认证令牌。因此，服务器会视此类请求为未经身份验证的请求，并返回401错误页面，这是符合预期的标准行为。SPA（单页应用）的导航机制（通过点击页面内链接）才会负责在请求中附带认证令牌。
 
 ## 🤝 贡献
 
@@ -518,6 +591,12 @@ Authorization: Bearer <YOUR_AUTH_CREDENTIAL>
 - **报告 Bug:** 如果你发现了问题，请在 [Issues](https://github.com/MisonL/GAP/issues) 中提交详细的 Bug 报告。
 - **功能请求:** 如果你有新的功能想法，也请在 [Issues](https://github.com/MisonL/GAP/issues) 中提出。
 - **代码贡献:** 如果你想贡献代码，请先 Fork 本仓库，在你的分支上进行修改，然后提交 Pull Request。
+
+## 📞 联系与支持
+
+- **邮箱**: 1360962086@qq.com
+- **Issues**: [GitHub Issues](https://github.com/MisonL/GAP/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/MisonL/GAP/discussions)
 
 ## 📜 许可证
 

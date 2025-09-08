@@ -1,0 +1,25 @@
+services:
+  gemini-proxy:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile.simple
+    ports:
+      - "7860:7860"
+    env_file:
+      - ../../.env
+    environment:
+      # 存储配置 - 容器内路径
+      - CONTEXT_DB_PATH=/app/data/context_store.db
+    volumes:
+      # 持久化数据卷
+      - gemini_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  gemini_data:

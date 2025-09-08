@@ -1,5 +1,29 @@
 # 更新日志
 
+## v1.8.1
+
+此版本紧随 v1.8.0 的重大代码重构，专注于提升应用的整体质量和用户体验。通过对 Web UI 引入单页应用（SPA）架构、精细化错误处理流程、增强后台任务调度的可靠性，以及深化数据管理和权限控制逻辑，v1.8.1 使得 v1.8.0 版本引入的各项功能更加完善和易用。
+
+**v1.8.1 版本关键代码层面优化与完善 (基于 v1.8.0 的演进):**
+
+- **Web UI 现代化 (SPA) 及体验提升**:
+  - **核心 SPA 架构**: 在 `app/web/templates/_base.html` 中实现了 SPA 导航逻辑，并通过修改 `app/web/routes.py` 中的路由处理以支持 HTML 片段响应，显著提升了管理界面的交互速度。
+  - **前端组件与样式**: 优化了 `app/web/templates/` 下多个管理页面的 JavaScript 加载方式以适应 SPA，并对登录页、导航栏、页脚及表单控件（如 Flatpickr）进行了视觉和交互改进。
+
+- **错误处理与系统稳定性**:
+  - **定制化错误页面**: 在 `app/web/templates/` 中新增了 `401.html`, `403.html`, `404.html`，并更新 `app/handlers/error_handlers.py` 和 `app/main.py` 以在特定 HTTP 错误时渲染这些页面。
+  - **后台任务修复与激活**: 确保了 `app/core/reporting/scheduler.py` 中的定时任务（如每日计数重置）和 `app/core/cache/cleanup.py` 中的缓存清理任务（通过在 `app/main.py` 中正确激活并使用 `AsyncSession`）能够稳定执行。
+  - **启动与路由健壮性**: 优化了 `app/core/keys/checker.py` 中的 API 密钥检查提示，修复了 `app/main.py` 中的 `HTTPException` 导入错误及 404 兜底路由问题。
+
+- **数据与上下文管理深化**:
+  - **上下文存储重构**: `app/core/context/store.py` 围绕新的 `DialogContext` ORM 模型 (定义于 `app/core/database/models.py`) 进行了重构，全面转向异步数据库操作，并完善了对多模态 `inline_data` 的处理。
+  - **缓存与密钥管理增强**: `app/core/cache/manager.py` 中的 `CacheManager.get_cache` 方法被改造为异步；`app/core/keys/manager.py` 中的 `APIKeyManager` 新增了通过缓存内容 ID 查询关联 API Key 的功能。
+  - **数据库工具与配置**: `app/core/database/utils.py` 中多个数据库辅助函数从模拟实现转为真实的异步查询，并增强了 `CONTEXT_DB_PATH` 环境变量的处理逻辑。
+
+- **权限控制 (RBAC) 与内存模式优化**:
+  - **访问控制**: `app/web/routes.py` 中细化了认证依赖和权限检查逻辑，确保普通用户和管理员对不同页面的访问符合预期，并实现了动态导航菜单。
+  - **内存模式灵活性**: 增强了 `app/core/keys/manager.py` 和 `app/web/routes.py` 对内存模式下通过环境变量配置的密钥（`ADMIN_API_KEY`, `WEB_UI_PASSWORDS`）的临时状态管理，允许在当前会话中修改其属性并在 UI 上得到正确反映。
+
 ## v1.8.0
 
 此版本主要聚焦于代码结构的深度重构、核心功能的完善与增强，以及多项关键错误修复。项目核心逻辑已进一步模块化并迁移至 `app/core/` 目录下的细分功能模块，显著提升了代码的可维护性和可扩展性。用户侧的 Gemini 原生缓存管理功能已全面实装，后台缓存自动清理任务也已修复并正常运行。
