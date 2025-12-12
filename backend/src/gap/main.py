@@ -6,6 +6,7 @@ FastAPI 应用主入口文件。
 import asyncio  # 异步 IO
 import logging  # 日志记录
 import os  # 操作系统接口
+from pathlib import Path
 
 # --- 标准库导入 ---
 import sys  # 系统相关功能
@@ -92,7 +93,7 @@ from .utils.log_config import setup_logger
 # --- 初始化 ---
 
 # 加载 .env 文件中的环境变量 (如果存在)
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=True)
 
 # 初始化并获取配置好的日志记录器实例
 logger = setup_logger()
