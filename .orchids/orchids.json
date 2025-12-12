@@ -1,0 +1,8 @@
+{
+  "projectId": "576f47cc-9f94-40c9-95ae-10a93e8f085c",
+  "createdAt": 1765513405383,
+  "startupCommands": [
+    "cd /Volumes/Work/code/GAP/backend && python3 -m uvicorn src.gap.main:app --host 0.0.0.0 --port 7860 --reload",
+    "cd /Volumes/Work/code/GAP/frontend && npx vite --host 0.0.0.0 --port 5173"
+  ]
+}
