@@ -24,7 +24,7 @@ declare global {
   }
 
   // API 响应数据类型
-  interface ApiResponse<T = any> {
+  interface ApiResponse<T = unknown> {
     status: number;
     message?: string;
     detail?: string;
@@ -94,8 +94,12 @@ declare global {
     admin?: boolean; // 是否是管理员
     exp?: number; // 过期时间
     iat?: number; // 签发时间
-    // 根据实际 JWT payload 补充其他字段
-    [key: string]: any; // 允许其他任意属性
+    nbf?: number; // 生效时间
+    jti?: string; // JWT ID
+    iss?: string; // 签发者
+    aud?: string[] | string; // 受众
+    // 允许自定义扩展字段，但使用更严格的类型
+    [key: string]: string | number | boolean | null | undefined;
   }
 
   // Auth Store 状态类型

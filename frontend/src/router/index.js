@@ -81,35 +81,81 @@ const router = createRouter({
     routes
 });
 
-// 导航守卫 (示例，逻辑待填充)
+// 导航守卫
 import { useAuthStore } from '@/stores/authStore';
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore();
-  
-  // 添加调试日志
-  console.log(`[路由守卫] 目标路径: ${to.path}, 认证状态: ${authStore.isAuthenticated}`);
-  
-  if (to.matched.some(record => record.meta.requiresAuth)) {
-    if (!authStore.isAuthenticated) {
-      console.log(`[路由守卫] 重定向到登录页，原因: 需要认证`);
+
+  try {
+    // 对于需要认证的路由，先验证token有效性
+    if (to.matched.some(record => record.meta.requiresAuth)) {
+      // 如果本地有token，先验证其有效性
+      if (authStore.token) {
+        try {
+          const isValid = await authStore.checkTokenValidity();
+          if (!isValid) {
+            // eslint-disable-next-line no-console
+            console.warn(`[路由守卫] Token无效，重定向到登录页: ${to.path}`);
+            next({
+              path: '/login',
+              query: { redirect: to.fullPath, reason: 'token_invalid' }
+            });
+            return;
+          }
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.warn(`[路由守卫] Token验证失败，重定向到登录页:`, error);
+          await authStore.logout();
+          next({
+            path: '/login',
+            query: { redirect: to.fullPath, reason: 'token_error' }
+          });
+          return;
+        }
+      }
+
+      // 检查认证状态
+      if (!authStore.isAuthenticated) {
+        // eslint-disable-next-line no-console
+        console.log(`[路由守卫] 重定向到登录页，原因: 需要认证`);
+        next({
+          path: '/login',
+          query: { redirect: to.fullPath }
+        });
+        return;
+      }
+    }
+
+    // 已认证用户访问登录页，重定向到首页
+    else if (to.path === '/login' && authStore.isAuthenticated) {
+      // eslint-disable-next-line no-console
+      console.log(`[路由守卫] 重定向到首页，原因: 已认证用户访问登录页`);
+      const redirectTarget = to.query.redirect || '/';
+      next(redirectTarget);
+      return;
+    }
+
+    // 放行
+    next();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('[路由守卫] 守卫执行失败:', error);
+    // 发生错误时，对于需要认证的页面重定向到登录页
+    if (to.matched.some(record => record.meta.requiresAuth)) {
       next({
         path: '/login',
-        query: { redirect: to.fullPath }
+        query: { redirect: to.fullPath, reason: 'guard_error' }
       });
     } else {
       next();
     }
-  } else if (to.path === '/login' && authStore.isAuthenticated) {
-    console.log(`[路由守卫] 重定向到首页，原因: 已认证用户访问登录页`);
-    next('/');
-  } else {
-    next();
   }
 });
 
 // 可以在路由创建后添加一些错误处理或日志
 router.onError(error => {
+    // eslint-disable-next-line no-console
     console.error('[Router Error]', error);
 });
 

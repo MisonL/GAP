@@ -3,28 +3,126 @@ name = "gemini-api-proxy"
 version = "1.8.1"
 description = "基于FastAPI的Gemini API代理服务"
 readme = "readme.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
-    "fastapi>=0.116.0",
+    # Core Framework
+    "fastapi>=0.116.1",
     "uvicorn[standard]>=0.34.0",
-    "httpx>=0.28.0",
-    "apscheduler>=3.11.0",
-    "pytz>=2025.1",
-    "python-jose[cryptography]>=3.5.0",
+    "pydantic>=2.11.7",
+    "pydantic-settings>=2.8.1",
+
+    # Database
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14.0",
+    "asyncpg>=0.30.0",
     "aiosqlite>=0.21.0",
+
+    # Caching
+    "redis>=5.2.0",
+
+    # Authentication & Security
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-multipart>=0.0.19",
+    "bcrypt>=4.2.1",
+
+    # API & HTTP
+    "httpx>=0.28.1",
+    "requests>=2.32.3",
+    "aiofiles>=24.1.0",
+
+    # Google APIs
     "google-generativeai==0.8.5",
     "google-api-python-client>=2.179.0",
-    "sqlalchemy>=2.0.43",
-    "python-dotenv>=1.0.0",
-    "python-multipart>=0.0.20",
+
+    # Environment & Configuration
+    "python-dotenv>=1.0.1",
+
+    # Logging
+    "structlog>=25.2.0",
+    "loguru>=0.7.3",
+
+    # Background Tasks
+    "apscheduler>=3.11.0",
+    "celery>=5.4.0",
+
+    # Validation & Utilities
+    "email-validator>=2.2.0",
+    "phonenumbers>=8.13.52",
+
+    # File Handling
+    "python-magic>=0.4.27",
+    "pillow>=11.0.0",
+
+    # Date & Time
+    "python-dateutil>=2.9.0.post0",
+    "pytz>=2024.2",
+
+    # JSON Handling
+    "orjson>=3.10.12",
+
+    # Security Headers
+    "secure>=0.3.0",
+
+    # Type Checking
+    "typing-extensions>=4.12.2",
+
+    # CLI Tools
+    "click>=8.3.0",
+    "rich>=13.9.4",
+
+    # Production Server
+    "gunicorn>=23.0.0",
+
+    # Templates
+    "jinja2>=3.1.4",
+
+    # Error Tracking
+    "sentry-sdk[fastapi]>=2.19.2",
 ]
 
 [project.optional-dependencies]
 dev = [
+    # Testing
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.12.0",
+    "httpx>=0.28.0",  # For testing FastAPI
+
+    # Code Quality
     "black>=24.0.0",
     "isort>=5.13.0",
+    "flake8>=6.0.0",
+    "mypy>=1.8.0",
+
+    # Security
+    "bandit>=1.7.5",
+
+    # Performance
+    "memory-profiler>=0.61.0",
+    "py-spy>=0.3.14",
+]
+
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.12.0",
+    "faker>=30.0.0",
+]
+
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.26.0",
+]
+
+lint = [
+    "black>=24.0.0",
+    "isort>=5.13.0",
+    "flake8>=6.0.0",
+    "mypy>=1.8.0",
 ]
 
 [tool.uv]
@@ -33,3 +131,110 @@ package = false
 [tool.uv.pip]
 index-url = "https://pypi.org/simple"
 extra-index-url = ["https://mirrors.aliyun.com/pypi/simple/"]
+
+# Development tools configuration
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["gap"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "redis.*",
+    "google.*",
+    "structlog.*",
+    "loguru.*",
+    "apscheduler.*",
+    "celery.*",
+    "jose.*"
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--verbose",
+    "--cov=src",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+]
+pythonpath = ["src"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.flake8]
+max-line-length = 180
+extend-ignore = ["E203", "W503"]
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    ".eggs",
+    "*.egg-info",
+    ".mypy_cache",
+    ".pytest_cache",
+]

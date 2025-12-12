@@ -1,9 +1,17 @@
 <template>
   <transition name="notification">
-    <div v-if="isVisible" :class="['global-notification', typeClass]">
+    <div
+      v-if="isVisible"
+      :class="['global-notification', typeClass]"
+    >
       <div class="notification-content">
         <p>{{ message }}</p>
-        <button @click="closeNotification" class="close-button">×</button>
+        <button
+          class="close-button"
+          @click="closeNotification"
+        >
+          ×
+        </button>
       </div>
     </div>
   </transition>

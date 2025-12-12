@@ -8,6 +8,8 @@ export default defineConfig({
   testDir: './tests', // 测试文件目录
   /* Run tests in files in parallel */
   fullyParallel: true,
+  // Global setup to ensure auth storage state exists before tests
+  globalSetup: './playwright/global-setup.js',
   /* Fail the build on CI if you clone the checkout. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
@@ -24,7 +26,7 @@ export default defineConfig({
     /* Collect traces upon failing the first retry. */
     trace: 'on-first-retry',
 
-    /* Tell all tests to load signed-in state from 'storageState.json'. */
+    /* Load signed-in (or at least consistent) state for all tests. */
     storageState: 'playwright/.auth/user.json',
   },
 
@@ -63,9 +65,9 @@ export default defineConfig({
   ],
 
   /* Run your local dev server before starting the tests */
-  // webServer: {
-  //   command: 'npm run start',
-  //   url: 'http://127.0.0.1:3000',
-  //   reuseExistingServer: !process.env.CI,
-  // },
+  webServer: {
+    command: 'npm run dev -- --port 5173',
+    url: 'http://localhost:5173',
+    reuseExistingServer: !process.env.CI,
+  },
 });

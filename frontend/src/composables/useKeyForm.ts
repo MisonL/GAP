@@ -1,6 +1,7 @@
 // app/frontend/src/composables/useKeyForm.ts
 import { ref, watch, computed } from 'vue';
 import apiService from '@/services/apiService'; // 引入 apiService
+import type { ApiKeyCreateRequest, ApiKeyUpdateRequest } from '@/stores/types/index';
 
 // 定义本地类型接口（替代 global.d.ts 导入）
 interface KeyItem {
@@ -20,6 +21,29 @@ interface AddKeyPayload {
   description?: string;
   expires_at?: string | null;
   enable_context_completion?: boolean;
+}
+
+// 辅助函数将AddKeyPayload转换为ApiKeyCreateRequest
+function convertToApiKeyCreateRequest(payload: AddKeyPayload): ApiKeyCreateRequest {
+  return {
+    key: payload.key_string || '',
+    provider: 'gemini', // 默认提供商
+    name: payload.description,
+    settings: {
+      rpd: undefined,
+      rpm: undefined,
+      tpd: undefined,
+      tpm: undefined
+    }
+  };
+}
+
+// 辅助函数将UpdateKeyPayload转换为ApiKeyUpdateRequest
+function convertToApiKeyUpdateRequest(payload: UpdateKeyPayload): ApiKeyUpdateRequest {
+  return {
+    name: payload.description,
+    status: payload.is_active ? 'active' : 'inactive'
+  };
 }
 
 interface UpdateKeyPayload {
@@ -111,7 +135,7 @@ export function useKeyForm(props: UseKeyFormProps, emit: Function) {
       }
       try {
         console.log('[useKeyForm] Submitting update for key:', form.value.key_string, 'Payload:', payload);
-        await apiService.updateKey(form.value.key_string, payload as UpdateKeyPayload); // 类型断言
+        await apiService.updateKey(form.value.key_string, convertToApiKeyUpdateRequest(payload as UpdateKeyPayload));
         console.log('[useKeyForm] Update successful.');
         emit('save'); // 通知父组件保存成功
       } catch (err: any) { // 明确 err 类型
@@ -127,7 +151,7 @@ export function useKeyForm(props: UseKeyFormProps, emit: Function) {
       // 添加模式
       try {
         console.log('[useKeyForm] Submitting new key. Payload:', payload);
-        await apiService.addKey(payload as AddKeyPayload); // 类型断言
+        await apiService.addKey(convertToApiKeyCreateRequest(payload as AddKeyPayload));
         console.log('[useKeyForm] Add successful.');
         emit('save'); // 通知父组件保存成功
       } catch (err: any) { // 明确 err 类型

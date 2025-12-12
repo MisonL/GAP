@@ -3,14 +3,15 @@
 安全相关工具函数，主要用于 JWT (JSON Web Token) 令牌的创建和验证。
 使用 python-jose 库进行 JWT 操作。
 """
-from datetime import datetime, timedelta, timezone # 导入日期时间处理相关模块
-from typing import Optional, Dict, Any # 导入类型提示
-import logging # 导入日志模块
+import logging  # 导入日志模块
+from datetime import datetime, timedelta, timezone  # 导入日期时间处理相关模块
+from typing import Any, Dict, Optional  # 导入类型提示
 
-from jose import jwt, JWTError # 从 jose 库导入 jwt 编码/解码函数和 JWT 错误类
-from gap import config # 导入应用配置模块
+from jose import JWTError, jwt  # 从 jose 库导入 jwt 编码/解码函数和 JWT 错误类
 
-logger = logging.getLogger('my_logger') # 获取日志记录器实例
+from gap import config  # 导入应用配置模块
+
+logger = logging.getLogger("my_logger")  # 获取日志记录器实例
 
 # --- 从配置中加载 JWT 相关设置 ---
 # SECRET_KEY: 用于签名和验证 JWT 的密钥。必须保密！
@@ -20,7 +21,10 @@ ALGORITHM = config.JWT_ALGORITHM
 # ACCESS_TOKEN_EXPIRE_MINUTES: 访问令牌的默认过期时间（分钟）。
 ACCESS_TOKEN_EXPIRE_MINUTES = config.ACCESS_TOKEN_EXPIRE_MINUTES
 
-def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+
+def create_access_token(
+    data: Dict[str, Any], expires_delta: Optional[timedelta] = None
+) -> str:
     """
     创建 JWT 访问令牌。
 
@@ -38,16 +42,20 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     """
     # 检查密钥是否存在
     if not SECRET_KEY:
-        logger.error("JWT SECRET_KEY 未配置，无法创建令牌。") # 记录严重错误
-        raise ValueError("JWT SECRET_KEY 未在环境变量中设置") # 抛出值错误
+        logger.error("JWT SECRET_KEY 未配置，无法创建令牌。")  # 记录严重错误
+        raise ValueError("JWT SECRET_KEY 未在环境变量中设置")  # 抛出值错误
 
-    to_encode = data.copy() # 创建数据字典的副本，避免修改原始数据
+    to_encode = data.copy()  # 创建数据字典的副本，避免修改原始数据
     # 计算过期时间
-    if expires_delta: # 如果提供了自定义的过期时长
-        expire = datetime.now(timezone.utc) + expires_delta # 使用当前 UTC 时间加上指定时长
-    else: # 如果未提供自定义时长
+    if expires_delta:  # 如果提供了自定义的过期时长
+        expire = (
+            datetime.now(timezone.utc) + expires_delta
+        )  # 使用当前 UTC 时间加上指定时长
+    else:  # 如果未提供自定义时长
         # 使用配置中定义的默认分钟数计算过期时间
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        )
 
     # 将过期时间 ('exp' claim) 添加到要编码的数据中
     to_encode.update({"exp": expire})
@@ -57,11 +65,12 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
         # - SECRET_KEY: 签名密钥
         # - algorithm: 签名算法
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-        logger.debug(f"成功创建 JWT 令牌，过期时间: {expire}") # 记录调试日志
-        return encoded_jwt # 返回编码后的 JWT 字符串
-    except Exception as e: # 捕获编码过程中可能发生的任何异常
-        logger.error(f"创建 JWT 时发生错误: {e}", exc_info=True) # 记录错误日志
-        raise # 重新抛出异常，让上层调用者处理
+        logger.debug(f"成功创建 JWT 令牌，过期时间: {expire}")  # 记录调试日志
+        return encoded_jwt  # 返回编码后的 JWT 字符串
+    except Exception as e:  # 捕获编码过程中可能发生的任何异常
+        logger.error(f"创建 JWT 时发生错误: {e}", exc_info=True)  # 记录错误日志
+        raise  # 重新抛出异常，让上层调用者处理
+
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """
@@ -80,8 +89,8 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """
     # 检查密钥是否存在
     if not SECRET_KEY:
-        logger.error("JWT SECRET_KEY 未配置，无法解码令牌。") # 记录严重错误
-        raise ValueError("JWT SECRET_KEY 未在环境变量中设置") # 抛出值错误
+        logger.error("JWT SECRET_KEY 未配置，无法解码令牌。")  # 记录严重错误
+        raise ValueError("JWT SECRET_KEY 未在环境变量中设置")  # 抛出值错误
 
     # 记录调试信息，显示使用的密钥前缀和算法
     logger.debug(f"decode_access_token: 使用的 SECRET_KEY (前8位): {SECRET_KEY[:8]}...")
@@ -98,8 +107,10 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
         # --- 可选的额外验证 ---
         # 1. 检查 'exp' 字段是否存在且类型正确 (虽然 jose 库通常会处理)
         if "exp" not in payload or not isinstance(payload["exp"], (int, float)):
-             logger.warning(f"解码后的 JWT payload 中缺少有效的 'exp' 字段: {payload}") # 记录警告
-             return None # 视为无效
+            logger.warning(
+                f"解码后的 JWT payload 中缺少有效的 'exp' 字段: {payload}"
+            )  # 记录警告
+            return None  # 视为无效
 
         # 2. 可以再次显式检查过期时间 (双重保险)
         # exp_timestamp = payload["exp"]
@@ -114,10 +125,12 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
 
         # 如果所有验证通过，返回解码后的 payload
         return payload
-    except JWTError as e: # 捕获 jose 库抛出的所有 JWT 相关错误
+    except JWTError as e:  # 捕获 jose 库抛出的所有 JWT 相关错误
         # JWTError 包括签名无效、令牌过期、格式错误等多种情况
-        logger.debug(f"JWT 验证失败: {e} (Token: {token[:10]}...)") # 记录 JWT 验证失败的调试信息，不暴露完整 token
-        return None # 返回 None 表示令牌无效
-    except Exception as e: # 捕获解码过程中可能发生的其他意外错误
-        logger.error(f"解码 token 时发生意外错误: {e}", exc_info=True) # 记录错误日志
-        return None # 返回 None
+        logger.debug(
+            f"JWT 验证失败: {e} (Token: {token[:10]}...)"
+        )  # 记录 JWT 验证失败的调试信息，不暴露完整 token
+        return None  # 返回 None 表示令牌无效
+    except Exception as e:  # 捕获解码过程中可能发生的其他意外错误
+        logger.error(f"解码 token 时发生意外错误: {e}", exc_info=True)  # 记录错误日志
+        return None  # 返回 None

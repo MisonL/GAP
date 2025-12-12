@@ -1,17 +1,32 @@
 <template>
   <div class="traditional-list-view">
     <h2>传统列表视图</h2>
-    <p v-if="isEmpty" data-testid="empty-data-message">目前没有数据可显示。</p>
-    <div v-else class="list-container" data-testid="traditional-list-container">
+    <p
+      v-if="isEmpty"
+      data-testid="empty-data-message"
+    >
+      目前没有数据可显示。
+    </p>
+    <div
+      v-else
+      class="list-container"
+      data-testid="traditional-list-container"
+    >
       <ul role="list">
-        <li v-for="item in items" :key="item.id" role="listitem">{{ item.name }}</li>
+        <li
+          v-for="item in items"
+          :key="item.id"
+          role="listitem"
+        >
+          {{ item.name }}
+        </li>
       </ul>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 
 const props = defineProps({
   items: {

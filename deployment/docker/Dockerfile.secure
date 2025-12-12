@@ -1,0 +1,42 @@
+# ---- Security Scanning Stage ----
+FROM python:3.11-alpine AS security-scanner
+
+# 安装安全扫描工具
+RUN apk add --no-cache \
+    git \
+    curl \
+    jq \
+    && \
+    pip install --no-cache-dir \
+        safety==2.3.5 \
+        bandit==1.7.5 \
+        semgrep==1.45.0 \
+        pip-audit==2.6.1
+
+WORKDIR /security
+
+# 复制代码进行扫描
+COPY . .
+
+# 运行安全扫描
+RUN echo "=== Running Safety Check (Dependency vulnerabilities) ===" && \
+    safety check --json --output safety-report.json || true && \
+    echo "=== Running Bandit (Security linter) ===" && \
+    bandit -r backend/src -f json -o bandit-report.json || true && \
+    echo "=== Running Semgrep (Static analysis) ===" && \
+    semgrep --config=auto --json --output=semgrep-report.json backend/src || true && \
+    echo "=== Running pip-audit (Dependency audit) ===" && \
+    pip-audit --requirement backend/requirements.txt --format=json --output=pip-audit-report.json || true
+
+# 生成安全报告摘要
+RUN echo "=== Security scan completed ===" && \
+    ls -la *.json
+
+# ---- Final Runtime Stage ----
+FROM runtime AS final
+
+# 从安全扫描阶段复制报告（用于调试）
+COPY --from=security-scanner /security/*.json /app/security-reports/
+
+# 安全扫描完成标记
+RUN echo "Security scanning completed - reports available in /app/security-reports/"

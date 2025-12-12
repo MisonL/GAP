@@ -1,28 +1,76 @@
 <template>
-  <div class="manage-context-view" :class="{ 'bento-layout': appStore.isBentoMode, 'traditional-layout': appStore.isTraditionalMode }">
+  <div
+    class="manage-context-view"
+    :class="{ 'bento-layout': appStore.isBentoMode, 'traditional-layout': appStore.isTraditionalMode }"
+  >
     <header class="view-header">
       <h1>上下文管理</h1>
       <!-- 可能有全局 TTL 设置等操作 -->
     </header>
 
     <!-- 全局 TTL 设置区域 -->
-    <div v-if="appStore.isAdmin && !isLoading && !error" class="global-ttl-section" :class="{ 'bento-card': appStore.isBentoMode, 'traditional-section': appStore.isTraditionalMode }">
-        <h3>全局上下文 TTL: <span class="ttl-value">{{ globalTTL }}</span> 秒</h3>
-        <div class="ttl-input-group">
-            <input type="number" v-model.number="newGlobalTTL" placeholder="输入新的 TTL (秒)" min="0" :disabled="!appStore.isAdmin || isLoading"/>
-            <button @click="updateGlobalTTL" :disabled="!appStore.isAdmin || isLoading">更新全局 TTL</button>
-        </div>
-         <p class="storage-mode-info">当前上下文存储模式: <span class="mode-highlight">{{ storageMode }}</span></p>
-         <p v-if="storageMode === 'memory'" class="warning-info">注意：内存模式下，应用重启将丢失所有上下文数据。</p>
+    <div
+      v-if="appStore.isAdmin && !isLoading && !error"
+      class="global-ttl-section"
+      :class="{ 'bento-card': appStore.isBentoMode, 'traditional-section': appStore.isTraditionalMode }"
+    >
+      <h3>
+        全局上下文 TTL:
+        <span class="ttl-value">{{ globalTTL }}</span>
+        秒
+      </h3>
+      <div class="ttl-input-group">
+        <input
+          v-model.number="newGlobalTTL"
+          type="number"
+          placeholder="输入新的 TTL (秒)"
+          min="0"
+          :disabled="!appStore.isAdmin || isLoading"
+        >
+        <button
+          class="update-ttl-button"
+          :disabled="!appStore.isAdmin || isLoading"
+          @click="updateGlobalTTL"
+        >
+          更新全局 TTL
+        </button>
+      </div>
+      <p class="storage-mode-info">
+        当前上下文存储模式:
+        <span class="mode-highlight">{{ storageMode }}</span>
+      </p>
+      <p
+        v-if="storageMode === 'memory'"
+        class="warning-info"
+      >
+        注意：内存模式下，应用重启将丢失所有上下文数据。
+      </p>
     </div>
 
-    <div v-if="isLoading" class="loading-message">加载中...</div>
-    <div v-if="!isLoading && error" class="error-message">获取上下文数据失败: {{ error }}</div>
-    <div v-if="!isLoading && !error && contexts.length === 0" class="no-data-message">当前没有缓存的上下文记录。</div>
-
+    <div
+      v-if="isLoading"
+      class="loading-message"
+    >
+      加载中...
+    </div>
+    <div
+      v-if="!isLoading && error"
+      class="error-message"
+    >
+      获取上下文数据失败: {{ error }}
+    </div>
+    <div
+      v-if="!isLoading && !error && contexts.length === 0"
+      class="no-data-message"
+    >
+      当前没有缓存的上下文记录。
+    </div>
 
     <!-- Bento 视图 (虚拟滚动) -->
-    <div v-if="appStore.isBentoMode && !isLoading && !error && contexts.length > 0" class="context-list-container bento-grid">
+    <div
+      v-if="appStore.isBentoMode && !isLoading && !error && contexts.length > 0"
+      class="context-list-container bento-grid"
+    >
       <VirtualList
         :data-key="'id'"
         :data-sources="contexts"
@@ -37,31 +85,45 @@
     </div>
 
     <!-- 传统视图 -->
-    <div v-if="appStore.isTraditionalMode && !isLoading && !error && contexts.length > 0" class="context-list-container traditional-list">
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>用户/Key</th>
-                    <th>内容 (部分)</th>
-                    <th>创建于</th>
-                    <th>TTL (秒)</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr v-for="contextItem in contexts" :key="contextItem.id">
-                    <td>{{ contextItem.id }}</td>
-                    <td>{{ contextItem.user_id || '未知' }} - {{ contextItem.context_key }}</td>
-                    <td><code>{{ truncateContent(contextItem.context_value, 50) }}</code></td>
-                    <td>{{ contextItem.created_at }}</td>
-                    <td>{{ contextItem.ttl_seconds }}</td>
-                    <td>
-                        <button @click="confirmDeleteContext(contextItem)" class="delete-button" :disabled="isLoading">删除</button>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+    <div
+      v-if="appStore.isTraditionalMode && !isLoading && !error && contexts.length > 0"
+      class="context-list-container traditional-list"
+    >
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>用户/Key</th>
+            <th>内容 (部分)</th>
+            <th>创建于</th>
+            <th>TTL (秒)</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="contextItem in contexts"
+            :key="contextItem.id"
+          >
+            <td>{{ contextItem.id }}</td>
+            <td>{{ contextItem.user_id || '未知' }} - {{ contextItem.context_key }}</td>
+            <td>
+              <code>{{ truncateContent(contextItem.context_value, 50) }}</code>
+            </td>
+            <td>{{ contextItem.created_at }}</td>
+            <td>{{ contextItem.ttl_seconds }}</td>
+            <td>
+              <button
+                class="delete-button"
+                :disabled="isLoading"
+                @click="confirmDeleteContext(contextItem)"
+              >
+                删除
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </template>
@@ -72,8 +134,6 @@ import { useAppStore } from '@/stores/appStore'; // 导入 appStore
 import BentoCard from '@/components/common/BentoCard.vue';
 import apiService from '@/services/apiService';
 import VirtualList from 'vue-virtual-scroll-list'; // 导入 VirtualList 组件
-
-console.log('[ManageContextView.vue] <script setup> executed.');
 
 const isLoading = ref(false);
 const error = ref(null);
@@ -130,19 +190,15 @@ const useContextActions = (fetchContextDataCallback) => { // 接受一个回调�
 
   const confirmDeleteContext = async (contextItem) => {
     if (confirm(`确定要删除上下文 ID: ${contextItem.id} (Key: ${contextItem.context_key})吗？`)) {
-      console.log(`[ManageContextView] Confirming deletion for context ID: ${contextItem.id}`);
       isLoading.value = true;
       error.value = null;
       try {
-        console.log(`[ManageContextView] Deleting context ID: ${contextItem.id}`);
         await apiService.deleteContext(contextItem.id);
-        console.log(`[ManageContextView] Context ID ${contextItem.id} deleted successfully.`);
         // 删除成功后，调用回调函数刷新列表
         if (fetchContextDataCallback) {
           fetchContextDataCallback();
         }
       } catch (err) {
-        console.error(`[ManageContextView] Failed to delete context ID ${contextItem.id}:`, err);
         error.value = err.message || err.detail || `删除上下文 ID ${contextItem.id} 失败。`;
         if (typeof err === 'object' && err !== null && err.message) {
           error.value = `错误 ${err.status || ''}: ${err.message}`;
@@ -152,8 +208,6 @@ const useContextActions = (fetchContextDataCallback) => { // 接受一个回调�
       } finally {
         isLoading.value = false;
       }
-    } else {
-      console.log(`[ManageContextView] Deletion cancelled for context ID: ${contextItem.id}`);
     }
   };
 
@@ -174,21 +228,16 @@ const fetchContextData = async () => {
   error.value = null;
   contexts.value = []; // 清空旧数据
   try {
-    console.log('[ManageContextView] Fetching context data from API...');
     const response = await apiService.getContextData();
     if (response && Array.isArray(response.contexts)) {
       contexts.value = response.contexts;
       globalTTL.value = response.global_ttl || 0;
       newGlobalTTL.value = globalTTL.value; // 初始化输入框的值
       storageMode.value = response.storage_mode || 'unknown'; // 获取存储模式
-      console.log('[ManageContextView] Context data fetched successfully:', contexts.value.length, 'contexts');
-      console.log('[ManageContextView] Storage mode:', storageMode.value);
     } else {
-      console.warn('[ManageContextView] API response for context data is empty or not in expected format:', response);
       error.value = '从服务器获取的上下文数据格式不正确。';
     }
   } catch (err) {
-    console.error('[ManageContextView] Failed to fetch context data:', err);
     error.value = err.message || err.detail || '获取上下文数据失败。';
     if (typeof err === 'object' && err !== null && err.message) {
         error.value = `错误 ${err.status || ''}: ${err.message}`;
@@ -208,15 +257,11 @@ const updateGlobalTTL = async () => {
     isLoading.value = true;
     error.value = null;
     try {
-      console.log(`[ManageContextView] Updating global TTL to: ${newGlobalTTL.value}`);
       await apiService.updateContextTTL({ ttl_seconds: newGlobalTTL.value });
-      console.log(`[ManageContextView] Global TTL updated successfully.`);
-      console.log(`[ManageContextView] Global TTL updated successfully.`);
       // 更新本地状态，然后重新获取数据以确认并刷新列表
       await fetchContextData(); // 重新获取数据以确认并刷新列表
       // 在 fetchContextData 成功后，其内部会更新 globalTTL 和 newGlobalTTL
     } catch (err) {
-      console.error('[ManageContextView] Failed to update global TTL:', err);
       error.value = err.message || err.detail || '更新全局 TTL 失败。';
       if (typeof err === 'object' && err !== null && err.message) {
         error.value = `错误 ${err.status || ''}: ${err.message}`;
@@ -406,10 +451,6 @@ onMounted(() => {
   padding-bottom: 20px; /* 底部留白 */
 }
 
-.bento-card-item {
-  /* VirtualList 渲染的每个项目的样式 */
-  /* 确保 BentoCard 内部的样式不会被 VirtualList 的容器影响 */
-}
 
 /* 上下文详情样式 */
 .context-details p {

@@ -1,6 +1,9 @@
 <template>
   <div class="view-switcher">
-    <button @click="toggleView" class="btn btn-sm btn-outline-secondary">
+    <button
+      class="btn btn-sm btn-outline-secondary"
+      @click="toggleView"
+    >
       切换视图: {{ currentView === 'bento' ? '传统' : 'Bento' }}
     </button>
   </div>

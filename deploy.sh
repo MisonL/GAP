@@ -751,7 +751,17 @@ import sys
 sys.path.append('src')
 from gap.core.database.utils import DATABASE_URL
 from sqlalchemy import create_engine
-engine = create_engine(DATABASE_URL.replace('postgresql+asyncpg', 'postgresql'))
+
+# 将异步驱动的 URL 转换为同步驱动，以便用于同步的 create_engine 检查
+sync_url = DATABASE_URL
+if sync_url.startswith('sqlite+aiosqlite://'):
+    # 同步 SQLite 驱动
+    sync_url = sync_url.replace('sqlite+aiosqlite', 'sqlite', 1)
+else:
+    # PostgreSQL 异步驱动 -> 同步驱动
+    sync_url = sync_url.replace('postgresql+asyncpg', 'postgresql', 1)
+
+engine = create_engine(sync_url)
 try:
     engine.connect()
     print('✅ 数据库连接成功')
@@ -766,7 +776,7 @@ except Exception as e:
 
     # 启动后端
     log_info "🚀 启动后端服务..."
-    nohup uvicorn src.gap.main:app --host 0.0.0.0 --port 8000 > ../logs/backend.log 2>&1 &
+    PYTHONPATH=src nohup uvicorn src.gap.main:app --host 0.0.0.0 --port 8000 > ../logs/backend.log 2>&1 &
     BACKEND_PID=$!
     echo $BACKEND_PID > ../logs/backend.pid
     

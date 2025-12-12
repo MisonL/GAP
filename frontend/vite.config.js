@@ -5,15 +5,13 @@ import { resolve } from 'path'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
-import { visualizer } from 'rollup-plugin-visualizer'
 import compression from 'vite-plugin-compression'
-import { VitePWA } from 'vite-plugin-pwa'
 
 import tailwindcss from 'tailwindcss'
 import autoprefixer from 'autoprefixer'
 
 // https://vitejs.dev/config/
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ mode }) => {
   const isProduction = mode === 'production'
   
   return {
@@ -138,6 +136,24 @@ export default defineConfig(({ command, mode }) => {
         'lodash-es',
         'echarts',
         'vue-echarts'
+      ]
+    },
+
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      include: [
+        'tests/unit/**/*.spec.[jt]s?(x)',
+        'tests/unit/**/*.test.[jt]s?(x)'
+      ],
+      exclude: [
+        'node_modules/**',
+        'dist/**',
+        'cypress/**',
+        'playwright/**',
+        'e2e/**',
+        'tests/app.spec.js',
+        'tests/**/*.e2e.[jt]s?(x)'
       ]
     },
     

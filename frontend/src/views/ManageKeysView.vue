@@ -1,16 +1,43 @@
 <template>
-  <div class="manage-keys-view" :class="{ 'bento-layout': appStore.isBentoMode, 'traditional-layout': appStore.isTraditionalLayout }">
+  <div
+    class="manage-keys-view"
+    :class="{ 'bento-layout': appStore.isBentoMode, 'traditional-layout': appStore.isTraditionalLayout }"
+  >
     <header class="view-header">
       <h1>API Key 管理</h1>
-      <button v-if="appStore.isAdmin" @click="openAddKeyModal" :disabled="isLoading">添加新 Key</button>
+      <button
+        v-if="appStore.isAdmin"
+        :disabled="isLoading"
+        @click="openAddKeyModal"
+      >
+        添加新 Key
+      </button>
     </header>
 
-    <div v-if="isLoading" class="loading-message">加载中...</div>
-    <div v-if="!isLoading && error" class="error-message">获取 API Key 数据失败: {{ error }}</div>
-    <div v-if="!isLoading && !error && keys.length === 0" class="no-data-message">当前没有配置任何 API Key。请添加一个新的 Key。</div>
+    <div
+      v-if="isLoading"
+      class="loading-message"
+    >
+      加载中...
+    </div>
+    <div
+      v-if="!isLoading && error"
+      class="error-message"
+    >
+      获取 API Key 数据失败: {{ error }}
+    </div>
+    <div
+      v-if="!isLoading && !error && keys.length === 0"
+      class="no-data-message"
+    >
+      当前没有配置任何 API Key。请添加一个新的 Key。
+    </div>
 
     <!-- Bento 视图 (虚拟滚动) -->
-    <div v-if="appStore.isBentoMode && !isLoading && !error && keys.length > 0" class="key-list-container bento-grid">
+    <div
+      v-if="appStore.isBentoMode && !isLoading && !error && keys.length > 0"
+      class="key-list-container bento-grid"
+    >
       <VirtualList
         :data-key="'key'"
         :data-sources="keys"
@@ -25,7 +52,10 @@
     </div>
 
     <!-- 传统视图 -->
-    <div v-if="appStore.isTraditionalMode && !isLoading && !error && keys.length > 0" class="key-list-container traditional-list">
+    <div
+      v-if="appStore.isTraditionalMode && !isLoading && !error && keys.length > 0"
+      class="key-list-container traditional-list"
+    >
       <table>
         <thead>
           <tr>
@@ -39,7 +69,11 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="apiKey in keys" :key="apiKey.key" :class="{ 'inactive-row': !apiKey.is_active }">
+          <tr
+            v-for="apiKey in keys"
+            :key="apiKey.key"
+            :class="{ 'inactive-row': !apiKey.is_active }"
+          >
             <td>{{ apiKey.description || 'N/A' }}</td>
             <td><code>{{ maskApiKey(apiKey.key) }}</code></td>
             <td>{{ apiKey.is_active ? '激活' : '禁用' }}</td>
@@ -48,8 +82,19 @@
             <td>{{ apiKey.enable_context_completion ? '启用' : '禁用' }}</td>
             <td>
               <div class="key-actions-table">
-                <button @click="openEditKeyModal(apiKey)" :disabled="isLoading || !appStore.isAdmin">编辑</button>
-                <button @click="confirmDeleteKey(apiKey)" class="delete-button" :disabled="isLoading || !appStore.isAdmin">删除</button>
+                <button
+                  :disabled="isLoading || !appStore.isAdmin"
+                  @click="openEditKeyModal(apiKey)"
+                >
+                  编辑
+                </button>
+                <button
+                  class="delete-button"
+                  :disabled="isLoading || !appStore.isAdmin"
+                  @click="confirmDeleteKey(apiKey)"
+                >
+                  删除
+                </button>
               </div>
             </td>
           </tr>
@@ -60,11 +105,11 @@
     <!-- 实际的模态框组件 -->
     <AddEditKeyModal
       v-if="showAddEditModal"
-      :keyToEdit="selectedKey"
-      :adminApiKey="adminApiKeyPlaceholder"
+      :key-to-edit="selectedKey"
+      :admin-api-key="adminApiKeyPlaceholder"
+      :is-loading="keyActionLoading"
       @close="closeAddEditModal"
       @save="handleKeySave"
-      :isLoading="keyActionLoading"
     />
   </div>
 </template>
@@ -72,6 +117,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useAppStore } from '@/stores/appStore'; // 导入 appStore
+import { useKeysStore } from '@/stores/keysStore.js';
 import BentoCard from '@/components/common/BentoCard.vue';
 import apiService from '@/services/apiService';
 import AddEditKeyModal from '@/components/keys/AddEditKeyModal.vue';
@@ -85,17 +131,16 @@ const maskApiKey = (key) => {
   return '*'.repeat(maskedLength) + key.slice(-visibleChars);
 };
 
-console.log('[ManageKeysView.vue] <script setup> executed.');
-
 const isLoading = ref(false);
 const error = ref(null);
 const keys = ref([]);
 
 const showAddEditModal = ref(false);
 const selectedKey = ref(null);
-const adminApiKeyPlaceholder = ref("your_admin_api_key_here"); // 占位符
+const adminApiKeyPlaceholder = ref('your_admin_api_key_here'); // 占位符
 
 const appStore = useAppStore(); // 使用 appStore
+const keysStore = useKeysStore();
 
 // 创建一个包装组件来处理 BentoCard 的 prop 和事件
 // 创建一个包装组件来处理 BentoCard 的 prop 和事件
@@ -166,7 +211,6 @@ const useKeyActions = (fetchKeysCallback, selectedKeyRef, showAddEditModalRef) =
           fetchKeysCallback();
         }
       } catch (err) {
-        console.error(`[ManageKeysView] Failed to delete key ${apiKey.key}:`, err);
         error.value = err.message || err.detail || `删除 Key ${apiKey.key.substring(0,8)}... 失败。`;
          if (typeof err === 'object' && err !== null && err.message) {
           error.value = `错误 ${err.status || ''}: ${err.message}`;
@@ -185,6 +229,21 @@ const useKeyActions = (fetchKeysCallback, selectedKeyRef, showAddEditModalRef) =
     isLoading,
     appStore,
   };
+};
+
+// 获取 Keys 列表
+const fetchKeys = async () => {
+  isLoading.value = true;
+  error.value = null;
+
+  try {
+    await keysStore.fetchKeys();
+    keys.value = keysStore.keys || [];
+  } catch (err) {
+    error.value = err.message || '获取 API Key 列表失败';
+  } finally {
+    isLoading.value = false;
+  }
 };
 
 // 使用 useKeyActions composable，并传入 fetchKeys 作为回调，以及父组件的 selectedKey 和 showAddEditModal
@@ -280,6 +339,7 @@ const handleKeySave = () => {
 .bento-card-item {
   /* VirtualList 渲染的每个项目的样式 */
   /* 确保 BentoCard 内部的样式不会被 VirtualList 的容器影响 */
+  min-height: 0;
 }
 
 .inactive-key-card {

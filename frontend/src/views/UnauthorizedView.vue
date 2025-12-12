@@ -2,13 +2,15 @@
   <div class="unauthorized-view">
     <h1>401 - 未授权</h1>
     <p>抱歉，您需要登录才能访问此页面。</p>
-    <router-link to="/login">返回登录页</router-link>
+    <router-link to="/login">
+      返回登录页
+    </router-link>
   </div>
 </template>
 
 <script setup>
-// 可以在这里添加一些逻辑，例如记录日志
-console.log('[UnauthorizedView.vue] <script setup> executed.');
+// 可以在这里添加一些逻辑，例如记录日志，例如使用日志服务
+// 注意：避免在生产环境中直接使用 console.log
 </script>
 
 <style scoped>

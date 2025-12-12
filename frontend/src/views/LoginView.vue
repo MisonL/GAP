@@ -4,20 +4,31 @@
     <form @submit.prevent="handleLogin">
       <div class="form-group">
         <label for="apiKey">API密钥:</label>
-        <input 
-          type="password" 
-          id="apiKey" 
-          v-model="apiKey" 
+        <input
+          id="apiKey"
+          v-model="apiKey"
+          type="password"
           placeholder="请输入您的Gemini API密钥"
-          required 
+          required
           autocomplete="off"
-        />
-        <div v-if="apiKey" class="key-preview">
+        >
+        <div
+          v-if="apiKey"
+          class="key-preview"
+        >
           密钥预览: {{ maskApiKey(apiKey) }}
         </div>
       </div>
-      <div v-if="error" class="error-message">{{ error }}</div>
-      <button type="submit" :disabled="isLoading || !apiKey.trim()">
+      <div
+        v-if="error"
+        class="error-message"
+      >
+        {{ error }}
+      </div>
+      <button
+        type="submit"
+        :disabled="isLoading || !apiKey.trim()"
+      >
         {{ isLoading ? '登录中...' : '登录' }}
       </button>
     </form>
@@ -25,10 +36,9 @@
 </template>
 
 <script setup>
-console.log('[LoginView.vue] <script setup> executed.');
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from '@/stores/authStore.js';
+import { useAuthStore } from '@/stores/authStore';
 import apiService from '@/services/apiService';
 
 const apiKey = ref('');
@@ -47,7 +57,6 @@ const maskApiKey = (key) => {
 };
 
 const handleLogin = async () => {
-  console.log('[LoginView] handleLogin triggered.');
   isLoading.value = true;
   error.value = null;
   try {
@@ -55,29 +64,21 @@ const handleLogin = async () => {
     if (!key) {
       throw new Error('请输入API密钥');
     }
-    
-    console.log('[LoginView] Attempting login with API Key:', maskApiKey(key));
-    
+
     // 发送表单数据，只使用 password 字段作为 API Key
-      const response = await apiService.login({ password: key });
-    
-    console.log('[LoginView] Login API response:', response);
-    
+    const response = await apiService.login({ password: key });
+
     if (response && response.token) {
       authStore.login(response.token);
-      console.log('[LoginView] authStore.login called with token.');
 
       // 登录成功后跳转到之前的目标页面或首页
       const redirectPath = router.currentRoute.value.query.redirect || '/';
       router.replace(redirectPath);
-      console.log(`[LoginView] Navigating to: ${redirectPath}`);
     } else {
       throw new Error('登录响应格式错误');
     }
 
   } catch (err) {
-    console.error('[LoginView] Login failed:', err);
-    
     // 更好的错误处理
     if (err.status === 422) {
       error.value = '请输入有效的API密钥';
@@ -93,7 +94,8 @@ const handleLogin = async () => {
   } finally {
     isLoading.value = false;
   }
-};</script>
+};
+</script>
 
 <style scoped>
 /* 登录视图容器 - Bento 风格卡片 */

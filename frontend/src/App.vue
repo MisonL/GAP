@@ -1,13 +1,23 @@
 <template>
-  <div id="app" :class="{ 'dark-theme': isDark }">
+  <div
+    id="app"
+    :class="{ 'dark-theme': isDark }"
+  >
     <!-- 全局通知组件 -->
-    <div v-if="notification.show" class="global-notification" :class="notification.type">
+    <div
+      v-if="notification.show"
+      class="global-notification"
+      :class="notification.type"
+    >
       {{ notification.message }}
     </div>
 
     <!-- 主内容区域 -->
     <router-view v-slot="{ Component, route }">
-      <transition :name="route.meta.transition || 'fade'" mode="out-in">
+      <transition
+        :name="route.meta.transition || 'fade'"
+        mode="out-in"
+      >
         <component :is="Component" />
       </transition>
     </router-view>
@@ -16,9 +26,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { useAppStore } from './stores/appStore';
 
-const appStore = useAppStore();
+
+// const appStore = useAppStore();
 const isDark = ref(false);
 const notification = ref({
   show: false,
@@ -50,11 +60,7 @@ onMounted(() => {
     document.documentElement.setAttribute('data-theme', savedTheme);
   }
   
-  // 添加全局样式
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = '/_app/assets/styles/global.css';
-  document.head.appendChild(link);
+  // 全局样式由 Vite 构建产物和 Tailwind/组件库负责注入，这里不再手动插入固定路径的 CSS，避免 404。
 });
 
 // 暴露给子组件

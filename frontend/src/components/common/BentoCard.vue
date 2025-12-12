@@ -1,5 +1,5 @@
 <template>
-  <div 
+  <div
     :class="[
       'bento-card',
       `col-span-${gridSpan.colSpan || 1}`,
@@ -8,24 +8,41 @@
     ]"
     :style="customStyle"
   >
-    <div class="card-header" v-if="title || $slots.header">
+    <div
+      v-if="title || $slots.header"
+      class="card-header"
+    >
       <slot name="header">
-        <h3 class="card-title">{{ title }}</h3>
-        <p v-if="subtitle" class="card-subtitle">{{ subtitle }}</p>
+        <h3 class="card-title">
+          {{ title }}
+        </h3>
+        <p
+          v-if="subtitle"
+          class="card-subtitle"
+        >
+          {{ subtitle }}
+        </p>
       </slot>
     </div>
-    
+
     <div class="card-content">
-      <slot></slot>
+      <slot />
     </div>
-    
-    <div class="card-footer" v-if="$slots.footer">
-      <slot name="footer"></slot>
+
+    <div
+      v-if="$slots.footer"
+      class="card-footer"
+    >
+      <slot name="footer" />
     </div>
-    
+
     <!-- 装饰性元素 -->
-    <div class="card-decoration" :class="`decoration-${decoration}`" v-if="decoration">
-      <div class="decoration-inner"></div>
+    <div
+      v-if="decoration"
+      :class="`decoration-${decoration}`"
+      class="card-decoration"
+    >
+      <div class="decoration-inner" />
     </div>
   </div>
 </template>

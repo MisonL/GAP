@@ -1,120 +1,174 @@
 <template>
-  <div class="report-view" :class="{ 'bento-layout': appStore.isBentoMode, 'traditional-layout': appStore.isTraditionalMode }">
+  <div
+    class="report-view"
+    :class="{
+      'bento-layout': appStore.isBentoMode,
+      'traditional-layout': appStore.isTraditionalMode
+    }"
+  >
     <header class="view-header">
       <h1>周期报告</h1>
       <!-- TODO: 添加日期选择器或其他报告筛选/操作 -->
     </header>
 
     <div class="report-content">
-      <div v-if="isLoading" class="loading-message">加载中...</div>
-      <div v-if="error" class="error-message">获取报告数据失败: {{ error }}</div>
+      <div
+        v-if="isLoading"
+        class="loading-message"
+      >
+        加载中...
+      </div>
+      <div
+        v-if="error"
+        class="error-message"
+      >
+        获取报告数据失败: {{ error }}
+      </div>
 
-      <div v-if="reportData && !isLoading && !error" class="report-details">
+      <div
+        v-if="reportData && !isLoading && !error"
+        class="report-details"
+      >
         <h2>报告详情</h2>
 
-        <div v-if="appStore.isBentoMode" class="bento-layout-content">
+        <div
+          v-if="appStore.isBentoMode"
+          class="bento-layout-content"
+        >
           <!-- 配置信息 -->
-          <BentoCard title="报告配置" :gridSpan="{ colSpan: 2 }">
-              <p><strong>报告周期:</strong> {{ reportData.config?.report_period || '未知' }}</p>
-              <p><strong>上次运行时间:</strong> {{ reportData.config?.last_run_time || '未知' }}</p>
-              <p><strong>下次运行时间:</strong> {{ reportData.config?.next_run_time || '未知' }}</p>
-              <p><strong>报告存储路径:</strong> {{ reportData.config?.report_storage_path || '未知' }}</p>
+          <BentoCard
+            title="报告配置"
+            :grid-span="{ colSpan: 2 }"
+          >
+            <p><strong>报告周期:</strong> {{ reportData.config?.report_period || '未知' }}</p>
+            <p><strong>上次运行时间:</strong> {{ reportData.config?.last_run_time || '未知' }}</p>
+            <p><strong>下次运行时间:</strong> {{ reportData.config?.next_run_time || '未知' }}</p>
+            <p><strong>报告存储路径:</strong> {{ reportData.config?.report_storage_path || '未知' }}</p>
           </BentoCard>
 
           <!-- 使用统计概览 -->
-           <BentoCard title="使用统计概览" :gridSpan="{ colSpan: 1 }">
-              <p><strong>总请求数:</strong> {{ reportData.total_requests || 0 }}</p>
-              <p><strong>总 token 数:</strong> {{ reportData.total_tokens || 0 }}</p>
-              <p><strong>总成本估算:</strong> {{ reportData.total_cost_estimate || 0 }}</p>
-              <!-- TODO: 添加更多概览统计 -->
+          <BentoCard
+            title="使用统计概览"
+            :grid-span="{ colSpan: 1 }"
+          >
+            <p><strong>总请求数:</strong> {{ reportData.total_requests || 0 }}</p>
+            <p><strong>总 token 数:</strong> {{ reportData.total_tokens || 0 }}</p>
+            <p><strong>总成本估算:</strong> {{ reportData.total_cost_estimate || 0 }}</p>
+            <!-- TODO: 添加更多概览统计 -->
           </BentoCard>
 
           <!-- 图表区域 -->
-          <BentoCard title="使用趋势图表" :gridSpan="{ colSpan: 3 }">
-              <canvas id="usageChart" width="400" height="200"></canvas>
-              <!-- TODO: 集成 Chart.js 或其他图表库 -->
+          <BentoCard
+            title="使用趋势图表"
+            :grid-span="{ colSpan: 3 }"
+          >
+            <canvas
+              id="usageChart"
+              width="400"
+              height="200"
+            />
+            <!-- TODO: 集成 Chart.js 或其他图表库 -->
           </BentoCard>
 
           <!-- 详细数据表格 -->
-          <BentoCard title="详细使用数据" :gridSpan="{ colSpan: 3 }">
-              <table>
-                <thead>
-                  <tr>
-                    <th>日期</th>
-                    <th>请求数</th>
-                    <th>Token 数</th>
-                    <th>成本估算</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(item, index) in reportData.usage_data" :key="index">
-                    <td>{{ item.date }}</td>
-                    <td>{{ item.requests }}</td>
-                    <td>{{ item.tokens }}</td>
-                    <td>{{ item.cost }}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <!-- TODO: 集成数据表格组件 -->
+          <BentoCard
+            title="详细使用数据"
+            :grid-span="{ colSpan: 3 }"
+          >
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>请求数</th>
+                  <th>Token 数</th>
+                  <th>成本估算</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(item, index) in reportData.usage_data"
+                  :key="index"
+                >
+                  <td>{{ item.date }}</td>
+                  <td>{{ item.requests }}</td>
+                  <td>{{ item.tokens }}</td>
+                  <td>{{ item.cost }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <!-- TODO: 集成数据表格组件 -->
           </BentoCard>
         </div>
 
-        <div v-else class="traditional-layout-content">
+        <div
+          v-else
+          class="traditional-layout-content"
+        >
           <!-- 传统视图下的报告详情 -->
           <!-- 配置信息 -->
           <section class="report-section">
-              <h3>报告配置</h3>
-              <p><strong>报告周期:</strong> {{ reportData.config?.report_period || '未知' }}</p>
-              <p><strong>上次运行时间:</strong> {{ reportData.config?.last_run_time || '未知' }}</p>
-              <p><strong>下次运行时间:</strong> {{ reportData.config?.next_run_time || '未知' }}</p>
-              <p><strong>报告存储路径:</strong> {{ reportData.config?.report_storage_path || '未知' }}</p>
+            <h3>报告配置</h3>
+            <p><strong>报告周期:</strong> {{ reportData.config?.report_period || '未知' }}</p>
+            <p><strong>上次运行时间:</strong> {{ reportData.config?.last_run_time || '未知' }}</p>
+            <p><strong>下次运行时间:</strong> {{ reportData.config?.next_run_time || '未知' }}</p>
+            <p><strong>报告存储路径:</strong> {{ reportData.config?.report_storage_path || '未知' }}</p>
           </section>
 
           <!-- 使用统计概览 -->
           <section class="report-section">
-              <h3>使用统计概览</h3>
-              <p><strong>总请求数:</strong> {{ reportData.total_requests || 0 }}</p>
-              <p><strong>总 token 数:</strong> {{ reportData.total_tokens || 0 }}</p>
-              <p><strong>总成本估算:</strong> {{ reportData.total_cost_estimate || 0 }}</p>
-              <!-- TODO: 添加更多概览统计 -->
+            <h3>使用统计概览</h3>
+            <p><strong>总请求数:</strong> {{ reportData.total_requests || 0 }}</p>
+            <p><strong>总 token 数:</strong> {{ reportData.total_tokens || 0 }}</p>
+            <p><strong>总成本估算:</strong> {{ reportData.total_cost_estimate || 0 }}</p>
+            <!-- TODO: 添加更多概览统计 -->
           </section>
 
           <!-- 图表区域 -->
           <section class="report-section">
-              <h3>使用趋势图表</h3>
-              <canvas id="usageChart" width="400" height="200"></canvas>
-              <!-- TODO: 集成 Chart.js 或其他图表库 -->
+            <h3>使用趋势图表</h3>
+            <canvas
+              id="usageChart"
+              width="400"
+              height="200"
+            />
+            <!-- TODO: 集成 Chart.js 或其他图表库 -->
           </section>
 
           <!-- 详细数据表格 -->
           <section class="report-section">
-              <h3>详细使用数据</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>日期</th>
-                    <th>请求数</th>
-                    <th>Token 数</th>
-                    <th>成本估算</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(item, index) in reportData.usage_data" :key="index">
-                    <td>{{ item.date }}</td>
-                    <td>{{ item.requests }}</td>
-                    <td>{{ item.tokens }}</td>
-                    <td>{{ item.cost }}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <!-- TODO: 集成数据表格组件 -->
+            <h3>详细使用数据</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>请求数</th>
+                  <th>Token 数</th>
+                  <th>成本估算</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(item, index) in reportData.usage_data"
+                  :key="index"
+                >
+                  <td>{{ item.date }}</td>
+                  <td>{{ item.requests }}</td>
+                  <td>{{ item.tokens }}</td>
+                  <td>{{ item.cost }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <!-- TODO: 集成数据表格组件 -->
           </section>
         </div>
-
       </div>
-       <div v-if="!reportData && !isLoading && !error" class="no-data-message">
-           <p>没有可用的周期报告数据。</p>
-       </div>
+
+      <div
+        v-if="!reportData && !isLoading && !error"
+        class="no-data-message"
+      >
+        <p>没有可用的周期报告数据。</p>
+      </div>
     </div>
   </div>
 </template>
@@ -126,7 +180,6 @@ import BentoCard from '@/components/common/BentoCard.vue'; // 导入 BentoCard
 import { useAppStore } from '@/stores/appStore'; // 导入 appStore
 import Chart from 'chart.js/auto'; // 导入 Chart.js
 
-console.log('[ReportView.vue] <script setup> executed.');
 
 const isLoading = ref(false);
 const error = ref(null);
@@ -139,15 +192,12 @@ const fetchReportData = async () => {
   error.value = null;
   reportData.value = null; // 清空旧数据
   try {
-    console.log('[ReportView] Fetching report data from API...');
     // 假设后端有一个 /report 接口返回报告数据
     const response = await apiService.getReport();
-    console.log('[ReportView] Report data fetched:', response);
     if (response) {
       reportData.value = response;
       // 如果后端返回的数据没有 usage_data 或者 usage_data 为空，则使用模拟数据
       if (!response.usage_data || response.usage_data.length === 0) {
-          console.warn('[ReportView] API response for report data is empty or not in expected format, using mock data:', response);
           reportData.value.usage_data = [
               { date: '2024-06-01', requests: 100, tokens: 50000, cost: 0.5 },
               { date: '2024-06-02', requests: 120, tokens: 60000, cost: 0.6 },
@@ -161,12 +211,10 @@ const fetchReportData = async () => {
       }
     } else {
        // 如果整个响应为空，则完全使用模拟数据
-       console.warn('[ReportView] API response for report data is empty, using full mock data.');
        reportData.value = createMockReportData();
        error.value = '从服务器获取的报告数据为空，已使用模拟数据展示。';
     }
   } catch (err) {
-    console.error('[ReportView] Failed to fetch report data:', err);
     // 即使出错也使用模拟数据
     reportData.value = createMockReportData();
     if (typeof err === 'object' && err !== null && err.message) {
@@ -219,7 +267,6 @@ let chartInstance = null;
 const renderChart = (usageData) => {
   const ctx = document.getElementById('usageChart');
   if (!ctx) {
-    console.error('图表元素未找到！');
     return;
   }
 

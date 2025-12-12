@@ -25,6 +25,7 @@ export const useKeysStore = defineStore('keys', {
                 const response = await apiService.getKeys();
                 this.keys = response.keys || [];
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error('获取Keys失败:', error);
                 this.error = error.message || '获取Keys失败';
                 appStore.showNotification(this.error, 'error');
@@ -43,6 +44,7 @@ export const useKeysStore = defineStore('keys', {
                 appStore.showNotification('API Key添加成功', 'success');
                 return response;
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error('添加Key失败:', error);
                 appStore.showNotification(error.message || '添加Key失败', 'error');
                 throw error;
@@ -60,6 +62,7 @@ export const useKeysStore = defineStore('keys', {
                 appStore.showNotification('API Key更新成功', 'success');
                 return response;
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error('更新Key失败:', error);
                 appStore.showNotification(error.message || '更新Key失败', 'error');
                 throw error;
@@ -76,6 +79,7 @@ export const useKeysStore = defineStore('keys', {
                 await this.fetchKeys(); // 重新获取列表
                 appStore.showNotification('API Key删除成功', 'success');
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error('删除Key失败:', error);
                 appStore.showNotification(error.message || '删除Key失败', 'error');
                 throw error;

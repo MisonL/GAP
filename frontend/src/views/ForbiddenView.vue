@@ -2,13 +2,14 @@
   <div class="forbidden-view">
     <h1>403 - 禁止访问</h1>
     <p>抱歉，您没有权限访问此页面。</p>
-    <router-link to="/">返回首页</router-link>
+    <router-link to="/">
+      返回首页
+    </router-link>
   </div>
 </template>
 
 <script setup>
 // 可以在这里添加一些逻辑，例如记录日志
-console.log('[ForbiddenView.vue] <script setup> executed.');
 </script>
 
 <style scoped>

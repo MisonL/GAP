@@ -150,8 +150,11 @@ REDIS_URL=redis://localhost:6379/0
 SECRET_KEY=your-secret-key-here
 JWT_SECRET_KEY=your-jwt-secret-key
 
-# Gemini API
+# Gemini API（单 key 老字段，建议逐步迁移到 GEMINI_API_KEYS）
 GEMINI_API_KEY=your-gemini-api-key
+
+# Gemini API（推荐，多 key 池管理）
+GEMINI_API_KEYS=sk-your-key-1,sk-your-key-2
 ```
 
 ### 可选变量
@@ -167,7 +170,42 @@ MAX_REQUESTS_PER_DAY_PER_IP=1000
 # 功能开关
 ENABLE_DOCS=true
 DISABLE_SAFETY_FILTERING=false
+
+# 运行模式 / 测试
+APP_DB_MODE=memory          # memory 或 postgres/sqlite 等
+TESTING=true                # 测试 / 压测场景下自动注入内存 key
+
+# 认证相关
+PASSWORD=test_password      # 内存模式下的 Web/UI 共享密码，对应 Authorization: Bearer <PASSWORD>
+ADMIN_TOKEN=admin_token     # 管理员接口使用的独立 token
 ```
+
+## 🔐 认证 / 密钥 / 模型校验概览
+
+### 认证模式
+- **内存模式（APP_DB_MODE=memory / IS_MEMORY_DB=True）**：
+  - 普通请求通过 `Authorization: Bearer <PASSWORD>` 认证；
+  - PASSWORD 会被加载到 `WEB_UI_PASSWORDS` 列表中，由 `verify_proxy_key` 校验；
+  - 适用于开发 / 单机测试 / demo 环境。
+- **数据库模式（非 memory）**：
+  - Proxy key 存储在数据库中，由 `context_store.is_valid_proxy_key(...)` + `APIKeyManager` 校验；
+  - 适用于生产和多用户场景。
+
+### 密钥管理
+- 使用 `APIKeyManager` 统一管理 Gemini API key：
+  - 内存模式下可从 `GEMINI_API_KEYS` 环境变量加载一组 key，组成 key 池；
+  - 生产环境通常通过数据库存储 key，并在管理界面维护；
+  - 当 `TESTING=true` 且尚未初始化时，`get_key_manager` 会自动创建一个内存 key，避免 key 池为空导致 503。
+
+### 模型校验与别名
+- `/v1/chat/completions` 和 `/v2/models/{model}:generateContent` 共用同一套模型校验逻辑：
+  - 所有模型名会通过 `validate_model_name` 做合法性检查和别名映射；
+  - 常见别名如 `gemini-pro` 会被转换为当前真实模型名（例如 `gemini-*-pro`）；
+  - 无效模型名会返回 400/404。
+- `/v1/models` 的模型列表来源按优先级：
+  1. 已加载的 `MODEL_LIMITS` 配置；
+  2. 使用可用 key 调用 Gemini API 动态获取；
+  3. 内置兜底模型列表，保证始终有可用输出。
 
 ## 🐳 Docker开发
 

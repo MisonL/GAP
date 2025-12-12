@@ -26,6 +26,7 @@ export const useContextStore = defineStore('context', {
                 const response = await apiService.getContextData();
                 this.contexts = response.contexts || [];
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error('获取上下文失败:', error);
                 this.error = error.message || '获取上下文失败';
                 appStore.showNotification(this.error, 'error');
@@ -44,6 +45,7 @@ export const useContextStore = defineStore('context', {
                 await this.fetchContexts(); // 重新获取数据
                 appStore.showNotification('TTL更新成功', 'success');
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error('更新TTL失败:', error);
                 appStore.showNotification(error.message || '更新TTL失败', 'error');
                 throw error;
@@ -60,6 +62,7 @@ export const useContextStore = defineStore('context', {
                 await this.fetchContexts(); // 重新获取数据
                 appStore.showNotification('上下文删除成功', 'success');
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error('删除上下文失败:', error);
                 appStore.showNotification(error.message || '删除上下文失败', 'error');
                 throw error;
@@ -79,6 +82,7 @@ export const useContextStore = defineStore('context', {
                 await this.fetchContexts();
                 appStore.showNotification('所有上下文已删除', 'success');
             } catch (error) {
+                // eslint-disable-next-line no-console
                 console.error('批量删除上下文失败:', error);
                 appStore.showNotification(error.message || '批量删除失败', 'error');
                 throw error;
