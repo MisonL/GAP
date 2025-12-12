@@ -5,8 +5,8 @@ import os
 # are skipped during tests.
 os.environ.setdefault("TESTING", "true")
 
-from fastapi.testclient import TestClient
-from gap.main import app
+from fastapi.testclient import TestClient  # noqa: E402
+from gap.main import app  # noqa: E402
 
 
 client = TestClient(app)

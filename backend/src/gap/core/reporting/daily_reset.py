@@ -6,10 +6,9 @@
 import logging  # 导入日志模块
 from datetime import datetime, timedelta  # 导入日期和时间处理类
 
-import pytz  # 导入时区库，用于处理太平洋时间
-from fastapi import Depends  # 导入 FastAPI 的 Depends，用于依赖注入
 
-from gap.core.dependencies import get_key_manager  # 导入获取 Key 管理器的依赖函数
+import pytz  # 导入时区库，用于处理太平洋时间
+
 from gap.core.keys.manager import APIKeyManager  # 导入 APIKeyManager 类型提示 (新路径)
 from gap.core.tracking import daily_totals_lock  # 存储每日总 RPD 的字典和对应的锁
 from gap.core.tracking import usage_lock  # Key 的实时使用数据和对应的锁

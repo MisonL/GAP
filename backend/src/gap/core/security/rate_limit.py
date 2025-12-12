@@ -157,6 +157,6 @@ async def protect_from_abuse(
             ip_daily_counts[client_ip] = (count + 1, reset_time)
 
     logger.debug(
-        f"IP {client_ip} 请求通过速率限制检查。分钟内请求数: {len(ip_timestamps.get(client_ip, []))}, 今日请求数: {ip_daily_counts.get(client_ip, (0,0))[0]}"
+        f"IP {client_ip} 请求通过速率限制检查。分钟内请求数: {len(ip_timestamps.get(client_ip, []))}, 今日请求数: {ip_daily_counts.get(client_ip, (0, 0))[0]}"
     )
     return  # 所有检查通过

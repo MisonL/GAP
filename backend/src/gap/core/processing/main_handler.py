@@ -256,7 +256,7 @@ async def process_request(
 
         elif needs_retry:
             logger.warning(
-                f"请求 {request_id}: API 调用失败，需要重试 (Key: {selected_key[:8]}...). 错误: {error_info.get('message', '未知错误' ) if error_info else '未知错误'}"
+                f"请求 {request_id}: API 调用失败，需要重试 (Key: {selected_key[:8]}...). 错误: {error_info.get('message', '未知错误') if error_info else '未知错误'}"
             )
             last_error_info = error_info
             key_manager.tried_keys_for_request.add(selected_key)
