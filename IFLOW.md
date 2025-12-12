@@ -5,6 +5,7 @@
 **GAP** 是一个基于 FastAPI 构建的 Gemini API 代理服务，提供 OpenAI 兼容接口和 Gemini 原生接口，支持多 API 密钥轮换、使用情况跟踪、上下文管理和缓存功能。
 
 ### 核心特性
+
 - **多接口支持**: OpenAI 兼容 API (`/v1`) 和 Gemini 原生 API (`/v2`)
 - **智能密钥管理**: 多 API 密钥轮换、健康度评分、自动失效检测
 - **上下文管理**: 对话历史存储、原生缓存支持、TTL 管理
@@ -16,6 +17,7 @@
 ## 技术栈
 
 ### 后端
+
 - **框架**: FastAPI 0.116+ (Python 3.9+)
 - **包管理**: uv (现代化 Python 包管理器)
 - **数据库**: SQLite (默认) / PostgreSQL (可选)
@@ -25,6 +27,7 @@
 - **测试**: pytest + pytest-asyncio
 
 ### 前端
+
 - **框架**: Vue 3.5+ + TypeScript 5.6+
 - **构建工具**: Vite 6.0+
 - **UI 库**: Element Plus 2.9+ + Tailwind CSS 3.4+
@@ -93,11 +96,13 @@ GAP/
 ### 1. 环境准备
 
 #### 系统要求
+
 - **Docker 模式**: Docker 20.10+ 和 Docker Compose 2.0+
 - **本地模式**: Python 3.9+ 和 Node.js 18+
 - **包管理器**: uv (Python) 和 npm (Node.js)
 
 #### 克隆项目
+
 ```bash
 git clone https://github.com/MisonL/GAP.git
 cd GAP
@@ -114,6 +119,7 @@ nano .env
 ```
 
 **必需配置**:
+
 ```bash
 # JWT 密钥 - 必须设置强随机字符串
 SECRET_KEY=your_very_strong_random_secret_key_here
@@ -121,11 +127,12 @@ SECRET_KEY=your_very_strong_random_secret_key_here
 # Gemini API 密钥
 GEMINI_API_KEYS=your_gemini_api_key_1,your_gemini_api_key_2
 
-# Web UI 登录密码
-PASSWORD=your_web_ui_password
+# 平台用户登录密钥
+USERS_API_KEY=your_user_api_key
 ```
 
 **可选配置**:
+
 ```bash
 # 数据库配置
 DATABASE_URL=sqlite+aiosqlite:///./data/context_store.db
@@ -149,6 +156,7 @@ MAX_REQUESTS_PER_DAY_PER_IP=600
 ### 3. 一键部署
 
 #### Docker 部署（推荐）
+
 ```bash
 # 一键部署
 ./deploy.sh docker
@@ -161,6 +169,7 @@ MAX_REQUESTS_PER_DAY_PER_IP=600
 ```
 
 #### 本地 uv 部署
+
 ```bash
 # 本地 uv 部署
 ./deploy.sh local
@@ -180,6 +189,7 @@ MAX_REQUESTS_PER_DAY_PER_IP=600
 ### 后端开发
 
 #### 安装依赖 (使用 uv)
+
 ```bash
 cd backend
 
@@ -195,6 +205,7 @@ uv pip install -r requirements.txt --extra dev
 ```
 
 #### 启动开发服务器
+
 ```bash
 # 开发模式
 uvicorn src.gap.main:app --reload --host 0.0.0.0 --port 8000
@@ -204,6 +215,7 @@ uvicorn src.gap.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 #### 运行测试
+
 ```bash
 # 运行所有测试
 pytest
@@ -220,6 +232,7 @@ mypy src/
 ### 前端开发
 
 #### 安装依赖
+
 ```bash
 cd frontend
 
@@ -231,6 +244,7 @@ npm install --prefer-offline
 ```
 
 #### 启动开发服务器
+
 ```bash
 # 开发模式
 npm run dev
@@ -243,6 +257,7 @@ npm run dev-host
 ```
 
 #### 构建和测试
+
 ```bash
 # 构建生产版本
 npm run build
@@ -268,12 +283,14 @@ npm run analyze
 ### OpenAI 兼容接口 (`/v1`)
 
 #### 获取模型列表
+
 ```bash
 GET /v1/models
 Authorization: Bearer your_api_key
 ```
 
 #### 聊天补全
+
 ```bash
 POST /v1/chat/completions
 Authorization: Bearer your_api_key
@@ -293,6 +310,7 @@ Content-Type: application/json
 ### Gemini 原生接口 (`/v2`)
 
 #### 生成内容
+
 ```bash
 POST /v2/models/gemini-1.5-pro-latest:generateContent
 Authorization: Bearer your_api_key
@@ -317,12 +335,14 @@ Content-Type: application/json
 ### 缓存管理接口
 
 #### 获取用户缓存
+
 ```bash
 GET /api/v1/caches
 Authorization: Bearer your_api_key
 ```
 
 #### 删除缓存
+
 ```bash
 DELETE /api/v1/caches/{cache_id}
 Authorization: Bearer your_api_key
@@ -331,12 +351,14 @@ Authorization: Bearer your_api_key
 ### 配置管理接口
 
 #### 获取系统配置
+
 ```bash
 GET /api/v1/config
 Authorization: Bearer your_api_key
 ```
 
 #### 更新配置
+
 ```bash
 PUT /api/v1/config
 Authorization: Bearer your_api_key
@@ -352,27 +374,29 @@ Content-Type: application/json
 
 ### 环境变量详解
 
-| 变量名 | 说明 | 默认值 | 示例 |
-|--------|------|--------|------|
-| `SECRET_KEY` | JWT 加密密钥 | 必需 | `your-secret-key-here` |
-| `GEMINI_API_KEYS` | Gemini API 密钥列表 | 必需 | `key1,key2,key3` |
-| `PASSWORD` | Web UI 登录密码 | 必需 | `your-password` |
-| `DATABASE_URL` | 数据库连接字符串 | SQLite | `postgresql://...` |
-| `REDIS_URL` | Redis 连接字符串 | 可选 | `redis://localhost:6379/0` |
-| `KEY_STORAGE_MODE` | API 密钥存储模式 | `memory` | `memory` / `database` |
-| `CONTEXT_STORAGE_MODE` | 上下文存储模式 | `memory` | `memory` / `database` |
-| `ENABLE_NATIVE_CACHING` | 启用原生缓存 | `false` | `true` / `false` |
-| `MAX_REQUESTS_PER_MINUTE` | 每分钟最大请求数 | `60` | `100` |
-| `MAX_REQUESTS_PER_DAY_PER_IP` | 每日每 IP 最大请求数 | `600` | `1000` |
+| 变量名                        | 说明                 | 默认值   | 示例                       |
+| ----------------------------- | -------------------- | -------- | -------------------------- |
+| `SECRET_KEY`                  | JWT 加密密钥         | 必需     | `your-secret-key-here`     |
+| `GEMINI_API_KEYS`             | Gemini API 密钥列表  | 必需     | `key1,key2,key3`           |
+| `USERS_API_KEY`               | 平台用户登录密钥     | 必需     | `your-key`                 |
+| `DATABASE_URL`                | 数据库连接字符串     | SQLite   | `postgresql://...`         |
+| `REDIS_URL`                   | Redis 连接字符串     | 可选     | `redis://localhost:6379/0` |
+| `KEY_STORAGE_MODE`            | API 密钥存储模式     | `memory` | `memory` / `database`      |
+| `CONTEXT_STORAGE_MODE`        | 上下文存储模式       | `memory` | `memory` / `database`      |
+| `ENABLE_NATIVE_CACHING`       | 启用原生缓存         | `false`  | `true` / `false`           |
+| `MAX_REQUESTS_PER_MINUTE`     | 每分钟最大请求数     | `60`     | `100`                      |
+| `MAX_REQUESTS_PER_DAY_PER_IP` | 每日每 IP 最大请求数 | `600`    | `1000`                     |
 
 ### 存储模式
 
 #### 内存模式 (`memory`)
+
 - **优点**: 快速、无需持久化存储、零配置
 - **缺点**: 重启后数据丢失
 - **适用**: 开发环境、测试环境、Hugging Face Spaces
 
 #### 数据库模式 (`database`)
+
 - **优点**: 数据持久化、支持多用户、可扩展
 - **缺点**: 需要数据库配置
 - **适用**: 生产环境、长期运行、多用户场景
@@ -382,6 +406,7 @@ Content-Type: application/json
 ### Docker 部署
 
 #### 一键部署
+
 ```bash
 # 标准部署
 ./deploy.sh docker
@@ -397,6 +422,7 @@ docker-compose -f deployment/docker/docker-compose.yml down
 ```
 
 #### Docker 服务管理
+
 ```bash
 # 清理旧容器和镜像
 docker system prune -a
@@ -411,6 +437,7 @@ docker-compose -f deployment/docker/docker-compose.yml restart
 ### 本地部署
 
 #### 一键部署
+
 ```bash
 # 本地 uv 部署
 ./deploy.sh local
@@ -423,6 +450,7 @@ cd frontend && npm run dev
 ```
 
 #### 本地服务管理
+
 ```bash
 # 查看进程
 ps aux | grep gap
@@ -438,11 +466,12 @@ tail -f logs/frontend.log
 ### 生产部署
 
 #### 使用 Nginx 反向代理
+
 ```nginx
 server {
     listen 80;
     server_name your-domain.com;
-    
+
     location / {
         proxy_pass http://localhost:7860;
         proxy_set_header Host $host;
@@ -455,6 +484,7 @@ server {
 ```
 
 #### 使用 HTTPS (Let's Encrypt)
+
 ```bash
 # 安装 certbot
 sudo apt install certbot python3-certbot-nginx
@@ -472,6 +502,7 @@ sudo crontab -e
 ### 常见问题
 
 #### 端口冲突
+
 ```bash
 # 检查端口占用
 sudo lsof -i :7860
@@ -483,6 +514,7 @@ sudo lsof -i :3000
 ```
 
 #### 依赖问题
+
 ```bash
 # 清理并重新安装后端依赖
 rm -rf backend/.venv
@@ -494,6 +526,7 @@ cd frontend && npm install
 ```
 
 #### 数据库问题
+
 ```bash
 # 重置数据库（开发环境）
 rm backend/src/gap/data/context_store.db
@@ -511,6 +544,7 @@ asyncio.run(init_db())
 ### 日志查看
 
 #### Docker 日志
+
 ```bash
 # 实时查看所有日志
 docker-compose -f deployment/docker/docker-compose.yml logs -f
@@ -521,6 +555,7 @@ docker-compose -f deployment/docker/docker-compose.yml logs -f frontend
 ```
 
 #### 本地日志
+
 ```bash
 # 后端日志
 tail -f logs/backend.log
@@ -534,6 +569,7 @@ tail -f logs/frontend.log
 ## 监控和维护
 
 ### 健康检查
+
 ```bash
 # 检查服务状态
 curl http://localhost:7860/healthz
@@ -546,6 +582,7 @@ curl http://localhost:8000/healthz
 ```
 
 ### 性能监控
+
 ```bash
 # Docker 资源使用
 docker stats
@@ -558,6 +595,7 @@ ps aux | grep gap
 ```
 
 ### 定期维护
+
 ```bash
 # 清理旧日志
 find logs/ -name "*.log.*" -mtime +7 -delete
@@ -578,6 +616,7 @@ npm cache clean --force
 ### 代码质量工具
 
 #### 后端
+
 ```bash
 # 代码格式化
 black src/
@@ -591,6 +630,7 @@ pytest tests/ -v
 ```
 
 #### 前端
+
 ```bash
 # 代码检查
 npm run lint
@@ -609,6 +649,7 @@ npm run test:e2e
 ### 调试工具
 
 #### 后端调试
+
 ```bash
 # 启用调试模式
 export DEBUG=true
@@ -619,6 +660,7 @@ python -m debugpy --listen 0.0.0.0:5678 src/gap/main.py
 ```
 
 #### 前端调试
+
 ```bash
 # 启用 Vue DevTools
 npm run dev -- --mode development
@@ -630,6 +672,7 @@ npm run analyze
 ## 贡献指南
 
 ### 开发规范
+
 1. **代码风格**: 遵循 PEP 8 (Python) 和 ESLint (JavaScript)
 2. **提交信息**: 使用 Conventional Commits
 3. **测试**: 保持测试覆盖率 > 80%
@@ -637,6 +680,7 @@ npm run analyze
 5. **分支管理**: 使用 feature/ 前缀创建功能分支
 
 ### 提交格式
+
 ```bash
 # 功能提交
 git commit -m "feat: add new feature"
@@ -652,6 +696,7 @@ git commit -m "refactor: improve code structure"
 ```
 
 ### 开发流程
+
 ```bash
 # 1. Fork 项目
 # 2. 创建功能分支
@@ -680,14 +725,14 @@ git push origin feature/amazing-feature
 
 ## 快速命令参考
 
-| 命令 | 说明 |
-|------|------|
-| `./deploy.sh` | Docker 一键部署 |
-| `./deploy.sh local` | 本地 uv 部署 |
-| `./deploy.sh stop` | 停止所有服务 |
-| `npm run dev` | 启动前端开发服务器 |
+| 命令                                | 说明               |
+| ----------------------------------- | ------------------ |
+| `./deploy.sh`                       | Docker 一键部署    |
+| `./deploy.sh local`                 | 本地 uv 部署       |
+| `./deploy.sh stop`                  | 停止所有服务       |
+| `npm run dev`                       | 启动前端开发服务器 |
 | `uvicorn src.gap.main:app --reload` | 启动后端开发服务器 |
-| `pytest` | 运行后端测试 |
-| `npm run test:unit` | 运行前端单元测试 |
-| `npm run build` | 构建前端生产版本 |
-| `docker-compose logs -f` | 查看 Docker 日志 |
+| `pytest`                            | 运行后端测试       |
+| `npm run test:unit`                 | 运行前端单元测试   |
+| `npm run build`                     | 构建前端生产版本   |
+| `docker-compose logs -f`            | 查看 Docker 日志   |

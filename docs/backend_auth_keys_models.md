@@ -9,6 +9,7 @@
 后端目前主要有两类运行模式：
 
 - **内存模式（memory 模式）**
+
   - 由 `APP_DB_MODE=memory`（或等价配置）控制，内部表现为 `IS_MEMORY_DB=True`；
   - Proxy 密码、API Key、上下文、缓存等均存放在进程内存；
   - 适合本地开发、单机 demo、轻量测试；
@@ -29,7 +30,7 @@ APP_DB_MODE=memory          # memory / postgres / sqlite 等
 TESTING=true                # 测试 / 压测场景使用，自动注入内存 key
 
 # 认证相关
-PASSWORD=test_password      # 内存模式下 Web/UI 共享密码
+USERS_API_KEY=test_key      # 内存模式下平台用户登录密钥
 ADMIN_TOKEN=admin_token     # 管理员接口专用 token
 
 # Gemini API 密钥
@@ -52,15 +53,15 @@ MODEL_LIMITS=...            # 各模型上下文长度、配额等信息，通�
 
 当 `IS_MEMORY_DB=True`（一般由 `APP_DB_MODE=memory` 决定）时：
 
-1. 启动时读取 `config.PASSWORD`；
-2. 将其放入列表 `WEB_UI_PASSWORDS = [PASSWORD]`；
+1. 启动时读取 `config.USERS_API_KEY`；
+2. 将其放入列表 `WEB_UI_PASSWORDS = [USERS_API_KEY, ...]`；
 3. 每个进入 `/v1/chat/completions` 的请求都必须携带 HTTP 头：
 
    ```bash
-   Authorization: Bearer <PASSWORD>
+   Authorization: Bearer <USERS_API_KEY>
    ```
 
-4. `verify_proxy_key` 在内存列表中校验该密码，匹配则通过认证，否则返回 `401`。
+4. `verify_proxy_key` 在内存列表中校验该密钥，匹配则通过认证，否则返回 `401`。
 
 注意：
 
@@ -72,7 +73,7 @@ MODEL_LIMITS=...            # 各模型上下文长度、配额等信息，通�
 
 当 `IS_MEMORY_DB=False`（即 `APP_DB_MODE!=memory`）时：
 
-1. `verify_proxy_key` 不再对比 `PASSWORD`，而是通过：
+1. `verify_proxy_key` 不再对比 `USERS_API_KEY`，而是通过：
    - `context_store.is_valid_proxy_key(...)`；
    - 以及 `APIKeyManager` 中的配置；
 2. Proxy key 的有效性由数据库中的记录决定，可以与用户 / 组织等实体关联；
@@ -108,6 +109,7 @@ MODEL_LIMITS=...            # 各模型上下文长度、配额等信息，通�
 在一般（非 TESTING）场景下：
 
 - **内存模式**：
+
   - `APIKeyManager.reload_keys()` 从 `GEMINI_API_KEYS` 读取多个 key；
   - 为每个 key 创建内存记录，标记为 active，并附带配额信息（RPD/RPM/TPD/TPM）；
   - key 信息通常只在进程生命周期内有效。
@@ -144,10 +146,12 @@ MODEL_LIMITS=...            # 各模型上下文长度、配额等信息，通�
 `/v1/models` 的模型列表生成策略按以下优先级：
 
 1. **优先使用 `MODEL_LIMITS`**
+
    - 若 `MODEL_LIMITS` 已成功加载，直接以其中的模型为准；
    - 适合在配置中显式限定可用模型列表和其配额。
 
 2. **尝试通过 Gemini API 动态拉取**
+
    - 当 `MODEL_LIMITS` 为空但有可用 key 时；
    - 调用下游列出模型，适合较“开放”的环境。
 
@@ -160,10 +164,12 @@ MODEL_LIMITS=...            # 各模型上下文长度、配额等信息，通�
 `validate_model_name` 提供统一的模型名处理：
 
 - 所有传入模型名都会经过：
+
   - 合法性检查（是否在受支持列表中）；
   - 别名转换（如 `gemini-pro` → 具体版本模型名 `gemini-*-pro`）。
 
 - `/v1/chat/completions` 与 `/v2/models/{model}:generateContent` 使用同一实现：
+
   - 修改 alias 规则时只需改一处；
   - 确保 v1 / v2 行为一致。
 
@@ -176,6 +182,7 @@ MODEL_LIMITS=...            # 各模型上下文长度、配额等信息，通�
 当前存在两套与“缓存”相关的接口，职责不同：
 
 1. `/cache` 系列（轻量实现）
+
    - 返回简单的 `list[dict]` 或 `dict` 结构；
    - 主要用于当前集成测试、运行状态观测和轻量验证；
    - 与真实 DB 缓存的 schema 解耦，便于演进。
@@ -193,7 +200,7 @@ MODEL_LIMITS=...            # 各模型上下文长度、配额等信息，通�
 
 ```bash
 # 在 backend 目录下，准备基本环境变量
-export PASSWORD=test_password
+export USERS_API_KEY=test_key
 export ADMIN_TOKEN=admin_token_value
 export GEMINI_API_KEYS=sk-your-key-1,sk-your-key-2  # 如无真实 key，可留空但部分请求会失败
 

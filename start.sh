@@ -7,12 +7,26 @@ echo "🚀 启动 Gemini API 代理服务..."
 echo "🔍 检查Python环境..."
 python3 --version || { echo "❌ Python3 未安装"; exit 1; }
 
-# 检查后端依赖
 echo "📦 检查后端依赖..."
 cd backend
 python3 -c "import src.gap.main" 2>/dev/null || {
     echo "📥 安装后端依赖..."
-    python3 -m pip install -e .
+    # 检查并安装 uv
+    if ! command -v uv &> /dev/null; then
+        echo "安装 uv..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+    
+    # 检查虚拟环境
+    if [ ! -d ".venv" ]; then
+        echo "创建虚拟环境..."
+        uv venv
+    fi
+    source .venv/bin/activate
+    
+    # 安装依赖
+    uv pip install -e .
 }
 
 # 检查前端构建

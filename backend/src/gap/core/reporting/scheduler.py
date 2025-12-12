@@ -393,6 +393,7 @@ def setup_scheduler(key_manager: "APIKeyManager", context_store_manager: Context
         hour=0,
         minute=0,
         timezone="America/Los_Angeles",
+        args=[key_manager],
         id="daily_reset",
         name="每日限制重置",
         replace_existing=True,

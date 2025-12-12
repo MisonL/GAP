@@ -5,11 +5,13 @@
 ## 项目概览和关键文档
 
 此仓库是 **GAP (Gemini API Proxy)** 的单体仓库：
+
 - **后端（Backend）**: 位于 `backend/` 的基于 FastAPI 的 API 服务。
 - **前端（Frontend）**: 位于 `frontend/` 的 Vue 3 + TypeScript 单页应用。
 - **部署（Deployment）**: 位于 `deployment/` 和根目录 shell 脚本的 Docker 和辅助脚本。
 
 权威文档（优先使用这些而不是 `readme.md` 中提到的较旧路径）：
+
 - 根目录概览和功能文档：`readme.md`。
 - 后端专用使用说明：`backend/README.md`。
 - 前端专用使用说明：`frontend/README.md`。
@@ -98,6 +100,7 @@ uvicorn src.gap.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
 后端的 OpenAPI UI 可在以下位置访问：
+
 - Swagger UI 用户界面: `http://localhost:8000/docs`
 - ReDoc 文档界面: `http://localhost:8000/redoc`
 
@@ -264,6 +267,7 @@ VITE_ENABLE_ANALYTICS=false
 ### 单体仓库布局
 
 高级别视图（参见 `docs/PROJECT_STRUCTURE.md`, `IFLOW.md`）：
+
 - `backend/`: 实现兼容 OpenAI 的 `/v1` API 和 Gemini 原生 `/v2` API 的 FastAPI 服务，以及缓存/上下文/管理端点。
 - `frontend/`: 用于 Web UI 的 Vue 3 SPA（密钥管理、缓存/上下文管理、分析、配置）。
 - `deployment/`: 用于运行组合堆栈的 Dockerfiles、`docker-compose.yml` 和 K8s 清单文件。
@@ -276,10 +280,12 @@ VITE_ENABLE_ANALYTICS=false
 后端围绕 **API 表面层**、**核心领域逻辑** 和 **基础设施** 之间的清晰分离进行组织：
 
 - **入口和配置 Entry and configuration**
+
   - `main.py` 构建 FastAPI 应用，连接路由器，配置日志记录，并注册启动/关闭钩子（例如，后台调度器、健康检查）。
   - `config.py` 集中管理配置，主要读取 `.env` 中定义的环境变量（例如数据库 URL、Redis URL、JWT/SECRET_KEY、速率限制、存储模式、像 `ENABLE_NATIVE_CACHING` 这样的功能标志）。
 
 - **API 层 (`api/`)**
+
   - 实现服务的 HTTP 契约：
     - **兼容 OpenAI 的 API**: `/v1` 下的端点（例如 `endpoints.py`）接受 OpenAI Chat Completions 风格的载荷并将其转换为内部请求对象。
     - **Gemini 原生 API**: `/v2` 下的端点（例如 `v2_endpoints.py`）以最小转换代理到 Gemini `generateContent`。
@@ -319,6 +325,7 @@ VITE_ENABLE_ANALYTICS=false
     - 用于请求/响应操作、错误规范化和 `processing/`、`api/` 和管理视图使用的其他横切关注点的共享工具。
 
 从 **请求生命周期** 的角度看：
+
 1. HTTP 调用通过 `/v1` 或 `/v2` 进入（API 层）。
 2. 执行认证和速率限制（`security/`）。
 3. 密钥管理器选择合适的 API 密钥（`keys/`），考虑跟踪的使用情况和配额（`reporting/`, `tracking`）。
@@ -331,10 +338,12 @@ VITE_ENABLE_ANALYTICS=false
 前端是一个展现 GAP 的运营和管理功能的 Vue 3 单页应用：
 
 - **入口和布局 Entry and layout**
+
   - `main.js` 启动 Vue 应用，安装路由器和 Pinia，注册全局组件，并挂载 `App.vue`。
   - `layouts/` 包含在多个视图中使用的 shell 组件（导航、侧边栏、布局容器），通常包装 `router-view`。
 
 - **核心功能区域 Core feature areas**
+
   - `views/`: 关键操作流程的页面级组件（例如，密钥管理、使用情况仪表板、缓存/上下文管理、配置、状态页面）。
   - `components/common/`: 在视图间共享的可重用 UI 原语（表单、表格、对话框、过滤器）。
   - `components/specific/`: 特定功能的构建块（例如，密钥详细信息面板、使用图表、缓存检查器）。
@@ -364,11 +373,12 @@ VITE_ENABLE_ANALYTICS=false
 配置主要通过环境变量驱动（参见 `.env.example`、`DEPLOYMENT.md`、`IFLOW.md`、`backend/README.md` 和 `readme.md`）。修改行为时需要注意的关键类别：
 
 - **后端基础设施 Backend infrastructure**: `DATABASE_URL`、`REDIS_URL`、日志级别和日志路径。
-- **认证和安全 Authentication and security**: `SECRET_KEY`、`JWT_SECRET_KEY`、`PASSWORD`（在某些模式下用于 Web UI 登录）和 API 密钥相关设置。
+- **认证和安全 Authentication and security**: `SECRET_KEY`、`JWT_SECRET_KEY`、`USERS_API_KEY`（平台用户登录密钥，用于 Web UI 登录）和 API 密钥相关设置。
 - **Gemini 访问和使用控制 Gemini access and usage control**: `GEMINI_API_KEYS`（或数据库存储的密钥）、上下文和缓存存储模式、原生缓存启用和速率限制控制旋钮（`MAX_REQUESTS_PER_MINUTE`、`MAX_REQUESTS_PER_DAY_PER_IP`）。
 - **前端集成 Frontend integration**: `VITE_API_BASE_URL` 和相关的控制分析和开发行为的 Vite `VITE_*` 标志。
 
 在对认证、速率限制或密钥/缓存行为进行重大更改时，协调以下方面的更新：
+
 - 后端配置和 `core/` 模块。
 - 前端 `services/`、`stores/` 和 `types/`。
 - 部署清单（`deployment/docker/*`、`.env.example`），以便为所有环境引入新设置。

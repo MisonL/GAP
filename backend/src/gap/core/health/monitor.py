@@ -42,6 +42,10 @@ class HealthMonitor:
         Returns:
             包含健康状态的字典
         """
+        # 兼容性处理：如果传入的是 FastAPI 应用实例，则获取其 state 属性
+        if hasattr(app_state, "state"):
+            app_state = app_state.state
+
         start_time = time.time()
 
         # 基础信息（使用 timezone-aware 的 UTC 时间戳）

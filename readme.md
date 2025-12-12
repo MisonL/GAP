@@ -7,28 +7,33 @@
 ## ✨ 主要功能
 
 ### 🔑 API 密钥管理
+
 - **智能密钥轮询**: 自动在多个 Gemini API 密钥间轮换，确保负载均衡
 - **健康度评估**: 实时监控每个密钥的使用情况、错误率和响应时间
 - **配额管理**: 支持 RPD/RPM/TPD/TPM 限制，智能选择最优密钥
 - **故障转移**: 自动禁用失效密钥，恢复后重新启用
 
 ### 🔄 多接口支持
+
 - **OpenAI 兼容接口** (`/v1`): 完全兼容 OpenAI API 格式，无缝接入现有工具
 - **Gemini 原生接口** (`/v2`): 直接代理 Gemini generateContent API，保持原生特性
 - **统一认证**: JWT Token + Bearer Token 双重认证支持
 
 ### 💾 智能缓存系统
+
 - **原生缓存支持**: 完整支持 Gemini 的原生缓存机制
 - **上下文管理**: 智能管理对话上下文，自动截断防止超限
 - **多层缓存**: 内存 + Redis 双层缓存架构
 - **自动清理**: 定时清理过期缓存和无效数据
 
 ### 📊 实时监控
-- **使用统计**: 详细的请求量、Token使用量、成本分析
+
+- **使用统计**: 详细的请求量、Token 使用量、成本分析
 - **性能监控**: 响应时间、成功率、错误分布实时展示
 - **可视化仪表板**: 基于 ECharts 的美观数据展示
 
 ### 🛡️ 安全特性
+
 - **速率限制**: IP 级和 Key 级的精细化速率控制
 - **安全过滤**: 可配置的内容安全策略
 - **JWT 认证**: 安全的 Web UI 访问控制
@@ -167,8 +172,8 @@ DATABASE_URL=sqlite:///./data/gap.db
 REDIS_URL=redis://localhost:6379
 
 # 认证配置
-ADMIN_API_KEY=admin_key_here    # 管理员密钥
-PASSWORD=web_password1,pass2    # Web UI 登录密码
+ADMIN_API_KEY=admin_key_here         # 管理员密钥
+USERS_API_KEY=user_key_1,user_key_2  # 平台用户登录密钥（用于 Web UI 登录）
 
 # 功能开关
 ENABLE_NATIVE_CACHING=true      # 启用原生缓存
@@ -345,19 +350,20 @@ npm run build
 ## 📋 API 参考
 
 详细 API 文档请访问：
+
 - Swagger UI: `http://localhost:7860/docs`
 - ReDoc: `http://localhost:7860/redoc`
 
 ### 核心端点
 
-| 端点 | 方法 | 描述 |
-|------|------|------|
-| `/healthz` | GET | 健康检查 |
-| `/v1/models` | GET | 获取模型列表 |
-| `/v1/chat/completions` | POST | OpenAI 兼容对话 |
-| `/v2/models/{model}:generateContent` | POST | Gemini 原生接口 |
-| `/api/v1/status` | GET | 系统状态 |
-| `/api/v1/caches` | GET/POST | 缓存管理 |
+| 端点                                 | 方法     | 描述            |
+| ------------------------------------ | -------- | --------------- |
+| `/healthz`                           | GET      | 健康检查        |
+| `/v1/models`                         | GET      | 获取模型列表    |
+| `/v1/chat/completions`               | POST     | OpenAI 兼容对话 |
+| `/v2/models/{model}:generateContent` | POST     | Gemini 原生接口 |
+| `/api/v1/status`                     | GET      | 系统状态        |
+| `/api/v1/caches`                     | GET/POST | 缓存管理        |
 
 ## 🤝 贡献指南
 

@@ -7,20 +7,23 @@
 ### 系统要求
 
 #### Docker 部署
+
 - **Docker**: 20.10+
 - **Docker Compose**: 2.0+
 - **内存**: 最低 2GB，推荐 4GB+
 - **存储**: 最低 5GB 可用空间
 
 #### 本地部署
+
 - **Python**: 3.11+ (推荐使用 uv)
-- **Node.js**: 18.0+
+- **Node.js**: 18.0+ (使用 pnpm)
 - **内存**: 最低 4GB，推荐 8GB+
 - **存储**: 最低 2GB 可用空间
 
 ### 必需文件检查
 
 确保项目根目录包含以下关键文件：
+
 ```bash
 # 项目配置
 ✓ .env.example              # 环境变量模板
@@ -99,9 +102,11 @@ docker system prune -a
 ### Docker 配置优化
 
 #### 生产环境配置
+
 创建 `docker-compose.prod.yml`：
+
 ```yaml
-version: '3.8'
+version: "3.8"
 services:
   backend:
     restart: always
@@ -111,10 +116,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 2G
         reservations:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 1G
 
   frontend:
@@ -122,11 +127,12 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
 ```
 
 #### 性能调优
+
 ```bash
 # Docker 优化的 Dockerfile
 FROM node:18-alpine AS frontend-builder
@@ -210,14 +216,17 @@ uvicorn src.gap.main:app --reload --host 0.0.0.0 --port 8000
 # 进入前端目录 (新终端)
 cd frontend
 
+# 安装 pnpm (如果未安装)
+npm install -g pnpm
+
 # 安装依赖
-npm install
+pnpm install
 
 # 配置环境变量
 echo "VITE_API_BASE_URL=http://localhost:8000" > .env.local
 
 # 启动开发服务器
-npm run dev
+pnpm run dev
 ```
 
 ### 本地开发环境管理
@@ -264,6 +273,7 @@ npm run type-check
 ### Vercel (前端) + Railway (后端)
 
 #### 后端部署到 Railway
+
 ```bash
 # 1. 安装 Railway CLI
 npm install -g @railway/cli
@@ -276,6 +286,7 @@ railway deploy
 ```
 
 #### 前端部署到 Vercel
+
 ```bash
 # 1. 安装 Vercel CLI
 npm install -g vercel
@@ -290,6 +301,7 @@ vercel --prod
 ### AWS ECS 部署
 
 #### ECS 任务定义
+
 ```json
 {
   "family": "gap-app",
@@ -322,6 +334,7 @@ vercel --prod
 ## ⚙️ 环境变量配置
 
 ### 基础配置
+
 ```dotenv
 # 必需
 SECRET_KEY=your_very_secure_random_secret_key_here
@@ -336,7 +349,7 @@ KEY_STORAGE_MODE=database
 
 # 认证
 ADMIN_API_KEY=admin_secure_key
-PASSWORD=web_login_password1,password2
+USERS_API_KEY=user_key_1,user_key_2  # 平台用户登录密钥
 
 # 功能开关
 ENABLE_NATIVE_CACHING=true
@@ -345,6 +358,7 @@ DISABLE_SAFETY_FILTERING=false
 ```
 
 ### 生产配置
+
 ```dotenv
 # 生产环境优化
 LOG_LEVEL=INFO
@@ -363,6 +377,7 @@ ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
 ```
 
 ### 开发配置
+
 ```dotenv
 # 开发环境优化
 LOG_LEVEL=DEBUG
@@ -381,6 +396,7 @@ REDIS_URL=redis://localhost:6379/1
 ## 🔍 健康检查和监控
 
 ### 健康检查端点
+
 ```bash
 # 基础健康检查
 curl http://localhost:7860/healthz
@@ -398,9 +414,10 @@ curl http://localhost:7860/api/v1/health/redis
 ### 监控配置
 
 #### Prometheus 指标
+
 ```yaml
 # docker-compose.monitoring.yml
-version: '3.8'
+version: "3.8"
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -418,6 +435,7 @@ services:
 ```
 
 #### 日志管理
+
 ```bash
 # 日志轮转配置 - /etc/logrotate.d/gap
 /logs/*.log {
@@ -439,6 +457,7 @@ services:
 ### 常见问题和解决方案
 
 #### 服务无法启动
+
 ```bash
 # 检查端口占用
 netstat -tulpn | grep :7860
@@ -452,6 +471,7 @@ tail -f logs/error.log
 ```
 
 #### 数据库连接失败
+
 ```bash
 # 检查数据库连接
 psql $DATABASE_URL
@@ -461,6 +481,7 @@ redis-cli -u $REDIS_URL ping
 ```
 
 #### 内存不足
+
 ```bash
 # 监控内存使用
 docker stats
@@ -474,6 +495,7 @@ docker system prune -a
 ### 性能优化建议
 
 #### 数据库优化
+
 ```sql
 -- 数据库配置优化
 ALTER SYSTEM SET shared_buffers = '256MB';
@@ -482,12 +504,14 @@ ALTER SYSTEM SET maintenance_work_mem = '64MB';
 ```
 
 #### Redis 缓存优化
+
 ```bash
 # Redis 配置优化
 redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
 ```
 
 #### 应用级优化
+
 ```python
 # 后端性能调优
 import uvicorn
@@ -507,6 +531,7 @@ if __name__ == "__main__":
 ## 📋 部署检查清单
 
 ### 部署前检查
+
 - [ ] 环境变量已配置且有效
 - [ ] 数据库和 Redis 可访问
 - [ ] SSL 证书已配置（生产环境）
@@ -514,6 +539,7 @@ if __name__ == "__main__":
 - [ ] 备份策略已制定
 
 ### 部署后验证
+
 - [ ] 健康检查端点返回正常
 - [ ] Web UI 可正常访问
 - [ ] API 接口功能正常
@@ -521,6 +547,7 @@ if __name__ == "__main__":
 - [ ] 监控系统正常运行
 
 ### 安全检查
+
 - [ ] 默认密码已更改
 - [ ] API 密钥已配置
 - [ ] HTTPS 已启用

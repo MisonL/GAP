@@ -84,7 +84,7 @@ def _cleanup_daily_totals(pt_timezone: pytz.BaseTzInfo):
             )
 
 
-async def reset_daily_counts(key_manager: APIKeyManager = Depends(get_key_manager)):
+async def reset_daily_counts(key_manager: APIKeyManager):
     """
     每日执行的异步任务，用于重置所有 API Key 的每日使用计数 (RPD 和 TPD_Input)。
     此任务通常在太平洋时间 (PT) 的午夜运行。
@@ -92,7 +92,7 @@ async def reset_daily_counts(key_manager: APIKeyManager = Depends(get_key_manage
     同时调用 Key 管理器的方法来重置 Key 的每日配额耗尽状态。
 
     Args:
-        key_manager (APIKeyManager): 通过 FastAPI 依赖注入的 APIKeyManager 实例。
+        key_manager (APIKeyManager): APIKeyManager 实例。
     """
     # 定义太平洋时区
     pt_timezone = pytz.timezone("America/Los_Angeles")

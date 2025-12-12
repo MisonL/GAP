@@ -23,12 +23,14 @@ logger = logging.getLogger("my_logger")  # 获取日志记录器实例
 __version__ = "1.9.0"  # 当前版本
 
 # --- 应用核心配置 ---
-# PASSWORD: 用于 Web UI 登录的密码。可以设置多个密码，用逗号分隔。
+# USERS_API_KEY: 平台用户登录密钥，用于 Web UI 登录认证。可以设置多个密钥，用逗号分隔。
+# 这些密钥是平台自身的用户认证密钥，与 GEMINI_API_KEYS（Gemini API 调用密钥）不同。
 # 如果未设置，Web UI 登录功能将被视为禁用（但 API 仍可能需要 Key）。
-PASSWORD: Optional[str] = os.environ.get("PASSWORD")
-# WEB_UI_PASSWORDS: 将 PASSWORD 环境变量按逗号分割处理后的密码列表。
+# 注意：也支持旧版环境变量名 PASSWORD（向后兼容）
+USERS_API_KEY: Optional[str] = os.environ.get("USERS_API_KEY") or os.environ.get("PASSWORD")
+# WEB_UI_PASSWORDS: 将 USERS_API_KEY 环境变量按逗号分割处理后的用户密钥列表。
 WEB_UI_PASSWORDS: List[str] = (
-    [p.strip() for p in PASSWORD.split(",") if p.strip()] if PASSWORD else []
+    [p.strip() for p in USERS_API_KEY.split(",") if p.strip()] if USERS_API_KEY else []
 )
 
 # SECRET_KEY: 用于 JWT 签名和验证的密钥。**必须设置，且应为强随机字符串！**

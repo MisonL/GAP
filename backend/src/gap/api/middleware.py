@@ -26,7 +26,7 @@ async def verify_proxy_key(request: Request) -> Dict[str, Any]:
     FastAPI 依赖项函数，用于验证 API 请求头中的 `Authorization: Bearer <token>`。
 
     验证逻辑根据 `KEY_STORAGE_MODE` 配置而不同：
-    - **内存模式 (`IS_MEMORY_DB=True`)**: 验证提供的 `<token>` 是否存在于环境变量 `PASSWORD` (即 `config.WEB_UI_PASSWORDS`) 定义的密码列表中。
+    - **内存模式 (`IS_MEMORY_DB=True`)**: 验证提供的 `<token>` 是否存在于环境变量 `USERS_API_KEY` (即 `config.WEB_UI_PASSWORDS`) 定义的用户密钥列表中。
     - **数据库模式 (`IS_MEMORY_DB=False`)**: 验证提供的 `<token>` 是否是数据库中存在且状态为激活 (`is_active=True`) 的 API Key。
 
     成功验证后，会从 `APIKeyManager` 获取该 Key 的配置信息，并将 Key 和配置信息作为字典返回。
@@ -42,7 +42,7 @@ async def verify_proxy_key(request: Request) -> Dict[str, Any]:
         HTTPException:
             - 401 Unauthorized: 如果 Authorization 头缺失、格式错误、令牌无效或不匹配。
             - 403 Forbidden: 如果令牌在数据库模式下无效或非活动。
-            - 503 Service Unavailable: 如果内存模式下未配置 `PASSWORD` 环境变量。
+            - 503 Service Unavailable: 如果内存模式下未配置 `USERS_API_KEY` 环境变量。
     """
     # 1. 从请求头获取 Authorization 字段
     auth_header: str | None = request.headers.get("Authorization")
@@ -72,10 +72,10 @@ async def verify_proxy_key(request: Request) -> Dict[str, Any]:
 
     # 4. 根据存储模式进行验证
     if IS_MEMORY_DB:  # --- 内存数据库模式 ---
-        # 检查环境变量 PASSWORD (即 config.WEB_UI_PASSWORDS) 是否已配置
+        # 检查环境变量 USERS_API_KEY (即 config.WEB_UI_PASSWORDS) 是否已配置
         if not app_config.WEB_UI_PASSWORDS:
             logger.error(
-                "API 认证失败(内存模式)：未设置 WEB_UI_PASSWORDS (PASSWORD 环境变量)。"
+                "API 认证失败(内存模式)：未设置 WEB_UI_PASSWORDS (USERS_API_KEY 环境变量)。"
             )  # 记录严重错误
             # 抛出 503 服务不可用错误，因为这是配置问题
             raise HTTPException(

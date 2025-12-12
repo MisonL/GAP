@@ -249,6 +249,7 @@ logs/
 ## 🎯 核心技术栈
 
 ### 后端
+
 - **FastAPI** - 现代异步 Web 框架
 - **SQLAlchemy** - ORM 和数据库工具
 - **PostgreSQL/SQLite** - 数据库
@@ -259,6 +260,7 @@ logs/
 - **httpx** - 异步 HTTP 客户端
 
 ### 前端
+
 - **Vue 3** - 渐进式 JavaScript 框架
 - **Vite** - 现代构建工具
 - **TypeScript** - 类型安全
@@ -271,6 +273,7 @@ logs/
 - **Playwright** - E2E 测试
 
 ### 开发工具
+
 - **Docker** - 容器化
 - **pytest** - Python 测试
 - **Vitest** - JavaScript 测试
@@ -300,6 +303,7 @@ logs/
 ## 🚀 快速启动
 
 ### 开发环境
+
 ```bash
 # 后端启动
 cd backend
@@ -315,6 +319,7 @@ npm run dev
 ```
 
 ### 生产环境
+
 ```bash
 # Docker 部署
 ./deploy.sh docker
@@ -326,25 +331,30 @@ docker-compose up -d
 ## 📋 环境变量
 
 ### 必需配置
+
 - `SECRET_KEY` - JWT 和加密密钥
 - `GEMINI_API_KEYS` - Gemini API 密钥列表
 
 ### 数据库配置
+
 - `DATABASE_URL` - 数据库连接字符串
 - `REDIS_URL` - Redis 连接字符串
 
 ### 功能开关
+
 - `ENABLE_NATIVE_CACHING` - 启用原生缓存
 - `ENABLE_CONTEXT_COMPLETION` - 启用上下文补全
 - `DISABLE_SAFETY_FILTERING` - 禁用安全过滤
 
 ### 安全配置
+
 - `ADMIN_API_KEY` - 管理员 API 密钥
-- `PASSWORD` - Web UI 登录密码
+- `USERS_API_KEY` - 平台用户登录密钥
 - `JWT_ALGORITHM` - JWT 算法
 - `ACCESS_TOKEN_EXPIRE_MINUTES` - JWT 过期时间
 
 ### 速率限制
+
 - `MAX_REQUESTS_PER_MINUTE` - 每分钟最大请求数
 - `MAX_REQUESTS_PER_DAY_PER_IP` - 每日最大请求数
 

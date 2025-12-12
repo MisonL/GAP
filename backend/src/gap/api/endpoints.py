@@ -170,6 +170,18 @@ async def debug_config():
     return {"WEB_UI_PASSWORDS": config.WEB_UI_PASSWORDS}
 
 
+@router.get("/v1/status", tags=["System"])
+async def system_status():
+    """
+    简单的系统状态检查端点
+    """
+    return {
+        "status": "online",
+        "timestamp": int(time.time()),
+        "service": "Gemini API Proxy"
+    }
+
+
 # 缓存管理端点 (需要管理员令牌)
 @router.get("/cache", dependencies=[Depends(verify_admin_token)])
 async def list_caches() -> List[Dict[str, Any]]:

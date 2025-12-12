@@ -370,17 +370,35 @@ except Exception as e:
     log_info "🎨 设置前端环境..."
     cd ../frontend
     
+    # 检查 pnpm
+    if ! command_exists pnpm; then
+        log_info "安装 pnpm..."
+        npm install -g pnpm || log_warning "pnpm 安装失败，尝试使用 npm"
+    fi
+
     # 安装前端依赖
     log_info "📦 安装前端依赖..."
-    npm install
+    if command_exists pnpm; then
+        pnpm install
+    else
+        npm install
+    fi
     
     # 构建前端
     log_info "🏗️  构建前端..."
-    npm run build
+    if command_exists pnpm; then
+        pnpm run build
+    else
+        npm run build
+    fi
     
     # 启动前端
     log_info "🚀 启动前端服务..."
-    nohup npm run preview -- --host 0.0.0.0 --port 3000 > ../logs/frontend.log 2>&1 &
+    if command_exists pnpm; then
+        nohup pnpm run preview -- --host 0.0.0.0 --port 3000 > ../logs/frontend.log 2>&1 &
+    else
+        nohup npm run preview -- --host 0.0.0.0 --port 3000 > ../logs/frontend.log 2>&1 &
+    fi
     FRONTEND_PID=$!
     echo $FRONTEND_PID > ../logs/frontend.pid
     

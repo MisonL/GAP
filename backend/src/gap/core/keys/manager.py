@@ -978,6 +978,19 @@ class APIKeyManager:
                 f"API Key {api_key[:10]}... 已达到每日配额限制。"
             )  # 记录警告日志
 
+    def reset_daily_exhausted_keys(self):
+        """
+        重置所有 API 密钥的每日配额耗尽标记。
+        此方法通常在每日重置任务中调用。
+        """
+        with self._get_lock("api_keys"):  # 获取锁以安全修改共享字典
+            keys_count = len(self.daily_exhausted_keys)
+            self.daily_exhausted_keys.clear()  # 清空所有每日配额耗尽标记
+            if keys_count > 0:
+                logger.info(
+                    f"已重置 {keys_count} 个 API Key 的每日配额耗尽标记。"
+                )  # 记录日志
+
     def is_key_temporarily_unavailable(self, api_key: str) -> bool:
         """
         检查指定的 API 密钥当前是否因临时问题（例如，短暂的 API 错误）而不可用。
